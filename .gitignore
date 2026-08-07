@@ -8,7 +8,7 @@ local.properties
 Thumbs.db
 desktop.ini
 
-# 构建产物（不要进仓库）
+# Build outputs
 /build/
 /app/build/
 **/build/
@@ -21,30 +21,30 @@ captures/
 *.dex
 *.class
 
-# 签名与密钥（绝对不要提交）
+# Signing / secrets
 *.jks
 *.keystore
 keystore.properties
 **/signing.properties
 *.pem
 
-# NDK / 原生
+# NDK
 obj/
 .externalNativeBuild
 
-# Kotlin / 其它
+# Kotlin / misc
 *.log
 *.tmp
 *.swp
 .kotlin/
 
-# --- 本仓库本地产物 ---
-# 你手动拷到 apk/ 的安装包也不要进 git
+# Local APK copies
 /apk/*.apk
 /apk/*.aab
 
-# 问题截图可选择性提交；默认忽略大图可取消下一行
-# /问题截图/
+# Bug screenshots — never commit
+/问题截图/
+问题截图/
 
 # OS / IDE
 *.hprof
@@ -54,4 +54,3 @@ outputs/
 *.bak
 
 scripts/gh-login-*.txt
-
