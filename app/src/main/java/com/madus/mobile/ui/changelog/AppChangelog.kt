@@ -29,14 +29,18 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.16",
+            date = "2026-08-07",
+            changed = listOf(
+                "关于连点彩蛋改为三档电风扇",
+            ),
+        ),
+        Entry(
             version = "1.14.15",
             date = "2026-08-07",
             added = listOf(
                 "超长曲听太久时顶部轻提示可换歌",
-                "关于连点 7 次：版本号 + 点按掉音符",
-            ),
-            changed = listOf(
-                "B 站收藏夹封面空白时用夹内封面补全",
+                "B 站收藏夹封面补全",
             ),
         ),
         Entry(

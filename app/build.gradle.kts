@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.15：收藏封面补全 + 长播轻提示 + 音符彩蛋
-        versionCode = 235
-        versionName = "1.14.15"
+        // 1.14.16：彩蛋改电风扇三档
+        versionCode = 236
+        versionName = "1.14.16"
         vectorDrawables.useSupportLibrary = true
     }
 
