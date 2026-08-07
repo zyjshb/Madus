@@ -182,7 +182,7 @@ fun MeScreen(
                     ActionCell(
                         icon = Icons.Outlined.SystemUpdate,
                         title = "检查更新",
-                        subtitle = "v${state.appVersion} · 下载最新",
+                        subtitle = "v${state.appVersion} · 一键更新",
                         onClick = {
                             val now = System.currentTimeMillis()
                             if (now - updateTapAt > 1_000L) updateTapCount = 0
