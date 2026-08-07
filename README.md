@@ -10,8 +10,8 @@ B 站音源 · 电台心智 · 端侧 AI 搜歌
 
 <br/>
 
-[![GitHub release](https://img.shields.io/github/v/release/zyjshb/Madus?color=black&label=Stable&logo=github)](https://github.com/zyjshb/Madus/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/zyjshb/Madus/total?label=Downloads&logo=github)](https://github.com/zyjshb/Madus/releases)
+[![GitHub release](https://img.shields.io/github/v/release/zyjshb/Madus?color=black&label=GitHub&logo=github)](https://github.com/zyjshb/Madus/releases/latest)
+[![Gitee](https://img.shields.io/badge/Gitee-Releases-C71D23?logo=gitee&logoColor=white)](https://gitee.com/dikoklhf/madus/releases)
 [![License](https://img.shields.io/github/license/zyjshb/Madus?color=blue)](LICENSE)
 [![Changelog](https://img.shields.io/badge/Changelog-Keep%20a%20Changelog-lightgrey)](CHANGELOG.md)
 [![API](https://img.shields.io/badge/API-26%2B-brightgreen?logo=android)](https://android-arsenal.com/api?level=26)
@@ -20,9 +20,17 @@ B 站音源 · 电台心智 · 端侧 AI 搜歌
 
 <br/>
 
-<a href="https://github.com/zyjshb/Madus/releases/latest">
-  <img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80">
-</a>
+**下载（国内优先 Gitee）**
+
+| 渠道 | 链接 |
+|:---:|:---|
+| **Gitee（推荐）** | [Releases · 最新版](https://gitee.com/dikoklhf/madus/releases) |
+| **GitHub（备用）** | [Releases · Latest](https://github.com/zyjshb/Madus/releases/latest) |
+
+仓库：
+
+- GitHub：https://github.com/zyjshb/Madus  
+- Gitee：https://gitee.com/dikoklhf/madus  
 
 </div>
 
@@ -38,18 +46,17 @@ B 站音源 · 电台心智 · 端侧 AI 搜歌
 - ✨ **AI 搜歌** — 文字 / 图片 / 上传音视频（需自备模型 Key）
 - 🎤 **哼唱识别** — ACRCloud + 讯飞双引擎（需自备 Key）
 - 🎨 **主题** — 线稿黑白、深色墨黑、Catppuccin 配色；圆滑玻璃 / 方角线稿
-- 🔄 **应用内更新** — 「我的 → 检查更新」打开本仓库 Releases
+- 🔄 **应用内更新** — 我的 → 检查更新（优先 Gitee，失败再 GitHub）
 
 ## Download
 
-推荐下载 **正式包** `Madus-x.y.z.apk`（不要选 debug，除非你在开发）。
+下载 **`Madus-x.y.z.apk`**（不要选 `debug`，除非你在开发）。
 
-1. 打开 [Releases · Latest](https://github.com/zyjshb/Madus/releases/latest)
-2. 下载 `Madus-*.apk`
-3. 允许「未知来源」后安装  
-   （侧载时系统可能提示风险，属常见现象，请确认来源为本仓库）
+1. 国内打开 [Gitee Releases](https://gitee.com/dikoklhf/madus/releases)  
+2. 或打开 [GitHub Releases](https://github.com/zyjshb/Madus/releases/latest)  
+3. 下载 `Madus-*.apk` → 允许「未知来源」→ 安装  
 
-也可在 App 内：**我的 → 检查更新**。
+也可在 App 内：**我的 → 检查更新**（双源自动切换）。
 
 ## Tech stack
 
@@ -80,12 +87,21 @@ export JAVA_HOME=/path/to/jdk17
 
 输出：`app/build/outputs/apk/release/`
 
-发版可使用 `scripts/publish-release.ps1`（需 [GitHub CLI](https://cli.github.com/) 已登录）。
+发版：
+
+```powershell
+# GitHub（需 gh 登录）
+.\scripts\publish-release.ps1 -Version x.y.z
+
+# Gitee（需 GITEE_TOKEN）
+$env:GITEE_TOKEN = 'your_token'
+.\scripts\publish-gitee-release.ps1 -Version x.y.z -SetDefaultMain
+```
 
 ## FAQ
 
 **Q: 为什么安装会提示风险 / 未备案？**  
-A: 目前通过 GitHub 侧载分发，未上架应用商店。确认下载自本仓库即可。
+A: 通过 GitHub / Gitee 侧载分发，未上架应用商店。确认下载自本仓库即可。
 
 **Q: 支持 iPhone 吗？**  
 A: 暂不支持，仅 Android。
@@ -96,28 +112,13 @@ A: 需在 App 内自行配置对应 API Key（模型 / ACR / 讯飞），仓库�
 **Q: 外站歌单是直接播网易/QQ 吗？**  
 A: 不是。只解析歌名并在 B 站搜索可播内容，不接第三方播放源。
 
+**Q: Gitee 和 GitHub 有什么区别？**  
+A: 代码与发版内容一致。国内下载用 Gitee 更快；GitHub 作国际备用。
+
 ## Disclaimer
 
-本项目与 Bilibili、网易云音乐、QQ 音乐等 **无官方关联**。
-
-- 代码以 [MIT](LICENSE) 开源  
-- **媒体与版权归原平台及权利人所有**  
-- 请遵守相关服务条款与法律法规；使用风险自负  
-
-## Credits
-
-- [Jetpack Compose](https://developer.android.com/jetpack/compose)
-- [Media3](https://developer.android.com/guide/topics/media/media3)
-- [Coil](https://coil-kt.github.io/coil/)
-
-README 结构参考了 [InnerTune](https://github.com/z-huang/InnerTune)、[Seal](https://github.com/JunkFood02/Seal)、[NewPipe](https://github.com/TeamNewPipe/NewPipe) 等优秀开源项目。
+本项目仅供学习交流。音源与内容版权归原作者 / 平台所有；请遵守当地法律法规与平台服务条款。使用本软件产生的一切后果由使用者自行承担。
 
 ## License
 
-[MIT](LICENSE) © Madus Contributors
-
----
-
-<div align="right">
-<a href="#madus">⬆ 回到顶部</a>
-</div>
+见 [LICENSE](LICENSE)。
