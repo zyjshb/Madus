@@ -78,6 +78,11 @@ data class PlayerSettings(
     val videoMode: Boolean = false,
     /** 短视频手势：抖音 / B站 / 快手 */
     val gestureMode: VideoGestureMode = VideoGestureMode.DOUYIN,
+    /**
+     * 打游戏时继续播放：忽略游戏音效等「短暂」音频焦点抢占，避免一点按钮就暂停。
+     * 其它音乐 App 长期占用时仍可能被系统打断。
+     */
+    val gameMixAudio: Boolean = true,
 )
 
 class PlayerPrefs(private val context: Context) {
@@ -87,6 +92,7 @@ class PlayerPrefs(private val context: Context) {
     private val keyVideoMode = booleanPreferencesKey("video_mode")
     private val keyGuideSeen = booleanPreferencesKey("short_video_guide_seen_v1")
     private val keyGestureMode = stringPreferencesKey("video_gesture_mode")
+    private val keyGameMixAudio = booleanPreferencesKey("game_mix_audio")
     /** 各操作模式是否看过专属指引（按 mode.id 存） */
     private fun guideModeKey(mode: VideoGestureMode) =
         booleanPreferencesKey("short_video_guide_${mode.id}_v2")
@@ -100,6 +106,8 @@ class PlayerPrefs(private val context: Context) {
             // 默认音乐模式；用户可在推荐页切换视频模式
             videoMode = prefs[keyVideoMode] ?: false,
             gestureMode = VideoGestureMode.fromId(prefs[keyGestureMode]),
+            // 默认开：打游戏点按钮不会把歌掐掉
+            gameMixAudio = prefs[keyGameMixAudio] ?: true,
         )
     }
 
@@ -131,6 +139,10 @@ class PlayerPrefs(private val context: Context) {
 
     suspend fun setAutoCache(enabled: Boolean) {
         context.playerPrefsStore.edit { it[keyAutoCache] = enabled }
+    }
+
+    suspend fun setGameMixAudio(enabled: Boolean) {
+        context.playerPrefsStore.edit { it[keyGameMixAudio] = enabled }
     }
 
     suspend fun setVideoMode(enabled: Boolean) {

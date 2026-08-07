@@ -29,19 +29,18 @@ Write-Host "==> push main ..."
 git push -u origin main
 
 $tag = "v$Version"
+# 说明文案不要写「正式版 / 无 debug」等字样（用户不需要在 Releases 里看到）
 $notes = @"
 ## Madus $Version
 
 ### 下载
-- **Madus-$Version.apk**（正式版）
+- Madus-$Version.apk
 
 安装：下载 → 允许未知来源 → 安装。  
-App 内：我的 → 检查更新 打开本页。
-
-> 不提供 debug 包。
+App 内：我的 → 检查更新。
 "@
 
-Write-Host "==> create release $tag （仅正式 APK）..."
+Write-Host "==> create release $tag ..."
 
 # 若 tag 已存在则删了重建（仅本机脚本方便重发）
 & $gh release view $tag --repo $Repo 2>$null | Out-Null

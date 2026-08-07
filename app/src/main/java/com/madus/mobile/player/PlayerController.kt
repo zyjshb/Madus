@@ -27,6 +27,10 @@ class PlayerController(
 
     fun setAutoCache(enabled: Boolean) = engine.setAutoCache(enabled)
 
+    fun setGameMixAudio(enabled: Boolean) = engine.setGameMixAudio(enabled)
+
+    fun setAppInBackground(inBackground: Boolean) = engine.setAppInBackground(inBackground)
+
     fun setSleepTimerMinutes(minutes: Int) = engine.setSleepTimerMinutes(minutes)
 
     fun setPlaybackSpeed(speed: Float) = engine.setPlaybackSpeed(speed)

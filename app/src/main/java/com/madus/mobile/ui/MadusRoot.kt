@@ -553,6 +553,7 @@ fun MadusRoot(
                         onBack = { nav.popBackStack() },
                         onSoundFx = vm::setSoundFx,
                         onAutoCache = vm::setAutoCache,
+                        onGameMixAudio = vm::setGameMixAudio,
                         onOpenCacheManager = {
                             vm.refreshCacheManager()
                             nav.navigate(Routes.CACHE_MANAGER) { launchSingleTop = true }

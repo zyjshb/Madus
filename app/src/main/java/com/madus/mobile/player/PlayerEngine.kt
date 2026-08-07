@@ -68,6 +68,22 @@ class PlayerEngine(context: Context) {
     /** 默认关：纯在线，不写边听缓存（轻量化） */
     private val autoCacheEnabled = AtomicBoolean(false)
 
+    /**
+     * 打游戏混音：true 时不让 ExoPlayer 自动处理音频焦点，
+     * 避免游戏 UI 音效短暂抢焦点把音乐 pause。
+     * false = 系统默认（来电/其它媒体可能暂停本 App）。
+     */
+    private val gameMixAudio = AtomicBoolean(true)
+
+    /** 应用在后台时放慢进度轮询，省 CPU（功能不变）。 */
+    private val backgroundMode = AtomicBoolean(false)
+
+    private val mediaAudioAttributes: AudioAttributes =
+        AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+
     private val switchingDataSourceFactory = DataSource.Factory {
         if (autoCacheEnabled.get()) {
             CacheDataSource.Factory()
@@ -100,13 +116,8 @@ class PlayerEngine(context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(appContext)
         .setMediaSourceFactory(mediaSourceFactory)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            /* handleAudioFocus = */ true,
-        )
+        // 默认混音：不 handleAudioFocus，游戏点按钮不会把歌暂停
+        .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus = */ false)
         .setHandleAudioBecomingNoisy(true)
         .setWakeMode(C.WAKE_MODE_NETWORK)
         .build()
@@ -178,6 +189,24 @@ class PlayerEngine(context: Context) {
     /** 边听写盘缓存开关；关=仅网络在线播 */
     fun setAutoCache(enabled: Boolean) {
         autoCacheEnabled.set(enabled)
+    }
+
+    /**
+     * 打游戏时继续播放。
+     * true：不自动抢/交音频焦点（游戏音效不会 pause 本 App）
+     * false：交给 ExoPlayer 处理焦点（经典行为）
+     */
+    fun setGameMixAudio(enabled: Boolean) {
+        if (gameMixAudio.getAndSet(enabled) == enabled) return
+        mainHandler.post {
+            // setAudioAttributes 必须在主线程
+            player.setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus = */ !enabled)
+        }
+    }
+
+    /** 前后台：仅影响进度刷新频率，不改变播放逻辑。 */
+    fun setAppInBackground(inBackground: Boolean) {
+        backgroundMode.set(inBackground)
     }
 
     /** @param minutes 0 = 取消 */
@@ -410,7 +439,8 @@ class PlayerEngine(context: Context) {
                 if (player.isPlaying || player.playbackState == Player.STATE_BUFFERING) {
                     publishFromPlayer()
                 }
-                delay(400)
+                // 后台打游戏时降低状态刷新频率，省 CPU/电，UI 不可见时够用
+                delay(if (backgroundMode.get()) 1200L else 400L)
             }
         }
     }

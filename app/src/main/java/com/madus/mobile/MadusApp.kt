@@ -5,6 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.madus.mobile.data.AudioQuality
 import com.madus.mobile.data.BilibiliApi
 import com.madus.mobile.data.LegalPrefs
@@ -113,14 +116,27 @@ class MadusApp : Application() {
                 videoModeEnabled = s.videoMode
                 playerEngine.setSoundFx(s.soundFx)
                 playerEngine.setAutoCache(s.autoCache)
+                playerEngine.setGameMixAudio(s.gameMixAudio)
             }
             playerPrefs.flow.collect { s ->
                 currentQualityQn = s.quality.qn
                 videoModeEnabled = s.videoMode
                 playerEngine.setSoundFx(s.soundFx)
                 playerEngine.setAutoCache(s.autoCache)
+                playerEngine.setGameMixAudio(s.gameMixAudio)
             }
         }
+
+        // 进游戏/切到其它 App：仅降低进度轮询频率，不改播放与功能
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                playerEngine.setAppInBackground(false)
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                playerEngine.setAppInBackground(true)
+            }
+        })
 
         sourceRegistry = SourceRegistry(
             listOf(

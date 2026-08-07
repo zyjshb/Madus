@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.6：安装包校验，修「解析软件包失败」
-        versionCode = 226
-        versionName = "1.14.6"
+        // 1.14.7：打游戏时继续播放 + 后台轻量
+        versionCode = 227
+        versionName = "1.14.7"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -68,6 +68,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     implementation("androidx.compose.ui:ui")

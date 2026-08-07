@@ -472,6 +472,18 @@ class AppViewModel(
         }
     }
 
+    fun setGameMixAudio(enabled: Boolean) {
+        viewModelScope.launch {
+            playerPrefs.setGameMixAudio(enabled)
+            player.setGameMixAudio(enabled)
+            _toast.value = if (enabled) {
+                "打游戏时继续播放 · 已开"
+            } else {
+                "打游戏时继续播放 · 已关（会按系统音频焦点暂停）"
+            }
+        }
+    }
+
     /**
      * 视频模式开关：开=看 B 站视频画面；关=纯音频听歌。
      * 切换后对当前曲重新取流。

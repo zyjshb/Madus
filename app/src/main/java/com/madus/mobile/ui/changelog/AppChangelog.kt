@@ -29,6 +29,19 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.7",
+            date = "2026-08-07",
+            added = listOf(
+                "播放设置：「打游戏时继续播放」（默认开）— 游戏按钮音效不再把歌掐掉",
+            ),
+            changed = listOf(
+                "切到后台/打游戏时降低进度刷新频率，省一点 CPU 与电量，功能不变",
+            ),
+            fixed = listOf(
+                "打游戏点按钮导致 Madus 音乐暂停、无法边玩边听的问题",
+            ),
+        ),
+        Entry(
             version = "1.14.6",
             date = "2026-08-07",
             added = listOf(

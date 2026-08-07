@@ -41,6 +41,7 @@ fun PlaybackPrefsScreen(
     onBack: () -> Unit,
     onSoundFx: (SoundFx) -> Unit,
     onAutoCache: (Boolean) -> Unit,
+    onGameMixAudio: (Boolean) -> Unit = {},
     onOpenCacheManager: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -96,6 +97,42 @@ fun PlaybackPrefsScreen(
                     Switch(
                         checked = playerSettings.autoCache,
                         onCheckedChange = onAutoCache,
+                    )
+                }
+            }
+
+            item {
+                SectionTitle(text = "打游戏时听歌")
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "游戏按钮音效常会短暂抢音频焦点。开启后 Madus 不因此自动暂停，可边打游戏边听。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(tokens.cornerMd))
+                        .border(tokens.borderWidth, MaterialTheme.colorScheme.outline, RoundedCornerShape(tokens.cornerMd))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("打游戏时继续播放", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (playerSettings.gameMixAudio) {
+                                "已开启 · 忽略游戏音效抢焦点"
+                            } else {
+                                "已关闭 · 按系统焦点可能暂停"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = playerSettings.gameMixAudio,
+                        onCheckedChange = onGameMixAudio,
                     )
                 }
             }
