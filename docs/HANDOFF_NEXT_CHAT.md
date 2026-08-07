@@ -15,6 +15,7 @@
 3. 接近 **450–500k token** 再开新对话，**必须带本文档**  
 4. 关机前更新本文档  
 5. Codex/DeepSeek 工人约定见 `docs/CODEX_WORKER.md`（Grok 总管可按任务分流；工人易卡则总管直接改）  
+6. **GitHub Releases 只上传正式 APK，禁止上传 `*-debug.apk`**  
 
 ---
 

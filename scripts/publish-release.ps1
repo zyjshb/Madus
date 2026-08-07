@@ -20,9 +20,10 @@ if ($LASTEXITCODE -ne 0) { throw "请先运行: gh auth login" }
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 
+# 只上传正式包，禁止上传 *-debug.apk
 $apkRelease = Join-Path $root "apk\Madus-$Version.apk"
-$apkDebug = Join-Path $root "apk\Madus-$Version-debug.apk"
 if (-not (Test-Path $apkRelease)) { throw "缺少 $apkRelease ，请先打包" }
+if ($apkRelease -match '(?i)debug') { throw "禁止上传 debug 包" }
 
 Write-Host "==> push main ..."
 git push -u origin main
@@ -31,15 +32,16 @@ $tag = "v$Version"
 $notes = @"
 ## Madus $Version
 
-- 正式包：``Madus-$Version.apk``
-- Debug：``Madus-$Version-debug.apk``（可选）
+### 下载
+- **Madus-$Version.apk**（正式版）
 
-安装：下载正式包 → 允许未知来源 → 安装。
+安装：下载 → 允许未知来源 → 安装。  
+App 内：我的 → 检查更新 打开本页。
+
+> 不提供 debug 包。
 "@
 
-Write-Host "==> create release $tag ..."
-$assets = @($apkRelease)
-if (Test-Path $apkDebug) { $assets += $apkDebug }
+Write-Host "==> create release $tag （仅正式 APK）..."
 
 # 若 tag 已存在则删了重建（仅本机脚本方便重发）
 & $gh release view $tag --repo $Repo 2>$null | Out-Null
@@ -48,7 +50,7 @@ if ($LASTEXITCODE -eq 0) {
     & $gh release delete $tag --repo $Repo --yes
 }
 
-& $gh release create $tag @assets `
+& $gh release create $tag $apkRelease `
     --repo $Repo `
     --title "Madus $Version" `
     --notes $notes
