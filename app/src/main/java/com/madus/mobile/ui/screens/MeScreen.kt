@@ -230,48 +230,50 @@ fun MeScreen(
         item {
             SectionTitle(text = "应用")
             Spacer(Modifier.height(8.dp))
+            // 外观与关于拆开两块，连点关于时不易误触外观
             LineFrame(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
-                Column {
-                    MeNavRow(
-                        icon = Icons.Outlined.Settings,
-                        title = "外观设置",
-                        subtitle = "形态与主题色",
-                        onClick = onOpenSettings,
-                    )
-                    MeNavRow(
-                        icon = Icons.Outlined.Info,
-                        title = "关于 Madus",
-                        subtitle = "v${state.appVersion}",
-                        onClick = {
-                            val now = System.currentTimeMillis()
-                            if (aboutUnlocked) {
-                                if (now - lastAboutToastAt > 1_500L) {
-                                    lastAboutToastAt = now
-                                    onAboutSystemToast("不用再点了")
-                                }
-                                return@MeNavRow
+                MeNavRow(
+                    icon = Icons.Outlined.Settings,
+                    title = "外观设置",
+                    subtitle = "形态与主题色",
+                    onClick = onOpenSettings,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            LineFrame(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
+                MeNavRow(
+                    icon = Icons.Outlined.Info,
+                    title = "关于 Madus",
+                    subtitle = "v${state.appVersion}",
+                    onClick = {
+                        val now = System.currentTimeMillis()
+                        if (aboutUnlocked) {
+                            if (now - lastAboutToastAt > 1_500L) {
+                                lastAboutToastAt = now
+                                onAboutSystemToast("不用再点了")
                             }
-                            if (now - lastAboutTapAt > 1_500L) aboutTaps = 0
-                            lastAboutTapAt = now
-                            aboutTaps += 1
-                            val remaining = aboutTapsNeeded - aboutTaps
-                            when {
-                                remaining <= 0 -> {
-                                    aboutUnlocked = true
-                                    aboutTaps = 0
+                            return@MeNavRow
+                        }
+                        if (now - lastAboutTapAt > 1_500L) aboutTaps = 0
+                        lastAboutTapAt = now
+                        aboutTaps += 1
+                        val remaining = aboutTapsNeeded - aboutTaps
+                        when {
+                            remaining <= 0 -> {
+                                aboutUnlocked = true
+                                aboutTaps = 0
+                                lastAboutToastAt = now
+                                onOpenEasterEgg()
+                            }
+                            remaining in 1..3 -> {
+                                if (now - lastAboutToastAt > 400L) {
                                     lastAboutToastAt = now
-                                    onOpenEasterEgg()
-                                }
-                                remaining in 1..3 -> {
-                                    if (now - lastAboutToastAt > 400L) {
-                                        lastAboutToastAt = now
-                                        onAboutSystemToast("还差 $remaining 次")
-                                    }
+                                    onAboutSystemToast("还差 $remaining 次")
                                 }
                             }
-                        },
-                    )
-                }
+                        }
+                    },
+                )
             }
         }
 

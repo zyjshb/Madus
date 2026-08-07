@@ -29,11 +29,17 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
-            version = "1.14.16",
+            version = "1.14.17",
             date = "2026-08-07",
             changed = listOf(
-                "关于连点彩蛋改为三档电风扇",
+                "关于连点彩蛋改回小恐龙（更省卡）",
+                "外观设置与关于拆开，连点不易误触",
             ),
+        ),
+        Entry(
+            version = "1.14.16",
+            date = "2026-08-07",
+            changed = listOf("关于连点彩蛋曾改为电风扇"),
         ),
         Entry(
             version = "1.14.15",
