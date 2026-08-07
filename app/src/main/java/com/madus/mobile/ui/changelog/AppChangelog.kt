@@ -29,6 +29,21 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.6",
+            date = "2026-08-07",
+            added = listOf(
+                "更新页：「重新下载」「浏览器下载」备用入口",
+                "下载后强制校验：大小、ZIP 头、AndroidManifest / dex，坏包不进安装器",
+            ),
+            changed = listOf(
+                "安装包改存 files 目录（避免 cache 被清导致解析失败）",
+                "安装前给所有系统安装器授予 FileProvider 读权限，兼容更多 ROM",
+            ),
+            fixed = listOf(
+                "应用内更新偶发「解析软件包时出现问题」（不完整/非 APK 内容被拿去安装）",
+            ),
+        ),
+        Entry(
             version = "1.14.5",
             date = "2026-08-07",
             added = listOf(

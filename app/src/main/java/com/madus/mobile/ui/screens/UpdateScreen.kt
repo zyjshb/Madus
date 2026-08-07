@@ -49,7 +49,7 @@ import java.io.File
 
 /**
  * 检查更新页：先展示当前/最新版与说明，**用户点「更新到最新版」才下载安装**。
- * 下载过程显示真实进度条与字节数。
+ * 下载过程显示真实进度条；下载后校验 APK，降低「解析软件包失败」。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +88,14 @@ fun UpdateScreen(
             pendingApk = null
             return false
         }
+        val check = AppUpdate.validateApkDetailed(file)
+        if (check != null) {
+            pendingApk = null
+            status = "本地安装包无效：$check。请点「重新下载」。"
+            progressText = ""
+            progressFraction = -1f
+            return false
+        }
         if (!AppUpdate.canInstallPackages(context)) {
             needInstallPermission = true
             status = "请允许「安装未知应用」后返回本页，将自动继续安装"
@@ -96,9 +104,10 @@ fun UpdateScreen(
         needInstallPermission = false
         val ok = AppUpdate.installApk(context, file)
         status = if (ok) {
-            "已调起安装，请确认安装 v${pendingVersion.orEmpty()}"
+            "已调起安装，请确认安装 v${pendingVersion.orEmpty()}。" +
+                "若仍提示「解析失败」，请点「重新下载」或用浏览器下载正式包。"
         } else {
-            "无法打开安装器，请重试或手动安装"
+            "无法打开安装器。请点「重新下载」，或用浏览器下载安装。"
         }
         if (ok) {
             progressText = "安装界面已打开"
@@ -115,7 +124,6 @@ fun UpdateScreen(
             status = "正在检查最新版本…"
             available = null
             needInstallPermission = false
-            // 不立刻清 pendingApk，检查完若版本匹配仍可装
             val r = AppUpdate.probeLatest(current)
             probe = r
             checking = false
@@ -134,12 +142,12 @@ fun UpdateScreen(
                         pendingApk = cached
                         pendingVersion = r.release.versionName
                         progressFraction = 1f
-                        progressText = "本地已有安装包 ${AppUpdate.formatBytes(cached.length())}"
+                        progressText = "本地安装包已校验 ${AppUpdate.formatBytes(cached.length())}"
                         if (!AppUpdate.canInstallPackages(context)) {
                             needInstallPermission = true
                             status = "安装包已就绪，需先允许「安装未知应用」"
                         } else {
-                            status = "安装包已就绪，可直接安装"
+                            status = "安装包已校验通过，可直接安装"
                         }
                     }
                 }
@@ -153,7 +161,6 @@ fun UpdateScreen(
 
     LaunchedEffect(Unit) { refresh() }
 
-    // 从「安装未知应用」设置页返回后，自动尝试安装
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -169,31 +176,39 @@ fun UpdateScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    fun startUpdate() {
+    fun startUpdate(forceRedownload: Boolean = false) {
         val rel = available ?: return
         if (downloading || checking) return
-        // 已有缓存且已授权 → 直接装
-        val cached = AppUpdate.cachedApk(context, rel)
-        if (cached != null) {
-            pendingApk = cached
-            pendingVersion = rel.versionName
-            if (AppUpdate.canInstallPackages(context)) {
-                tryInstallPending()
+        if (!forceRedownload) {
+            val cached = AppUpdate.cachedApk(context, rel)
+            if (cached != null) {
+                pendingApk = cached
+                pendingVersion = rel.versionName
+                if (AppUpdate.canInstallPackages(context)) {
+                    tryInstallPending()
+                    return
+                }
+                needInstallPermission = true
+                AppUpdate.openInstallPermissionSettings(context)
+                status = "请允许「安装未知应用」后返回本页"
                 return
             }
-            needInstallPermission = true
-            AppUpdate.openInstallPermissionSettings(context)
-            status = "请允许「安装未知应用」后返回本页"
-            return
         }
         scope.launch {
             downloading = true
             needInstallPermission = false
+            if (forceRedownload) {
+                pendingApk = null
+            }
             progressFraction = 0f
-            progressText = "准备下载…"
+            progressText = if (forceRedownload) "强制重新下载…" else "准备下载…"
             status = "正在下载更新包…"
             when (
-                val r = AppUpdate.downloadRelease(context, rel) { p ->
+                val r = AppUpdate.downloadRelease(
+                    context = context,
+                    release = rel,
+                    forceRedownload = forceRedownload,
+                ) { p ->
                     progressFraction = p.fraction
                     progressText = p.message
                 }
@@ -203,12 +218,12 @@ fun UpdateScreen(
                     pendingApk = r.apkFile
                     pendingVersion = r.version
                     progressFraction = 1f
-                    progressText = "下载完成，正在打开安装…"
+                    progressText = "校验通过，正在打开安装…"
                     val ok = AppUpdate.installApk(context, r.apkFile)
                     status = if (ok) {
                         "已调起安装，请确认安装 v${r.version}"
                     } else {
-                        "下载完成，但无法打开安装器"
+                        "下载已校验通过，但无法打开安装器。请重试或浏览器下载。"
                     }
                 }
                 is AppUpdate.DownloadResult.NeedInstallPermission -> {
@@ -217,12 +232,13 @@ fun UpdateScreen(
                     pendingVersion = r.version
                     needInstallPermission = true
                     progressFraction = 1f
-                    progressText = "下载完成 ${AppUpdate.formatBytes(r.apkFile.length())}"
+                    progressText = "校验通过 ${AppUpdate.formatBytes(r.apkFile.length())}"
                     AppUpdate.openInstallPermissionSettings(context)
                     status = "请允许「安装未知应用」后返回本页，将继续安装"
                 }
                 is AppUpdate.DownloadResult.Failed -> {
                     downloading = false
+                    pendingApk = null
                     status = "下载失败：${r.message}"
                     progressText = ""
                     progressFraction = -1f
@@ -272,7 +288,6 @@ fun UpdateScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // 版本卡片
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -350,7 +365,6 @@ fun UpdateScreen(
                 }
             }
 
-            // 操作
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -370,7 +384,6 @@ fun UpdateScreen(
                 }
             }
 
-            // 用户主动选择才更新
             val hasCached = pendingApk != null && pendingApk!!.exists()
             val canUpdate = available != null && !checking && !downloading
             val buttonLabel = when {
@@ -395,7 +408,7 @@ fun UpdateScreen(
                                 AppUpdate.openInstallPermissionSettings(context)
                             }
                         }
-                        else -> startUpdate()
+                        else -> startUpdate(forceRedownload = false)
                     }
                 },
                 enabled = canUpdate,
@@ -415,14 +428,37 @@ fun UpdateScreen(
                 )
             }
 
+            // 解析失败 / 坏包 时用
+            if (available != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(
+                        onClick = { startUpdate(forceRedownload = true) },
+                        enabled = canUpdate,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("重新下载")
+                    }
+                    TextButton(
+                        onClick = { AppUpdate.openReleasesInBrowser(context) },
+                        enabled = !downloading,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("浏览器下载")
+                    }
+                }
+            }
+
             Text(
-                text = "不会自动下载。点上方按钮后会显示进度条；下载完成后调起系统安装。" +
-                    "若提示权限，请允许本应用「安装未知应用」。",
+                text = "下载完成后会先校验安装包（大小 + ZIP + AndroidManifest），再打开系统安装。" +
+                    "若曾出现「解析软件包失败」，请用「重新下载」或「浏览器下载」正式包。" +
+                    "安装时需允许「未知应用」。",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
             )
 
-            // 本版 Release 说明
             val notes = available?.body?.trim().orEmpty()
             if (notes.isNotBlank()) {
                 Column(

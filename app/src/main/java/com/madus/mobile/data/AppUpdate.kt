@@ -1,7 +1,9 @@
 package com.madus.mobile.data
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -10,13 +12,21 @@ import com.madus.mobile.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.zip.ZipFile
 
 /**
- * 应用内更新：查 GitHub Releases → 用户确认后再下载正式 APK → 调起安装。
+ * 应用内更新：查 GitHub Releases → 用户确认后再下载正式 APK → 校验 → 调起安装。
  * **不处理 debug 包。**
+ *
+ * 「解析软件包失败」常见原因：下到的不是完整 APK（HTML/截断）。
+ * 因此下载后强制校验：大小、ZIP 魔数、可打开 Zip、含 AndroidManifest.xml。
  */
 object AppUpdate {
     const val GITHUB_OWNER = "zyjshb"
@@ -26,7 +36,9 @@ object AppUpdate {
     private const val API_LATEST =
         "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
     private const val MAX_REDIRECTS = 8
-    private const val MIN_APK_BYTES = 100_000L
+    /** 正式包约 16MB+，过小一律当无效（避免把错误页当 APK 去装）。 */
+    private const val MIN_APK_BYTES = 3_000_000L
+    private const val SIZE_TOLERANCE = 4096L
 
     data class LatestRelease(
         val tag: String,
@@ -85,29 +97,32 @@ object AppUpdate {
     /**
      * 下载正式 APK（用户点「更新到最新版」后调用）。
      * [onProgress] 在 **Main** 线程回调，可直接改 Compose state。
+     * @param forceRedownload true 时忽略本地缓存，强制重下（解析失败后可点「重新下载」）
      */
     suspend fun downloadRelease(
         context: Context,
         release: LatestRelease,
+        forceRedownload: Boolean = false,
         onProgress: (DownloadProgress) -> Unit = {},
     ): DownloadResult {
         return withContext(Dispatchers.IO) {
             try {
                 emitProgress(onProgress, DownloadProgress(-1f, "正在连接服务器…"))
                 val dir = updatesDir(context).also { it.mkdirs() }
-                // 清掉其它旧包，保留同名目标（避免误删刚下完的）
-                val out = File(dir, release.apkName.ifBlank { "Madus-${release.versionName}.apk" })
+                // 清理旧 cache 目录残留（1.14.5 以前下在 cache）
+                runCatching {
+                    File(context.cacheDir, "updates").listFiles()?.forEach { it.delete() }
+                }
+                val out = File(dir, safeApkName(release))
                 dir.listFiles()?.forEach { f ->
                     if (f.absolutePath != out.absolutePath) runCatching { f.delete() }
                 }
-                // 已有完整缓存则直接走安装
+
                 val expected = release.apkSize
-                if (out.exists() && out.length() >= MIN_APK_BYTES &&
-                    (expected <= 0L || out.length() == expected)
-                ) {
+                if (!forceRedownload && isValidApkFile(out, expected)) {
                     emitProgress(
                         onProgress,
-                        DownloadProgress(1f, "已有本地安装包，准备安装…", out.length(), out.length()),
+                        DownloadProgress(1f, "本地安装包校验通过，准备安装…", out.length(), out.length()),
                     )
                     return@withContext finishForInstall(context, release.versionName, out)
                 }
@@ -130,12 +145,19 @@ object AppUpdate {
                     }
                     emitProgress(onProgress, DownloadProgress(frac, msg, read, total))
                 }
-                if (!out.exists() || out.length() < MIN_APK_BYTES) {
-                    return@withContext DownloadResult.Failed("下载失败或文件过小（${out.length()} 字节）")
+
+                emitProgress(onProgress, DownloadProgress(0.99f, "正在校验安装包…", out.length(), expected))
+                val check = validateApkDetailed(out, expected)
+                if (check != null) {
+                    runCatching { out.delete() }
+                    return@withContext DownloadResult.Failed(
+                        "安装包校验失败：$check\n请点「重新下载」，或到网页下载：\n$GITHUB_RELEASES_URL",
+                    )
                 }
+
                 emitProgress(
                     onProgress,
-                    DownloadProgress(1f, "下载完成 ${formatBytes(out.length())}", out.length(), out.length()),
+                    DownloadProgress(1f, "校验通过 ${formatBytes(out.length())}", out.length(), out.length()),
                 )
                 finishForInstall(context, release.versionName, out)
             } catch (t: Throwable) {
@@ -144,16 +166,10 @@ object AppUpdate {
         }
     }
 
-    /** 若缓存里已有可用 APK，可直接安装（授权后再次点更新时复用）。 */
+    /** 若缓存里已有**通过校验**的 APK，可直接安装。 */
     fun cachedApk(context: Context, release: LatestRelease): File? {
-        val f = File(
-            updatesDir(context),
-            release.apkName.ifBlank { "Madus-${release.versionName}.apk" },
-        )
-        return f.takeIf {
-            it.exists() && it.length() >= MIN_APK_BYTES &&
-                (release.apkSize <= 0L || it.length() == release.apkSize)
-        }
+        val f = File(updatesDir(context), safeApkName(release))
+        return f.takeIf { isValidApkFile(it, release.apkSize) }
     }
 
     fun canInstallPackages(context: Context): Boolean {
@@ -175,26 +191,61 @@ object AppUpdate {
         }
     }
 
+    /** 浏览器打开 Releases 页（应用内下载失败时的备用）。 */
+    fun openReleasesInBrowser(context: Context) {
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_RELEASES_URL))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
+    /**
+     * 调起系统安装器。会：
+     * - 再校验一次 APK（防止坏包进安装器 →「解析软件包失败」）
+     * - 给所有能处理安装的 App 授 FileProvider 读权限
+     */
     fun installApk(context: Context, apkFile: File): Boolean {
-        if (!apkFile.exists() || apkFile.length() < MIN_APK_BYTES) return false
+        val err = validateApkDetailed(apkFile, expectedSize = -1L)
+        if (err != null) return false
         return runCatching {
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
                 apkFile,
             )
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                },
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                clipData = ClipData.newRawUri("apk", uri)
+            }
+            // 显式授权给所有包安装器（部分国产 ROM 仅靠 FLAG 不够）
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+            val resolvers = context.packageManager.queryIntentActivities(
+                intent,
+                PackageManager.MATCH_DEFAULT_ONLY,
             )
+            for (ri in resolvers) {
+                val pkg = ri.activityInfo?.packageName ?: continue
+                runCatching {
+                    context.grantUriPermission(pkg, uri, flags)
+                }
+            }
+            context.startActivity(intent)
             true
         }.getOrDefault(false)
     }
 
-    private fun updatesDir(context: Context): File = File(context.cacheDir, "updates")
+    /** 用 files 目录存 APK（比 cache 更稳，系统清理 cache 会导致安装解析失败）。 */
+    private fun updatesDir(context: Context): File = File(context.filesDir, "updates")
+
+    private fun safeApkName(release: LatestRelease): String {
+        val raw = release.apkName.ifBlank { "Madus-${release.versionName}.apk" }
+        return raw.replace(Regex("""[^\w.\-]+"""), "_")
+    }
 
     private fun finishForInstall(
         context: Context,
@@ -244,10 +295,13 @@ object AppUpdate {
             val url = a.optString("browser_download_url", "")
             if (!name.endsWith(".apk", ignoreCase = true)) continue
             if (name.contains("debug", ignoreCase = true)) continue
-            bestUrl = url
-            bestName = name
-            bestSize = a.optLong("size", -1L)
-            break
+            // 优先 Madus-x.y.z.apk
+            if (bestUrl.isBlank() || name.startsWith("Madus-", ignoreCase = true)) {
+                bestUrl = url
+                bestName = name
+                bestSize = a.optLong("size", -1L)
+                if (name.startsWith("Madus-", ignoreCase = true)) break
+            }
         }
         if (bestUrl.isBlank()) error("最新 Release 没有正式 APK（仅支持非 debug 包）")
         return LatestRelease(
@@ -262,7 +316,7 @@ object AppUpdate {
 
     /**
      * 手动跟随重定向，保证拿到最终 CDN 的 Content-Length。
-     * 进度节流：约每 150ms 或每 256KB 回调一次，避免狂刷 UI。
+     * 进度节流：约每 150ms 或每 256KB 回调一次。
      */
     private suspend fun downloadFile(
         url: String,
@@ -279,23 +333,37 @@ object AppUpdate {
                 }.getOrNull().orEmpty()
                 error("下载失败 HTTP $code $err")
             }
+            val contentType = conn.contentType?.lowercase().orEmpty()
+            if (contentType.contains("text/html") || contentType.contains("application/json")) {
+                error("服务器返回的不是 APK（$contentType），可能被限流或网络劫持")
+            }
             var total = conn.contentLengthLong
             if (total <= 0L) total = hintedTotal
-            // 有些 CDN 把长度放在 header 里大小写不一
             if (total <= 0L) {
                 total = conn.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
             }
             val tmp = File(dest.absolutePath + ".part")
             if (tmp.exists()) runCatching { tmp.delete() }
-            conn.inputStream.use { input ->
-                tmp.outputStream().use { output ->
+            BufferedInputStream(conn.inputStream, 64 * 1024).use { input ->
+                BufferedOutputStream(tmp.outputStream(), 64 * 1024).use { output ->
                     val buf = ByteArray(64 * 1024)
                     var readTotal = 0L
                     var lastEmitAt = 0L
                     var lastEmitBytes = -1L
+                    // 先读前几个字节，挡 HTML
+                    var firstChunk: ByteArray? = null
                     while (true) {
                         val n = input.read(buf)
                         if (n <= 0) break
+                        if (firstChunk == null) {
+                            firstChunk = buf.copyOf(n)
+                            if (looksLikeHtmlOrText(firstChunk)) {
+                                error("下载内容不是 APK（疑似网页/错误页），请换网络或浏览器下载")
+                            }
+                            if (!looksLikeZipApk(firstChunk)) {
+                                error("下载内容缺少 ZIP 头（不是有效 APK）")
+                            }
+                        }
                         output.write(buf, 0, n)
                         readTotal += n
                         val now = System.currentTimeMillis()
@@ -311,10 +379,25 @@ object AppUpdate {
                     onBytes(readTotal, if (total > 0) total else readTotal)
                 }
             }
+            // 尽量把数据刷到磁盘，减少「装一半」
+            runCatching {
+                RandomAccessFile(tmp, "rw").use { it.fd.sync() }
+            }
             if (dest.exists()) runCatching { dest.delete() }
             if (!tmp.renameTo(dest)) {
                 tmp.copyTo(dest, overwrite = true)
                 tmp.delete()
+            }
+            if (total > 0 && kotlin.math.abs(dest.length() - total) > SIZE_TOLERANCE) {
+                runCatching { dest.delete() }
+                error("下载不完整：期望 ${formatBytes(total)}，实际 ${formatBytes(dest.length())}")
+            }
+            if (hintedTotal > 0 && kotlin.math.abs(dest.length() - hintedTotal) > SIZE_TOLERANCE) {
+                runCatching { dest.delete() }
+                error(
+                    "文件大小与 Release 不符：期望 ${formatBytes(hintedTotal)}，" +
+                        "实际 ${formatBytes(dest.length())}",
+                )
             }
         } finally {
             conn.disconnect()
@@ -327,7 +410,6 @@ object AppUpdate {
         while (hops < MAX_REDIRECTS) {
             hops++
             val conn = openGet(current) {
-                // 关掉自动跳转，自己处理，避免丢 Content-Length / 跨协议问题
                 instanceFollowRedirects = false
             }
             val code = conn.responseCode
@@ -352,16 +434,77 @@ object AppUpdate {
         configure: HttpURLConnection.() -> Unit = {},
     ): HttpURLConnection {
         return (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 120_000
+            connectTimeout = 25_000
+            readTimeout = 180_000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "Madus-Android/${BuildConfig.VERSION_NAME}")
-            setRequestProperty("Accept", "*/*")
-            // 默认 true；跟随重定向场景里会关掉
+            setRequestProperty("Accept", "application/octet-stream,*/*")
             instanceFollowRedirects = true
             configure()
             connect()
         }
+    }
+
+    fun isValidApkFile(file: File, expectedSize: Long = -1L): Boolean =
+        validateApkDetailed(file, expectedSize) == null
+
+    /**
+     * @return null 表示通过；否则为失败原因（中文）
+     */
+    fun validateApkDetailed(file: File, expectedSize: Long = -1L): String? {
+        if (!file.exists()) return "文件不存在"
+        val len = file.length()
+        if (len < MIN_APK_BYTES) {
+            return "文件过小（${formatBytes(len)}），可能下载不完整"
+        }
+        if (expectedSize > 0 && kotlin.math.abs(len - expectedSize) > SIZE_TOLERANCE) {
+            return "大小不符（期望 ${formatBytes(expectedSize)}，实际 ${formatBytes(len)}）"
+        }
+        // ZIP local file header: PK\x03\x04
+        val header = ByteArray(4)
+        runCatching {
+            FileInputStream(file).use { n ->
+                val r = n.read(header)
+                if (r < 4) return "文件头不完整"
+            }
+        }.onFailure { return "无法读取文件：${it.message}" }
+        if (!looksLikeZipApk(header)) {
+            if (looksLikeHtmlOrText(header)) return "内容是网页/文本，不是 APK"
+            return "不是有效的 ZIP/APK 文件头"
+        }
+        return runCatching {
+            ZipFile(file).use { zip ->
+                val hasManifest = zip.getEntry("AndroidManifest.xml") != null
+                if (!hasManifest) return@runCatching "缺少 AndroidManifest.xml（损坏的 APK）"
+                // 再扫一眼至少有 classes 或 resources
+                val hasPayload = zip.entries().asSequence().any { e ->
+                    val n = e.name
+                    n == "classes.dex" || n.startsWith("classes") && n.endsWith(".dex") ||
+                        n == "resources.arsc"
+                }
+                if (!hasPayload) return@runCatching "APK 内缺少 dex/resources"
+                null
+            }
+        }.getOrElse { "无法打开为 ZIP：${it.message ?: it.javaClass.simpleName}" }
+    }
+
+    private fun looksLikeZipApk(head: ByteArray): Boolean {
+        if (head.size < 4) return false
+        return head[0] == 0x50.toByte() && head[1] == 0x4B.toByte() &&
+            (head[2] == 0x03.toByte() || head[2] == 0x05.toByte() || head[2] == 0x07.toByte())
+    }
+
+    private fun looksLikeHtmlOrText(head: ByteArray): Boolean {
+        if (head.isEmpty()) return false
+        // UTF-8 BOM / whitespace + <
+        var i = 0
+        if (head.size >= 3 && head[0] == 0xEF.toByte() && head[1] == 0xBB.toByte() && head[2] == 0xBF.toByte()) {
+            i = 3
+        }
+        while (i < head.size && head[i].toInt().toChar().isWhitespace()) i++
+        if (i >= head.size) return false
+        val c = head[i].toInt().toChar()
+        return c == '<' || c == '{' || c == '['
     }
 
     private fun friendlyError(t: Throwable): String {
