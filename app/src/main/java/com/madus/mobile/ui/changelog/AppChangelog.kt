@@ -29,6 +29,21 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.5",
+            date = "2026-08-07",
+            added = listOf(
+                "检查更新：真实进度条 + 已下/总大小百分比，一眼能看出是否已开始下载",
+            ),
+            changed = listOf(
+                "下载进度在主线程刷新，连接/开始/完成状态更明确",
+                "手动跟随 GitHub 重定向，更稳拿到安装包大小",
+                "已下载的包会缓存；开完「安装未知应用」返回后可继续安装，不必重下",
+            ),
+            fixed = listOf(
+                "应用内更新下载过程无反馈、不易判断是否在下的问题",
+            ),
+        ),
+        Entry(
             version = "1.14.4",
             date = "2026-08-07",
             added = listOf(
