@@ -1,7 +1,0 @@
-
-! First copy your one-time code: 1B87-EA8C
-Open this URL to continue in your web browser: https://github.com/login/device
-✓ Authentication complete.
-- gh config set -h github.com git_protocol https
-✓ Configured git protocol
-✓ Logged in as zyjshb

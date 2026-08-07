@@ -52,3 +52,6 @@ obj/
 outputs/
 .vscode/
 *.bak
+
+scripts/gh-login-*.txt
+
