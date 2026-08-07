@@ -2,7 +2,7 @@ package com.madus.mobile.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,26 +18,27 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.isActive
+import kotlin.random.Random
 
-/** 关于页连点后的隐藏页：版本号 + 可涂画板。 */
+/** 关于页连点后的隐藏页：版本号 + 点一下掉音符。 */
 @Composable
 fun AboutEasterEggScreen(
     version: String,
@@ -45,8 +46,38 @@ fun AboutEasterEggScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val strokes = remember { mutableStateListOf<List<Offset>>() }
-    var current by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    data class Note(
+        var x: Float,
+        var y: Float,
+        var vy: Float,
+        var rot: Float,
+        val size: Float,
+    )
+    val notes = remember { mutableStateListOf<Note>() }
+    var worldW by remember { mutableFloatStateOf(0f) }
+    var worldH by remember { mutableFloatStateOf(0f) }
+    var lastFrame by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            withFrameNanos { t ->
+                if (lastFrame == 0L) {
+                    lastFrame = t
+                    return@withFrameNanos
+                }
+                val dt = ((t - lastFrame) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                lastFrame = t
+                val iter = notes.listIterator()
+                while (iter.hasNext()) {
+                    val n = iter.next()
+                    n.vy += 520f * dt
+                    n.y += n.vy * dt
+                    n.rot += 40f * dt
+                    if (n.y > worldH + 40f) iter.remove()
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -67,20 +98,13 @@ fun AboutEasterEggScreen(
                 "Madus",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = {
-                strokes.clear()
-                current = emptyList()
-            }) {
-                Text("清除")
-            }
         }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -89,70 +113,66 @@ fun AboutEasterEggScreen(
                 fontWeight = FontWeight.Light,
                 color = colors.onBackground,
             )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "点空白处",
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+            )
         }
 
+        val ink = colors.onBackground
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp)
-                .background(colors.surface)
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 20.dp)
                 .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            current = listOf(offset)
-                        },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            current = current + change.position
-                        },
-                        onDragEnd = {
-                            if (current.size >= 2) {
-                                strokes.add(current)
-                            }
-                            current = emptyList()
-                        },
-                        onDragCancel = {
-                            current = emptyList()
-                        },
-                    )
-                },
-        ) {
-            val ink = colors.onBackground
-            val faint = colors.outline.copy(alpha = 0.25f)
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val step = 28.dp.toPx()
-                var x = 0f
-                while (x < size.width) {
-                    drawLine(faint, Offset(x, 0f), Offset(x, size.height), 1f)
-                    x += step
-                }
-                var y = 0f
-                while (y < size.height) {
-                    drawLine(faint, Offset(0f, y), Offset(size.width, y), 1f)
-                    y += step
-                }
-                fun drawStroke(points: List<Offset>, color: Color) {
-                    if (points.size < 2) return
-                    val path = Path().apply {
-                        moveTo(points.first().x, points.first().y)
-                        for (i in 1 until points.size) {
-                            lineTo(points[i].x, points[i].y)
+                    detectTapGestures { offset ->
+                        if (worldW <= 0f) return@detectTapGestures
+                        repeat(3 + Random.nextInt(3)) {
+                            notes.add(
+                                Note(
+                                    x = offset.x + Random.nextFloat() * 40f - 20f,
+                                    y = offset.y,
+                                    vy = -80f - Random.nextFloat() * 120f,
+                                    rot = Random.nextFloat() * 40f,
+                                    size = 14f + Random.nextFloat() * 12f,
+                                ),
+                            )
                         }
                     }
-                    drawPath(
-                        path,
-                        color,
-                        style = Stroke(
-                            width = 3.5f,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round,
-                        ),
+                },
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                worldW = size.width
+                worldH = size.height
+                // 地面线
+                val gy = size.height * 0.88f
+                drawLine(ink.copy(alpha = 0.35f), Offset(0f, gy), Offset(size.width, gy), 2f)
+                for (n in notes) {
+                    val s = n.size
+                    // 八分音符简化：圆头 + 竖杆
+                    drawCircle(
+                        color = ink,
+                        radius = s * 0.35f,
+                        center = Offset(n.x, n.y),
+                        style = Stroke(width = 2.2f),
+                    )
+                    drawLine(
+                        ink,
+                        Offset(n.x + s * 0.32f, n.y),
+                        Offset(n.x + s * 0.32f, n.y - s * 1.4f),
+                        2.2f,
+                    )
+                    drawRect(
+                        ink,
+                        topLeft = Offset(n.x + s * 0.32f, n.y - s * 1.55f),
+                        size = Size(s * 0.55f, s * 0.35f),
+                        style = Stroke(width = 2f),
                     )
                 }
-                strokes.forEach { drawStroke(it, ink) }
-                drawStroke(current, ink)
             }
         }
     }

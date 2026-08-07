@@ -150,6 +150,7 @@ fun MadusRoot(
     val trackReplace by vm.trackReplace.collectAsStateWithLifecycle()
     val biliRecognize by vm.biliRecognize.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
+    val longPlayHint by vm.longPlayHint.collectAsStateWithLifecycle()
     val playerSettings by vm.playerSettings.collectAsStateWithLifecycle()
     val sleepRemainingMs by vm.sleepRemainingMs.collectAsStateWithLifecycle()
     val sleepSelectedMinutes by vm.sleepSelectedMinutes.collectAsStateWithLifecycle()
@@ -315,6 +316,42 @@ fun MadusRoot(
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
+            // 超长曲听太久：顶部轻提示条（像通知，不挡操作）
+            if (!longPlayHint.isNullOrBlank()) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .zIndex(8f)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .clickable { vm.dismissLongPlayHint() },
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                    tonalElevation = 2.dp,
+                    shadowElevation = 2.dp,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            longPlayHint.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "知道了",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { vm.dismissLongPlayHint() }
+                                .padding(start = 12.dp),
+                        )
+                    }
+                }
+            }
             NavHost(
                 navController = nav,
                 startDestination = RootTab.Home.route,

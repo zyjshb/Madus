@@ -102,11 +102,12 @@ class BilibiliSource(
         val cookie = store.getBiliCookie()
         if (!cookie.contains("SESSDATA")) return emptyList()
         return runCatching {
+            // favFolders 已在封面为空时用夹内第一首补图
             api.favFolders().map { f ->
                 Playlist(
                     id = f.id,
                     title = f.title,
-                    coverUrl = f.cover.ifBlank { null },
+                    coverUrl = f.cover.takeIf { it.isNotBlank() },
                     trackCount = f.count,
                     source = type,
                 )

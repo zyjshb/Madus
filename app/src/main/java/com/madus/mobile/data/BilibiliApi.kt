@@ -417,21 +417,42 @@ class BilibiliApi(
             "https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${URLEncoder.encode(mid, "UTF-8")}"
         val json = getJson(url, cookie, referer = "https://space.bilibili.com/$mid/favlist")
         val list = json.optJSONObject("data")?.optJSONArray("list") ?: JSONArray()
-        buildList {
+        val folders = buildList {
             for (i in 0 until list.length()) {
                 val item = list.optJSONObject(i) ?: continue
                 val id = item.opt("id")?.toString()?.takeIf { it != "null" }.orEmpty()
                 val title = item.optString("title", "")
                 if (id.isBlank() || title.isBlank()) continue
+                // list-all 有时 cover 为空，下面用夹内第一首补
+                val cover = normalizeUrl(
+                    item.optString("cover", "")
+                        .ifBlank { item.optString("cover_url", "") }
+                        .ifBlank {
+                            item.optJSONObject("cover")?.optString("url", "").orEmpty()
+                        },
+                ).orEmpty()
                 add(
                     FavFolder(
                         id = id,
                         title = title,
-                        cover = normalizeUrl(item.optString("cover", "")).orEmpty(),
+                        cover = cover,
                         count = item.optInt("media_count", item.optInt("count", 0)),
                     ),
                 )
             }
+        }
+        // 封面为空时取夹内最新一条的封面（并行上限控制：最多 8 个空封面夹）
+        val needFill = folders.filter { it.cover.isBlank() && it.count > 0 }.take(8)
+        if (needFill.isEmpty()) return@withContext folders
+        val filled = needFill.associate { f ->
+            val pic = runCatching {
+                favTracksPage(f.id, page = 1, pageSize = 1).tracks.firstOrNull()?.coverUrl.orEmpty()
+            }.getOrDefault("")
+            f.id to pic
+        }
+        folders.map { f ->
+            val extra = filled[f.id].orEmpty()
+            if (f.cover.isBlank() && extra.isNotBlank()) f.copy(cover = extra) else f
         }
     }
 
@@ -525,7 +546,11 @@ class BilibiliApi(
         val bvid = m.optString("bvid", "")
         if (bvid.isBlank()) return null
         val title = stripHtml(m.optString("title", bvid))
-        val cover = normalizeUrl(m.optString("cover", ""))
+        val cover = normalizeUrl(
+            m.optString("cover", "")
+                .ifBlank { m.optString("pic", "") }
+                .ifBlank { m.optJSONObject("cover")?.optString("url", "").orEmpty() },
+        )
         val upperObj = m.optJSONObject("upper")
         val upper = upperObj?.optString("name", "Bilibili") ?: "Bilibili"
         val mid = upperObj?.opt("mid")?.toString()?.takeIf { it != "null" }.orEmpty()

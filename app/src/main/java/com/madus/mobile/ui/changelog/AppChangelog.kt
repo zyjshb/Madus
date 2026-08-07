@@ -29,15 +29,22 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
-            version = "1.14.14",
+            version = "1.14.15",
             date = "2026-08-07",
             added = listOf(
-                "关于 Madus 连点 7 次：隐藏页（版本号 + 画板）",
+                "超长曲听太久时顶部轻提示可换歌",
+                "关于连点 7 次：版本号 + 点按掉音符",
             ),
+            changed = listOf(
+                "B 站收藏夹封面空白时用夹内封面补全",
+            ),
+        ),
+        Entry(
+            version = "1.14.14",
+            date = "2026-08-07",
             changed = listOf(
                 "换歌搜索框不预填旧歌名",
                 "导入输入框改为空白",
-                "关于连点提示更短",
             ),
         ),
         Entry(

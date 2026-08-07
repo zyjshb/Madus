@@ -359,6 +359,15 @@ class AppViewModel(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
+    /**
+     * 超长曲（循环 BGM 等）听太久时的轻提示，非阻塞。
+     * null = 不显示。
+     */
+    private val _longPlayHint = MutableStateFlow<String?>(null)
+    val longPlayHint: StateFlow<String?> = _longPlayHint.asStateFlow()
+    private val longPlayDismissedIds = mutableSetOf<String>()
+    private var longPlayHintTrackId: String = ""
+
     private var positionPersistJob: Job? = null
 
     /**
@@ -427,6 +436,38 @@ class AppViewModel(
 
     fun clearToast() {
         _toast.value = null
+    }
+
+    fun dismissLongPlayHint() {
+        val id = playback.value.current?.id
+        if (!id.isNullOrBlank()) longPlayDismissedIds.add(id)
+        _longPlayHint.value = null
+    }
+
+    /** 同一曲连续听够久则提示可换歌（长循环 BGM） */
+    private fun maybeShowLongPlayHint() {
+        val pb = playback.value
+        val t = pb.current ?: run {
+            _longPlayHint.value = null
+            return
+        }
+        if (!pb.isPlaying) return
+        if (t.id != longPlayHintTrackId) {
+            longPlayHintTrackId = t.id
+            // 换曲后清掉提示（保留 dismissed 集合，避免同一曲反复刷）
+            if (_longPlayHint.value != null) _longPlayHint.value = null
+        }
+        if (t.id in longPlayDismissedIds) return
+        if (_longPlayHint.value != null) return
+        val pos = pb.positionMs
+        val dur = pb.durationMs.takeIf { it > 0 } ?: t.durationMs
+        // 总时长 ≥ 30 分钟，或已播满 20 分钟（时长未知时）
+        val longTrack = dur >= 30L * 60_000L
+        val playedLong = pos >= 15L * 60_000L
+        val veryLongPlay = pos >= 20L * 60_000L
+        if ((longTrack && playedLong) || veryLongPlay) {
+            _longPlayHint.value = "已经听了一会儿了，可以换首歌"
+        }
     }
 
     fun setQuality(q: AudioQuality) {
@@ -959,6 +1000,7 @@ class AppViewModel(
                     },
                 )
                 persistCurrentPosition()
+                runCatching { maybeShowLongPlayHint() }
             }
         }
     }
@@ -3014,8 +3056,14 @@ class AppViewModel(
                     )
                     return@launch
                 }
+                // 夹封面：优先用户自定义 → 接口封面 → 列表第一首封面
+                val remoteCover = playlist.coverUrl?.takeIf { it.isNotBlank() }
+                    ?: page.tracks.firstOrNull()?.coverUrl
                 val pl = applyCover(
-                    playlist.copy(trackCount = page.total.takeIf { it > 0 } ?: page.tracks.size),
+                    playlist.copy(
+                        trackCount = page.total.takeIf { it > 0 } ?: page.tracks.size,
+                        coverUrl = remoteCover ?: playlist.coverUrl,
+                    ),
                 )
                 _playlistDetail.value = PlaylistDetailUiState(
                     playlist = pl,
@@ -3026,6 +3074,27 @@ class AppViewModel(
                     total = page.total,
                     error = if (page.tracks.isEmpty()) "歌单为空" else null,
                 )
+                // 回写首页/曲库列表封面（空白时补上）
+                if (!remoteCover.isNullOrBlank()) {
+                    _home.update { h ->
+                        h.copy(
+                            playlists = h.playlists.map { p ->
+                                if (p.id == playlist.id && p.coverUrl.isNullOrBlank()) {
+                                    p.copy(coverUrl = remoteCover)
+                                } else p
+                            },
+                        )
+                    }
+                    _library.update { lib ->
+                        lib.copy(
+                            biliPlaylists = lib.biliPlaylists.map { p ->
+                                if (p.id == playlist.id && p.coverUrl.isNullOrBlank()) {
+                                    p.copy(coverUrl = remoteCover)
+                                } else p
+                            },
+                        )
+                    }
+                }
                 return@launch
             }
 
