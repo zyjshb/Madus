@@ -29,14 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
-            version = "1.14.19",
+            version = "1.14.20",
             date = "2026-08-07",
-            fixed = listOf(
-                "小恐龙可玩：开始 / 跳 / 再来",
+            added = listOf(
+                "更新安装后自动清理应用内下载的安装包",
             ),
             changed = listOf(
+                "关于连点彩蛋改为画板",
                 "同一曲听约 5 分钟提示可换歌",
-                "外观与关于拆开，连点不易误触",
             ),
         ),
         Entry(

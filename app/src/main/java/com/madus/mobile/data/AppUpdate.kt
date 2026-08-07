@@ -284,6 +284,30 @@ object AppUpdate {
         }.getOrDefault(false)
     }
 
+    /**
+     * 清理应用内下载的更新包（安装完成后下次启动调用）。
+     * 不碰用户相册/下载目录，只清 files/updates 与 cache/updates。
+     */
+    fun cleanupDownloadedApks(context: Context) {
+        runCatching {
+            updatesDir(context).listFiles()?.forEach { f ->
+                if (f.isFile && (
+                        f.name.endsWith(".apk", ignoreCase = true) ||
+                            f.name.endsWith(".part", ignoreCase = true) ||
+                            f.name.endsWith(".apk.part", ignoreCase = true)
+                        )
+                ) {
+                    f.delete()
+                }
+            }
+        }
+        runCatching {
+            File(context.cacheDir, "updates").listFiles()?.forEach { f ->
+                if (f.isFile) f.delete()
+            }
+        }
+    }
+
     private fun updatesDir(context: Context): File = File(context.filesDir, "updates")
 
     private fun safeApkName(release: LatestRelease): String {

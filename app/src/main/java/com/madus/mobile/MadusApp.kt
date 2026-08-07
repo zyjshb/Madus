@@ -125,6 +125,10 @@ class MadusApp : Application() {
 
         // 异步读音质/音效，避免主线程 runBlocking 卡启动
         appScope.launch {
+            // 升级安装后清掉应用内下载的 APK，省空间
+            runCatching {
+                com.madus.mobile.data.AppUpdate.cleanupDownloadedApks(this@MadusApp)
+            }
             runCatching {
                 val s = playerPrefs.flow.first()
                 currentQualityQn = s.quality.qn
