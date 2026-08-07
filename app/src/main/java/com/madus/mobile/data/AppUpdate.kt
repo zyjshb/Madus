@@ -15,8 +15,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 应用内检查更新：请求 GitHub Releases → 下载**正式** APK → 调起系统安装。
- * **不上传 / 不下载 debug 包。**
+ * 应用内更新：查 GitHub Releases → 用户确认后再下载正式 APK → 调起安装。
+ * **不处理 debug 包。**
  */
 object AppUpdate {
     const val GITHUB_OWNER = "zyjshb"
@@ -26,19 +26,6 @@ object AppUpdate {
     private const val API_LATEST =
         "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
 
-    fun isPlaceholderUrl(): Boolean = false
-
-    sealed class CheckResult {
-        data class AlreadyLatest(val current: String) : CheckResult()
-        data class ReadyToInstall(
-            val version: String,
-            val apkFile: File,
-            val releaseNotes: String,
-        ) : CheckResult()
-        data class NeedInstallPermission(val version: String, val apkFile: File) : CheckResult()
-        data class Failed(val message: String) : CheckResult()
-    }
-
     data class LatestRelease(
         val tag: String,
         val versionName: String,
@@ -47,74 +34,102 @@ object AppUpdate {
         val body: String,
     )
 
-    /**
-     * 检查最新版并下载正式 APK（跳过 debug）。
-     * [onProgress]：0f～1f，文案提示用。
-     */
-    suspend fun checkAndDownload(
-        context: Context,
-        currentVersionName: String = BuildConfig.VERSION_NAME,
-        onProgress: (String) -> Unit = {},
-    ): CheckResult = withContext(Dispatchers.IO) {
-        try {
-            onProgress("正在检查更新…")
-            val latest = fetchLatestRelease()
-                ?: return@withContext CheckResult.Failed("无法获取最新版本信息，请稍后重试")
+    sealed class ProbeResult {
+        data class AlreadyLatest(val current: String, val remote: String) : ProbeResult()
+        data class UpdateAvailable(val current: String, val release: LatestRelease) : ProbeResult()
+        data class Failed(val message: String) : ProbeResult()
+    }
 
+    sealed class DownloadResult {
+        data class ReadyToInstall(val version: String, val apkFile: File) : DownloadResult()
+        data class NeedInstallPermission(val version: String, val apkFile: File) : DownloadResult()
+        data class Failed(val message: String) : DownloadResult()
+    }
+
+    /** 只查询最新版，不下载。 */
+    suspend fun probeLatest(
+        currentVersionName: String = BuildConfig.VERSION_NAME,
+    ): ProbeResult = withContext(Dispatchers.IO) {
+        try {
+            val latest = fetchLatestRelease()
+                ?: return@withContext ProbeResult.Failed("无法获取最新版本信息")
             val current = normalizeVersion(currentVersionName)
             val remote = normalizeVersion(latest.versionName)
             if (compareVersion(remote, current) <= 0) {
-                return@withContext CheckResult.AlreadyLatest(currentVersionName.removeSuffix("-debug"))
+                ProbeResult.AlreadyLatest(
+                    current = currentVersionName.removeSuffix("-debug"),
+                    remote = latest.versionName,
+                )
+            } else {
+                ProbeResult.UpdateAvailable(
+                    current = currentVersionName.removeSuffix("-debug"),
+                    release = latest,
+                )
             }
+        } catch (t: Throwable) {
+            ProbeResult.Failed(t.message ?: t.javaClass.simpleName)
+        }
+    }
 
-            onProgress("发现 v${latest.versionName}，正在下载…")
+    /** 下载正式 APK（用户点「更新到最新版」后调用）。 */
+    suspend fun downloadRelease(
+        context: Context,
+        release: LatestRelease,
+        onProgress: (String) -> Unit = {},
+    ): DownloadResult = withContext(Dispatchers.IO) {
+        try {
+            onProgress("准备下载 v${release.versionName}…")
             val dir = File(context.cacheDir, "updates").also { it.mkdirs() }
-            // 清旧包
             dir.listFiles()?.forEach { runCatching { it.delete() } }
-            val out = File(dir, latest.apkName.ifBlank { "Madus-${latest.versionName}.apk" })
-            downloadFile(latest.apkUrl, out) { read, total ->
+            val out = File(dir, release.apkName.ifBlank { "Madus-${release.versionName}.apk" })
+            downloadFile(release.apkUrl, out) { read, total ->
                 if (total > 0) {
                     val p = (read * 100 / total).toInt().coerceIn(0, 99)
-                    onProgress("下载中 $p% · v${latest.versionName}")
+                    onProgress("下载中 $p%")
                 } else {
-                    onProgress("下载中 ${(read / 1024)} KB · v${latest.versionName}")
+                    onProgress("下载中 ${read / 1024} KB")
                 }
             }
             if (!out.exists() || out.length() < 100_000L) {
-                return@withContext CheckResult.Failed("下载失败或文件过小")
+                return@withContext DownloadResult.Failed("下载失败或文件过小")
             }
-
+            onProgress("下载完成")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 !context.packageManager.canRequestPackageInstalls()
             ) {
-                return@withContext CheckResult.NeedInstallPermission(latest.versionName, out)
+                return@withContext DownloadResult.NeedInstallPermission(release.versionName, out)
             }
-            CheckResult.ReadyToInstall(latest.versionName, out, latest.body)
+            DownloadResult.ReadyToInstall(release.versionName, out)
         } catch (t: Throwable) {
-            CheckResult.Failed(t.message ?: t.javaClass.simpleName)
+            DownloadResult.Failed(t.message ?: t.javaClass.simpleName)
         }
     }
 
     fun openInstallPermissionSettings(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}"),
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 
     fun installApk(context: Context, apkFile: File): Boolean {
         return runCatching {
-            val authority = "${context.packageName}.fileprovider"
-            val uri = FileProvider.getUriForFile(context, authority, apkFile)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(intent)
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                apkFile,
+            )
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
             true
         }.getOrDefault(false)
     }
@@ -131,15 +146,12 @@ object AppUpdate {
         val code = conn.responseCode
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
         val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (code !in 200..299) {
-            error("GitHub API $code ${text.take(120)}")
-        }
+        if (code !in 200..299) error("GitHub API $code ${text.take(120)}")
         val json = JSONObject(text)
         val tag = json.optString("tag_name", "").trim()
         val versionName = tag.removePrefix("v").removePrefix("V").trim()
         val body = json.optString("body", "")
         val assets = json.optJSONArray("assets") ?: return null
-        // 只认正式包：含 Madus、.apk，排除 debug
         var bestUrl = ""
         var bestName = ""
         for (i in 0 until assets.length()) {
@@ -148,17 +160,11 @@ object AppUpdate {
             val url = a.optString("browser_download_url", "")
             if (!name.endsWith(".apk", ignoreCase = true)) continue
             if (name.contains("debug", ignoreCase = true)) continue
-            if (!name.contains("Madus", ignoreCase = true) && !name.contains("madus", ignoreCase = true)) {
-                // 仍允许通用 release.apk
-                if (!name.contains("release", ignoreCase = true) && !name.contains("app", ignoreCase = true)) {
-                    continue
-                }
-            }
             bestUrl = url
             bestName = name
             break
         }
-        if (bestUrl.isBlank()) error("最新 Release 没有正式 APK（已忽略 debug）")
+        if (bestUrl.isBlank()) error("最新 Release 没有正式 APK")
         return LatestRelease(
             tag = tag,
             versionName = versionName.ifBlank { tag },
@@ -180,10 +186,7 @@ object AppUpdate {
             setRequestProperty("User-Agent", "Madus-Android/${BuildConfig.VERSION_NAME}")
             instanceFollowRedirects = true
         }
-        val code = conn.responseCode
-        if (code !in 200..299) {
-            error("下载失败 HTTP $code")
-        }
+        if (conn.responseCode !in 200..299) error("下载失败 HTTP ${conn.responseCode}")
         val total = conn.contentLengthLong.coerceAtLeast(-1L)
         conn.inputStream.use { input ->
             dest.outputStream().use { output ->
@@ -201,17 +204,12 @@ object AppUpdate {
         }
     }
 
-    /** 去掉 -debug 等后缀，只留数字段比较 */
-    fun normalizeVersion(raw: String): String {
-        return raw.trim()
-            .removePrefix("v")
-            .removePrefix("V")
-            .substringBefore("-")
-            .substringBefore("_")
+    fun normalizeVersion(raw: String): String =
+        raw.trim()
+            .removePrefix("v").removePrefix("V")
+            .substringBefore("-").substringBefore("_")
             .trim()
-    }
 
-    /** a > b → 正；相等 0；a < b → 负 */
     fun compareVersion(a: String, b: String): Int {
         val pa = a.split('.').map { it.toIntOrNull() ?: 0 }
         val pb = b.split('.').map { it.toIntOrNull() ?: 0 }

@@ -25,7 +25,9 @@ object Routes {
     const val CACHE_MANAGER = "cache_manager"
     /** 视频模式全屏 */
     const val FULLSCREEN_VIDEO = "fullscreen_video"
-    /** 更新日志（检查更新连点 3 次） */
+    /** 检查更新页（展示版本，用户选择是否升级） */
+    const val UPDATE = "update"
+    /** 更新日志 */
     const val CHANGELOG = "changelog"
     /** AI 搜歌对话 */
     const val AI_CHAT = "ai_chat"

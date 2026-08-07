@@ -33,10 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -176,26 +173,11 @@ fun MeScreen(
                         onClick = { onToolClick("import") },
                         modifier = Modifier.weight(1f),
                     )
-                    // 单击：检查更新；1 秒内连点 3 次：打开更新日志
-                    var updateTapCount by remember { mutableIntStateOf(0) }
-                    var updateTapAt by remember { mutableLongStateOf(0L) }
                     ActionCell(
                         icon = Icons.Outlined.SystemUpdate,
                         title = "检查更新",
-                        subtitle = "v${state.appVersion} · 一键更新",
-                        onClick = {
-                            val now = System.currentTimeMillis()
-                            if (now - updateTapAt > 1_000L) updateTapCount = 0
-                            updateTapAt = now
-                            updateTapCount += 1
-                            if (updateTapCount >= 3) {
-                                updateTapCount = 0
-                                onToolClick("changelog")
-                            } else {
-                                // 单击：打开 GitHub 下载最新版
-                                onToolClick("update")
-                            }
-                        },
+                        subtitle = "v${state.appVersion} · 可选升级",
+                        onClick = { onToolClick("update") },
                         modifier = Modifier.weight(1f),
                     )
                 }

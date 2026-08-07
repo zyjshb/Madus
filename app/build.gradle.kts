@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.2：检查更新应用内下载正式包并调起安装
-        versionCode = 222
-        versionName = "1.14.2"
+        // 1.14.3：检查更新页，用户选择是否升级
+        versionCode = 223
+        versionName = "1.14.3"
         vectorDrawables.useSupportLibrary = true
     }
 

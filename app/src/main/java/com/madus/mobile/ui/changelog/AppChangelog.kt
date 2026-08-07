@@ -29,10 +29,18 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.3",
+            date = "2026-08-07",
+            changed = listOf(
+                "检查更新：进入更新页展示当前/最新版与说明，由用户点「更新到最新版」才下载安装",
+                "不会一点「检查更新」就自动下载",
+            ),
+        ),
+        Entry(
             version = "1.14.2",
             date = "2026-08-07",
             added = listOf(
-                "检查更新：应用内下载最新正式 APK 并调起安装（无需再浏览器里找）",
+                "检查更新：应用内可下载正式 APK 并调起安装",
             ),
             changed = listOf(
                 "更新只下载正式包，自动忽略 debug",

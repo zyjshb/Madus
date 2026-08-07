@@ -63,7 +63,6 @@ import com.madus.mobile.domain.MusicSourceType
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
-import com.madus.mobile.data.AppUpdate
 import com.madus.mobile.ui.components.BiliRecognizeFab
 import com.madus.mobile.ui.components.BiliRecognizeResultSheet
 import com.madus.mobile.ui.components.CollectSheet
@@ -93,6 +92,7 @@ import com.madus.mobile.ui.screens.AiChatScreen
 import com.madus.mobile.ui.screens.AiConfigScreen
 import com.madus.mobile.ui.screens.CacheManagerScreen
 import com.madus.mobile.ui.screens.ChangelogScreen
+import com.madus.mobile.ui.screens.UpdateScreen
 import com.madus.mobile.ui.screens.PlaybackPrefsScreen
 import com.madus.mobile.ui.screens.SettingsScreen
 import com.madus.mobile.ui.screens.UpSpaceScreen
@@ -462,51 +462,11 @@ fun MadusRoot(
                                     nav.navigate(Routes.CACHE_MANAGER) { launchSingleTop = true }
                                 }
                                 "import" -> vm.openImportPlaylistSheet()
+                                "update" -> nav.navigate(Routes.UPDATE) { launchSingleTop = true }
                                 "changelog" -> nav.navigate(Routes.CHANGELOG) { launchSingleTop = true }
                                 else -> scope.launch {
                                     when (key) {
                                         "local" -> snackbar.showSnackbar("本地文件扫描 · 后续版本")
-                                        "update" -> {
-                                            // 检查 → 下载正式 APK → 调起安装（不打开网页；不下载 debug）
-                                            snackbar.showSnackbar("正在检查更新…")
-                                            var lastProgress = ""
-                                            val r = AppUpdate.checkAndDownload(context) { msg ->
-                                                // IO 线程回调：只记文案，结束时若失败可参考
-                                                lastProgress = msg
-                                            }
-                                            when (r) {
-                                                is AppUpdate.CheckResult.AlreadyLatest ->
-                                                    snackbar.showSnackbar(
-                                                        "已是最新 v${r.current}（连点 3 次看日志）",
-                                                    )
-                                                is AppUpdate.CheckResult.ReadyToInstall -> {
-                                                    val ok = AppUpdate.installApk(context, r.apkFile)
-                                                    snackbar.showSnackbar(
-                                                        if (ok) {
-                                                            "已下载 v${r.version}，请点「安装」完成更新"
-                                                        } else {
-                                                            "已下载，但无法调起安装器"
-                                                        },
-                                                    )
-                                                }
-                                                is AppUpdate.CheckResult.NeedInstallPermission -> {
-                                                    // 已下好包：先去授权，回来再点一次即可安装
-                                                    AppUpdate.openInstallPermissionSettings(context)
-                                                    snackbar.showSnackbar(
-                                                        "请允许安装未知应用后，再点一次「检查更新」",
-                                                    )
-                                                }
-                                                is AppUpdate.CheckResult.Failed ->
-                                                    snackbar.showSnackbar(
-                                                        "更新失败：${r.message}" +
-                                                            if (lastProgress.isNotBlank()) {
-                                                                "（$lastProgress）"
-                                                            } else {
-                                                                ""
-                                                            },
-                                                    )
-                                            }
-                                        }
                                         "about" -> snackbar.showSnackbar("Madus · v${me.appVersion}")
                                         else -> snackbar.showSnackbar(key)
                                     }
@@ -555,6 +515,14 @@ fun MadusRoot(
                         onSaved = {
                             // 回到对话；刷新配置
                             nav.popBackStack()
+                        },
+                    )
+                }
+                composable(Routes.UPDATE) {
+                    UpdateScreen(
+                        onBack = { nav.popBackStack() },
+                        onOpenChangelog = {
+                            nav.navigate(Routes.CHANGELOG) { launchSingleTop = true }
                         },
                     )
                 }
