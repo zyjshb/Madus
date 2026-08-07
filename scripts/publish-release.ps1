@@ -36,8 +36,12 @@ $notes = @"
 ### 下载
 - Madus-$Version.apk
 
+### 国内
+- Gitee：https://gitee.com/dikoklhf/madus/releases
+- GitHub 备用：https://github.com/zyjshb/Madus/releases
+
 安装：下载 → 允许未知来源 → 安装。  
-App 内：我的 → 检查更新。
+App 内：我的 → 检查更新（优先 Gitee）。
 "@
 
 Write-Host "==> create release $tag ..."

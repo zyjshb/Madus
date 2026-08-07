@@ -442,19 +442,29 @@ fun UpdateScreen(
                         Text("重新下载")
                     }
                     TextButton(
-                        onClick = { AppUpdate.openReleasesInBrowser(context) },
+                        onClick = { AppUpdate.openReleasesInBrowser(context, preferGitee = true) },
                         enabled = !downloading,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("浏览器下载")
+                        Text("Gitee 下载")
                     }
                 }
             }
 
+            if (available != null) {
+                TextButton(
+                    onClick = { AppUpdate.openGithubReleasesInBrowser(context) },
+                    enabled = !downloading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("GitHub 下载（备用）")
+                }
+            }
+
             Text(
-                text = "下载完成后会先校验安装包（大小 + ZIP + AndroidManifest），再打开系统安装。" +
-                    "若曾出现「解析软件包失败」，请用「重新下载」或「浏览器下载」正式包。" +
-                    "安装时需允许「未知应用」。",
+                text = "国内优先从 Gitee 下载，失败自动改试 GitHub。" +
+                    "下载后会校验安装包再打开系统安装。安装时需允许「未知应用」。" +
+                    (available?.let { " 当前源：${it.sourceLabel}" } ?: ""),
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
             )

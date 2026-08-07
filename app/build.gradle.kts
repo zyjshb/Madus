@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.10：热修 1.14.9 启动崩溃（LoadControl）
-        versionCode = 230
-        versionName = "1.14.10"
+        // 1.14.11：更新源 Gitee 优先 + GitHub 备用
+        versionCode = 231
+        versionName = "1.14.11"
         vectorDrawables.useSupportLibrary = true
     }
 

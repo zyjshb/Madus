@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.11",
+            date = "2026-08-07",
+            added = listOf(
+                "检查更新：国内优先 Gitee，GitHub 作备用；失败自动换源",
+                "更新页提供 Gitee / GitHub 浏览器下载入口",
+            ),
+        ),
+        Entry(
             version = "1.14.10",
             date = "2026-08-07",
             fixed = listOf(

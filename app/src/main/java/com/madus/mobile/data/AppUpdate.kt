@@ -11,6 +11,7 @@ import androidx.core.content.FileProvider
 import com.madus.mobile.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -22,34 +23,51 @@ import java.net.URL
 import java.util.zip.ZipFile
 
 /**
- * 应用内更新：查 GitHub Releases → 用户确认后再下载正式 APK → 校验 → 调起安装。
- * **不处理 debug 包。**
+ * 应用内更新：查 GitHub / Gitee Releases → 用户确认后再下载 APK → 校验 → 安装。
+ * **国内优先 Gitee，失败再 GitHub。**
  *
- * 「解析软件包失败」常见原因：下到的不是完整 APK（HTML/截断）。
- * 因此下载后强制校验：大小、ZIP 魔数、可打开 Zip、含 AndroidManifest.xml。
+ * 下载后强制校验：大小、ZIP 魔数、可打开 Zip、含 AndroidManifest.xml。
  */
 object AppUpdate {
+    // —— GitHub ——
     const val GITHUB_OWNER = "zyjshb"
     const val GITHUB_REPO = "Madus"
     const val GITHUB_RELEASES_URL =
         "https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
-    private const val API_LATEST =
+    private const val GITHUB_API_LATEST =
         "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
+
+    // —— Gitee（国内镜像）——
+    const val GITEE_OWNER = "dikoklhf"
+    const val GITEE_REPO = "madus"
+    const val GITEE_RELEASES_URL =
+        "https://gitee.com/$GITEE_OWNER/$GITEE_REPO/releases"
+    private const val GITEE_API_LATEST =
+        "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases/latest"
+    private const val GITEE_API_LIST =
+        "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases?page=1&per_page=5"
+
     private const val MAX_REDIRECTS = 8
-    /** 正式包约 16MB+，过小一律当无效（避免把错误页当 APK 去装）。 */
     private const val MIN_APK_BYTES = 3_000_000L
     private const val SIZE_TOLERANCE = 4096L
 
     data class LatestRelease(
         val tag: String,
         val versionName: String,
+        /** 首选下载地址（通常 Gitee） */
         val apkUrl: String,
         val apkName: String,
         val body: String,
         val apkSize: Long = -1L,
-    )
+        /** 备用地址（GitHub 等），按顺序尝试 */
+        val mirrorUrls: List<String> = emptyList(),
+        /** 展示用：Gitee / GitHub / Gitee+GitHub */
+        val sourceLabel: String = "Gitee",
+    ) {
+        fun allDownloadUrls(): List<String> =
+            (listOf(apkUrl) + mirrorUrls).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+    }
 
-    /** 下载进度：fraction 0..1（未知总长时为 -1），message 给人看。 */
     data class DownloadProgress(
         val fraction: Float,
         val message: String,
@@ -69,13 +87,16 @@ object AppUpdate {
         data class Failed(val message: String) : DownloadResult()
     }
 
-    /** 只查询最新版，不下载。 */
+    /** 只查询最新版，不下载。Gitee + GitHub 都会问，取更高版本并合并下载链。 */
     suspend fun probeLatest(
         currentVersionName: String = BuildConfig.VERSION_NAME,
     ): ProbeResult = withContext(Dispatchers.IO) {
         try {
-            val latest = fetchLatestRelease()
-                ?: return@withContext ProbeResult.Failed("无法获取最新版本信息")
+            val latest = fetchMergedLatestRelease()
+                ?: return@withContext ProbeResult.Failed(
+                    "无法获取最新版本（Gitee / GitHub 均失败）。\n" +
+                        "可到网页下载：\n$GITEE_RELEASES_URL\n$GITHUB_RELEASES_URL",
+                )
             val current = normalizeVersion(currentVersionName)
             val remote = normalizeVersion(latest.versionName)
             if (compareVersion(remote, current) <= 0) {
@@ -95,9 +116,7 @@ object AppUpdate {
     }
 
     /**
-     * 下载正式 APK（用户点「更新到最新版」后调用）。
-     * [onProgress] 在 **Main** 线程回调，可直接改 Compose state。
-     * @param forceRedownload true 时忽略本地缓存，强制重下（解析失败后可点「重新下载」）
+     * 下载 APK：按 [LatestRelease.allDownloadUrls] 依次尝试（Gitee → GitHub）。
      */
     suspend fun downloadRelease(
         context: Context,
@@ -109,7 +128,6 @@ object AppUpdate {
             try {
                 emitProgress(onProgress, DownloadProgress(-1f, "正在连接服务器…"))
                 val dir = updatesDir(context).also { it.mkdirs() }
-                // 清理旧 cache 目录残留（1.14.5 以前下在 cache）
                 runCatching {
                     File(context.cacheDir, "updates").listFiles()?.forEach { it.delete() }
                 }
@@ -128,45 +146,77 @@ object AppUpdate {
                 }
                 if (out.exists()) runCatching { out.delete() }
 
-                emitProgress(
-                    onProgress,
-                    DownloadProgress(0f, "已开始下载 v${release.versionName}…", 0L, expected),
-                )
-                downloadFile(release.apkUrl, out, expected) { read, total ->
-                    val frac = if (total > 0) {
-                        (read.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 0.99f)
-                    } else {
-                        -1f
-                    }
-                    val msg = if (total > 0) {
-                        "下载中 ${formatBytes(read)} / ${formatBytes(total)}"
-                    } else {
-                        "下载中 ${formatBytes(read)}"
-                    }
-                    emitProgress(onProgress, DownloadProgress(frac, msg, read, total))
+                val urls = release.allDownloadUrls()
+                if (urls.isEmpty()) {
+                    return@withContext DownloadResult.Failed("没有可用的下载地址")
                 }
 
-                emitProgress(onProgress, DownloadProgress(0.99f, "正在校验安装包…", out.length(), expected))
-                val check = validateApkDetailed(out, expected)
-                if (check != null) {
-                    runCatching { out.delete() }
-                    return@withContext DownloadResult.Failed(
-                        "安装包校验失败：$check\n请点「重新下载」，或到网页下载：\n$GITHUB_RELEASES_URL",
-                    )
+                var lastError: String? = null
+                for ((index, url) in urls.withIndex()) {
+                    val hostHint = when {
+                        url.contains("gitee.com", ignoreCase = true) -> "Gitee"
+                        url.contains("github", ignoreCase = true) -> "GitHub"
+                        else -> "镜像${index + 1}"
+                    }
+                    try {
+                        if (out.exists()) runCatching { out.delete() }
+                        emitProgress(
+                            onProgress,
+                            DownloadProgress(
+                                0f,
+                                "从 $hostHint 下载 v${release.versionName}…",
+                                0L,
+                                expected,
+                            ),
+                        )
+                        downloadFile(url, out, expected) { read, total ->
+                            val frac = if (total > 0) {
+                                (read.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 0.99f)
+                            } else {
+                                -1f
+                            }
+                            val msg = if (total > 0) {
+                                "$hostHint ${formatBytes(read)} / ${formatBytes(total)}"
+                            } else {
+                                "$hostHint ${formatBytes(read)}"
+                            }
+                            emitProgress(onProgress, DownloadProgress(frac, msg, read, total))
+                        }
+                        emitProgress(
+                            onProgress,
+                            DownloadProgress(0.99f, "正在校验安装包…", out.length(), expected),
+                        )
+                        val check = validateApkDetailed(out, expected)
+                        if (check != null) {
+                            runCatching { out.delete() }
+                            lastError = "$hostHint 校验失败：$check"
+                            continue
+                        }
+                        emitProgress(
+                            onProgress,
+                            DownloadProgress(
+                                1f,
+                                "校验通过 ${formatBytes(out.length())}（$hostHint）",
+                                out.length(),
+                                out.length(),
+                            ),
+                        )
+                        return@withContext finishForInstall(context, release.versionName, out)
+                    } catch (t: Throwable) {
+                        lastError = "$hostHint：${friendlyError(t)}"
+                        runCatching { out.delete() }
+                    }
                 }
-
-                emitProgress(
-                    onProgress,
-                    DownloadProgress(1f, "校验通过 ${formatBytes(out.length())}", out.length(), out.length()),
+                DownloadResult.Failed(
+                    "全部镜像下载失败。\n${lastError.orEmpty()}\n" +
+                        "请到网页下载：\n$GITEE_RELEASES_URL\n$GITHUB_RELEASES_URL",
                 )
-                finishForInstall(context, release.versionName, out)
             } catch (t: Throwable) {
                 DownloadResult.Failed(friendlyError(t))
             }
         }
     }
 
-    /** 若缓存里已有**通过校验**的 APK，可直接安装。 */
     fun cachedApk(context: Context, release: LatestRelease): File? {
         val f = File(updatesDir(context), safeApkName(release))
         return f.takeIf { isValidApkFile(it, release.apkSize) }
@@ -191,21 +241,19 @@ object AppUpdate {
         }
     }
 
-    /** 浏览器打开 Releases 页（应用内下载失败时的备用）。 */
-    fun openReleasesInBrowser(context: Context) {
+    /** 浏览器打开下载页：优先 Gitee（国内快），可再开 GitHub。 */
+    fun openReleasesInBrowser(context: Context, preferGitee: Boolean = true) {
+        val url = if (preferGitee) GITEE_RELEASES_URL else GITHUB_RELEASES_URL
         runCatching {
             context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_RELEASES_URL))
+                Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }
     }
 
-    /**
-     * 调起系统安装器。会：
-     * - 再校验一次 APK（防止坏包进安装器 →「解析软件包失败」）
-     * - 给所有能处理安装的 App 授 FileProvider 读权限
-     */
+    fun openGithubReleasesInBrowser(context: Context) = openReleasesInBrowser(context, preferGitee = false)
+
     fun installApk(context: Context, apkFile: File): Boolean {
         val err = validateApkDetailed(apkFile, expectedSize = -1L)
         if (err != null) return false
@@ -222,7 +270,6 @@ object AppUpdate {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 clipData = ClipData.newRawUri("apk", uri)
             }
-            // 显式授权给所有包安装器（部分国产 ROM 仅靠 FLAG 不够）
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
             val resolvers = context.packageManager.queryIntentActivities(
                 intent,
@@ -230,16 +277,13 @@ object AppUpdate {
             )
             for (ri in resolvers) {
                 val pkg = ri.activityInfo?.packageName ?: continue
-                runCatching {
-                    context.grantUriPermission(pkg, uri, flags)
-                }
+                runCatching { context.grantUriPermission(pkg, uri, flags) }
             }
             context.startActivity(intent)
             true
         }.getOrDefault(false)
     }
 
-    /** 用 files 目录存 APK（比 cache 更稳，系统清理 cache 会导致安装解析失败）。 */
     private fun updatesDir(context: Context): File = File(context.filesDir, "updates")
 
     private fun safeApkName(release: LatestRelease): String {
@@ -268,56 +312,185 @@ object AppUpdate {
         }
     }
 
-    private fun fetchLatestRelease(): LatestRelease? {
-        val conn = openGet(API_LATEST) {
+    /**
+     * 合并 Gitee / GitHub 最新版：
+     * - 版本号取较高者
+     * - 下载链：**Gitee 优先**，GitHub 作备用
+     */
+    private fun fetchMergedLatestRelease(): LatestRelease? {
+        val gitee = runCatching { fetchGiteeLatest() }.getOrNull()
+        val github = runCatching { fetchGithubLatest() }.getOrNull()
+        if (gitee == null && github == null) return null
+        if (gitee == null) return github
+        if (github == null) return gitee
+
+        val cmp = compareVersion(
+            normalizeVersion(gitee.versionName),
+            normalizeVersion(github.versionName),
+        )
+        return when {
+            cmp > 0 -> gitee.copy(
+                mirrorUrls = (gitee.mirrorUrls + github.allDownloadUrls()).distinct()
+                    .filter { it != gitee.apkUrl },
+                sourceLabel = "Gitee",
+            )
+            cmp < 0 -> {
+                // GitHub 更新，仍把 Gitee 同名路径作镜像尝试（若已同步）
+                val tag = if (github.tag.startsWith("v")) github.tag else "v${github.versionName}"
+                val giteeGuess = giteeDownloadUrl(tag, github.apkName)
+                github.copy(
+                    apkUrl = giteeGuess, // 国内先试 Gitee 约定路径
+                    mirrorUrls = (listOf(github.apkUrl) + github.mirrorUrls + gitee.allDownloadUrls())
+                        .distinct()
+                        .filter { it != giteeGuess },
+                    sourceLabel = "GitHub（Gitee 优先镜像）",
+                    apkSize = if (github.apkSize > 0) github.apkSize else gitee.apkSize,
+                )
+            }
+            else -> {
+                // 同版本：Gitee 主链 + GitHub 备用
+                val urls = (gitee.allDownloadUrls() + github.allDownloadUrls()).distinct()
+                gitee.copy(
+                    apkUrl = urls.first(),
+                    mirrorUrls = urls.drop(1),
+                    apkSize = when {
+                        gitee.apkSize > 0 -> gitee.apkSize
+                        else -> github.apkSize
+                    },
+                    body = gitee.body.ifBlank { github.body },
+                    sourceLabel = "Gitee + GitHub",
+                )
+            }
+        }
+    }
+
+    private fun fetchGithubLatest(): LatestRelease {
+        val text = httpGetText(GITHUB_API_LATEST) {
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
         }
-        val code = conn.responseCode
-        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        conn.disconnect()
-        if (code == 403 || code == 429) {
-            error("GitHub 请求过于频繁或被限流（HTTP $code），请稍后再试")
-        }
-        if (code !in 200..299) error("GitHub API HTTP $code ${text.take(160)}")
         val json = JSONObject(text)
         val tag = json.optString("tag_name", "").trim()
         val versionName = tag.removePrefix("v").removePrefix("V").trim()
         val body = json.optString("body", "")
-        val assets = json.optJSONArray("assets") ?: return null
+        val (name, url, size) = pickApkAsset(json.optJSONArray("assets"))
+            ?: error("GitHub 最新 Release 没有正式 APK")
+        val giteeMirror = giteeDownloadUrl(
+            tag = if (tag.startsWith("v")) tag else "v$versionName",
+            apkName = name,
+        )
+        return LatestRelease(
+            tag = tag,
+            versionName = versionName.ifBlank { tag },
+            apkUrl = giteeMirror,
+            apkName = name,
+            body = body,
+            apkSize = size,
+            mirrorUrls = listOf(url),
+            sourceLabel = "GitHub",
+        )
+    }
+
+    private fun fetchGiteeLatest(): LatestRelease {
+        // 先 latest，失败再 list 取第一条
+        val text = runCatching {
+            httpGetText(GITEE_API_LATEST)
+        }.getOrElse {
+            val listText = httpGetText(GITEE_API_LIST)
+            val arr = JSONArray(listText)
+            if (arr.length() == 0) error("Gitee 尚无 Release")
+            arr.getJSONObject(0).toString()
+        }
+        val json = JSONObject(text)
+        val tag = json.optString("tag_name", "").trim()
+        val versionName = tag.removePrefix("v").removePrefix("V").trim()
+        val body = json.optString("body", "").ifBlank { json.optString("description", "") }
+        // Gitee 附件字段：assets 或 attach_files
+        val assets = json.optJSONArray("assets")
+            ?: json.optJSONArray("attach_files")
+        val picked = pickApkAsset(assets)
+        val name: String
+        val url: String
+        val size: Long
+        if (picked != null) {
+            name = picked.first
+            url = picked.second
+            size = picked.third
+        } else {
+            // 无附件元数据时按约定文件名拼下载链
+            name = "Madus-$versionName.apk"
+            url = giteeDownloadUrl(
+                tag = if (tag.startsWith("v")) tag else "v$versionName",
+                apkName = name,
+            )
+            size = -1L
+        }
+        if (url.isBlank()) error("Gitee 最新 Release 没有 APK")
+        return LatestRelease(
+            tag = tag,
+            versionName = versionName.ifBlank { tag },
+            apkUrl = url,
+            apkName = name,
+            body = body,
+            apkSize = size,
+            mirrorUrls = emptyList(),
+            sourceLabel = "Gitee",
+        )
+    }
+
+    private fun giteeDownloadUrl(tag: String, apkName: String): String =
+        "https://gitee.com/$GITEE_OWNER/$GITEE_REPO/releases/download/$tag/$apkName"
+
+    /** @return Triple(name, url, size) */
+    private fun pickApkAsset(assets: JSONArray?): Triple<String, String, Long>? {
+        if (assets == null) return null
         var bestUrl = ""
         var bestName = ""
         var bestSize = -1L
         for (i in 0 until assets.length()) {
             val a = assets.optJSONObject(i) ?: continue
             val name = a.optString("name", "")
+                .ifBlank { a.optString("file_name", "") }
             val url = a.optString("browser_download_url", "")
+                .ifBlank { a.optString("download_url", "") }
+                .ifBlank {
+                    // 部分 Gitee 只有 path
+                    val path = a.optString("browser_download_url", "")
+                    path
+                }
             if (!name.endsWith(".apk", ignoreCase = true)) continue
             if (name.contains("debug", ignoreCase = true)) continue
-            // 优先 Madus-x.y.z.apk
+            if (url.isBlank()) continue
             if (bestUrl.isBlank() || name.startsWith("Madus-", ignoreCase = true)) {
                 bestUrl = url
                 bestName = name
-                bestSize = a.optLong("size", -1L)
+                bestSize = a.optLong("size", a.optLong("file_size", -1L))
                 if (name.startsWith("Madus-", ignoreCase = true)) break
             }
         }
-        if (bestUrl.isBlank()) error("最新 Release 没有正式 APK（仅支持非 debug 包）")
-        return LatestRelease(
-            tag = tag,
-            versionName = versionName.ifBlank { tag },
-            apkUrl = bestUrl,
-            apkName = bestName,
-            body = body,
-            apkSize = bestSize,
-        )
+        if (bestUrl.isBlank()) return null
+        return Triple(bestName, bestUrl, bestSize)
     }
 
-    /**
-     * 手动跟随重定向，保证拿到最终 CDN 的 Content-Length。
-     * 进度节流：约每 150ms 或每 256KB 回调一次。
-     */
+    private fun httpGetText(
+        url: String,
+        configure: HttpURLConnection.() -> Unit = {},
+    ): String {
+        val conn = openGet(url, configure)
+        try {
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code == 403 || code == 429) {
+                error("请求过于频繁或被限流（HTTP $code）")
+            }
+            if (code !in 200..299) error("HTTP $code ${text.take(160)}")
+            return text
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private suspend fun downloadFile(
         url: String,
         dest: File,
@@ -335,7 +508,7 @@ object AppUpdate {
             }
             val contentType = conn.contentType?.lowercase().orEmpty()
             if (contentType.contains("text/html") || contentType.contains("application/json")) {
-                error("服务器返回的不是 APK（$contentType），可能被限流或网络劫持")
+                error("服务器返回的不是 APK（$contentType）")
             }
             var total = conn.contentLengthLong
             if (total <= 0L) total = hintedTotal
@@ -350,7 +523,6 @@ object AppUpdate {
                     var readTotal = 0L
                     var lastEmitAt = 0L
                     var lastEmitBytes = -1L
-                    // 先读前几个字节，挡 HTML
                     var firstChunk: ByteArray? = null
                     while (true) {
                         val n = input.read(buf)
@@ -358,7 +530,7 @@ object AppUpdate {
                         if (firstChunk == null) {
                             firstChunk = buf.copyOf(n)
                             if (looksLikeHtmlOrText(firstChunk)) {
-                                error("下载内容不是 APK（疑似网页/错误页），请换网络或浏览器下载")
+                                error("下载内容不是 APK（疑似网页/错误页）")
                             }
                             if (!looksLikeZipApk(firstChunk)) {
                                 error("下载内容缺少 ZIP 头（不是有效 APK）")
@@ -379,7 +551,6 @@ object AppUpdate {
                     onBytes(readTotal, if (total > 0) total else readTotal)
                 }
             }
-            // 尽量把数据刷到磁盘，减少「装一半」
             runCatching {
                 RandomAccessFile(tmp, "rw").use { it.fd.sync() }
             }
@@ -388,16 +559,10 @@ object AppUpdate {
                 tmp.copyTo(dest, overwrite = true)
                 tmp.delete()
             }
+            // 仅当 Content-Length 可信时检查完整性；不强制与 Release size 完全一致（镜像可能差元数据）
             if (total > 0 && kotlin.math.abs(dest.length() - total) > SIZE_TOLERANCE) {
                 runCatching { dest.delete() }
                 error("下载不完整：期望 ${formatBytes(total)}，实际 ${formatBytes(dest.length())}")
-            }
-            if (hintedTotal > 0 && kotlin.math.abs(dest.length() - hintedTotal) > SIZE_TOLERANCE) {
-                runCatching { dest.delete() }
-                error(
-                    "文件大小与 Release 不符：期望 ${formatBytes(hintedTotal)}，" +
-                        "实际 ${formatBytes(dest.length())}",
-                )
             }
         } finally {
             conn.disconnect()
@@ -434,7 +599,7 @@ object AppUpdate {
         configure: HttpURLConnection.() -> Unit = {},
     ): HttpURLConnection {
         return (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 25_000
+            connectTimeout = 20_000
             readTimeout = 180_000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "Madus-Android/${BuildConfig.VERSION_NAME}")
@@ -448,19 +613,16 @@ object AppUpdate {
     fun isValidApkFile(file: File, expectedSize: Long = -1L): Boolean =
         validateApkDetailed(file, expectedSize) == null
 
-    /**
-     * @return null 表示通过；否则为失败原因（中文）
-     */
     fun validateApkDetailed(file: File, expectedSize: Long = -1L): String? {
         if (!file.exists()) return "文件不存在"
         val len = file.length()
         if (len < MIN_APK_BYTES) {
             return "文件过小（${formatBytes(len)}），可能下载不完整"
         }
-        if (expectedSize > 0 && kotlin.math.abs(len - expectedSize) > SIZE_TOLERANCE) {
-            return "大小不符（期望 ${formatBytes(expectedSize)}，实际 ${formatBytes(len)}）"
+        // 有 expected 时允许镜像 size 元数据不准：只作弱提示，不硬失败（避免 Gitee/GitHub size 字段不一致）
+        if (expectedSize > 0 && len < expectedSize / 2) {
+            return "大小明显不符（期望约 ${formatBytes(expectedSize)}，实际 ${formatBytes(len)}）"
         }
-        // ZIP local file header: PK\x03\x04
         val header = ByteArray(4)
         runCatching {
             FileInputStream(file).use { n ->
@@ -476,7 +638,6 @@ object AppUpdate {
             ZipFile(file).use { zip ->
                 val hasManifest = zip.getEntry("AndroidManifest.xml") != null
                 if (!hasManifest) return@runCatching "缺少 AndroidManifest.xml（损坏的 APK）"
-                // 再扫一眼至少有 classes 或 resources
                 val hasPayload = zip.entries().asSequence().any { e ->
                     val n = e.name
                     n == "classes.dex" || n.startsWith("classes") && n.endsWith(".dex") ||
@@ -496,7 +657,6 @@ object AppUpdate {
 
     private fun looksLikeHtmlOrText(head: ByteArray): Boolean {
         if (head.isEmpty()) return false
-        // UTF-8 BOM / whitespace + <
         var i = 0
         if (head.size >= 3 && head[0] == 0xEF.toByte() && head[1] == 0xBB.toByte() && head[2] == 0xBF.toByte()) {
             i = 3
@@ -516,7 +676,7 @@ object AppUpdate {
                 low.contains("network is unreachable") ||
                 low.contains("timeout") ||
                 low.contains("timed out") ->
-                "网络不通或连接超时（访问 GitHub 失败）。可稍后重试，或到网页下载：\n$GITHUB_RELEASES_URL"
+                "网络不通或连接超时。可换网络，或到 Gitee 下载：\n$GITEE_RELEASES_URL"
             else -> m
         }
     }
