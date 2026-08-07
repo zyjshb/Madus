@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.13：换歌空搜索框 + 安卓式关于连点 + 涂鸦彩蛋
-        versionCode = 233
-        versionName = "1.14.13"
+        // 1.14.14：当前正式可更包（含彩蛋文案与换歌/导入修正）
+        versionCode = 234
+        versionName = "1.14.14"
         vectorDrawables.useSupportLibrary = true
     }
 
