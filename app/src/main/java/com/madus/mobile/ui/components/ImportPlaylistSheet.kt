@@ -52,6 +52,7 @@ fun ImportPlaylistSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
+            // 输入框内不放示例字，保持空白，方便直接粘贴
             BasicTextField(
                 value = state.input,
                 onValueChange = onInput,
@@ -64,19 +65,6 @@ fun ImportPlaylistSheet(
                     .heightIn(min = 140.dp, max = 280.dp)
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
                     .padding(12.dp),
-                decorationBox = { inner ->
-                    if (state.input.isEmpty()) {
-                        Text(
-                            "每行一首，例如：\n" +
-                                "夜に駆ける - YOASOBI\n" +
-                                "晴天 - 周杰伦\n" +
-                                "Shape of You - Ed Sheeran",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    inner()
-                },
             )
             if (state.isWorking) {
                 Spacer(Modifier.height(10.dp))

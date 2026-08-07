@@ -29,6 +29,17 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.12",
+            date = "2026-08-07",
+            added = listOf(
+                "关于 Madus 连点 10 次：打开线稿风小恐龙彩蛋（点屏跳跃）",
+            ),
+            changed = listOf(
+                "外站导入输入框内不再显示示例文字，方便直接粘贴",
+                "关于 / 检查更新降低连点弹窗与重复进入频率",
+            ),
+        ),
+        Entry(
             version = "1.14.11",
             date = "2026-08-07",
             added = listOf(

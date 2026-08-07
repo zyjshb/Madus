@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.11：更新源 Gitee 优先 + GitHub 备用
-        versionCode = 231
-        versionName = "1.14.11"
+        // 1.14.12：关于彩蛋小恐龙 + 导入框空白 + 连点降噪
+        versionCode = 232
+        versionName = "1.14.12"
         vectorDrawables.useSupportLibrary = true
     }
 

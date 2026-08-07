@@ -91,6 +91,7 @@ import com.madus.mobile.ui.components.SleepTimerSheet
 import com.madus.mobile.ui.screens.AiChatScreen
 import com.madus.mobile.ui.screens.AiConfigScreen
 import com.madus.mobile.ui.screens.CacheManagerScreen
+import com.madus.mobile.ui.screens.AboutEasterEggScreen
 import com.madus.mobile.ui.screens.ChangelogScreen
 import com.madus.mobile.ui.screens.UpdateScreen
 import com.madus.mobile.ui.screens.PlaybackPrefsScreen
@@ -471,6 +472,14 @@ fun MadusRoot(
                         onOpenSettings = {
                             nav.navigate(Routes.SETTINGS) { launchSingleTop = true }
                         },
+                        onOpenEasterEgg = {
+                            nav.navigate(Routes.ABOUT_EASTER_EGG) { launchSingleTop = true }
+                        },
+                        onAboutProgress = { remaining ->
+                            scope.launch {
+                                snackbar.showSnackbar("再点 $remaining 次打开彩蛋")
+                            }
+                        },
                         onToolClick = { key ->
                             when (key) {
                                 "playback" -> nav.navigate(Routes.PLAYBACK_PREFS) { launchSingleTop = true }
@@ -479,13 +488,16 @@ fun MadusRoot(
                                     nav.navigate(Routes.CACHE_MANAGER) { launchSingleTop = true }
                                 }
                                 "import" -> vm.openImportPlaylistSheet()
-                                "update" -> nav.navigate(Routes.UPDATE) { launchSingleTop = true }
+                                "update" -> nav.navigate(Routes.UPDATE) {
+                                    launchSingleTop = true
+                                    // 已在栈顶则不重复压入
+                                    restoreState = true
+                                }
                                 "changelog" -> nav.navigate(Routes.CHANGELOG) { launchSingleTop = true }
                                 else -> scope.launch {
                                     when (key) {
                                         "local" -> snackbar.showSnackbar("本地文件扫描 · 后续版本")
-                                        "about" -> snackbar.showSnackbar("Madus · v${me.appVersion}")
-                                        else -> snackbar.showSnackbar(key)
+                                        else -> { /* about 已在 MeScreen 内部处理，不再每次弹窗 */ }
                                     }
                                 }
                             }
@@ -545,6 +557,12 @@ fun MadusRoot(
                 }
                 composable(Routes.CHANGELOG) {
                     ChangelogScreen(onBack = { nav.popBackStack() })
+                }
+                composable(Routes.ABOUT_EASTER_EGG) {
+                    AboutEasterEggScreen(
+                        version = me.appVersion,
+                        onBack = { nav.popBackStack() },
+                    )
                 }
                 composable(Routes.PLAYBACK_PREFS) {
                     PlaybackPrefsScreen(

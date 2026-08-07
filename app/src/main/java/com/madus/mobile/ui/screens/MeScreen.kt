@@ -33,7 +33,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,10 +62,19 @@ fun MeScreen(
     onOpenBiliLogin: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onToolClick: (String) -> Unit = {},
+    /** 连点关于 10 次打开彩蛋 */
+    onOpenEasterEgg: () -> Unit = {},
+    /** 剩余次数提示（仅 7/8/9 次时调用，避免狂弹） */
+    onAboutProgress: (remaining: Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val bili = state.sessions.firstOrNull { it.source == MusicSourceType.BILIBILI }
     val loggedInCount = state.sessions.count { it.isLoggedIn }
+
+    // 关于 / 检查更新：防连点刷屏
+    var aboutTaps by remember { mutableIntStateOf(0) }
+    var lastAboutTapAt by remember { mutableLongStateOf(0L) }
+    var lastUpdateTapAt by remember { mutableLongStateOf(0L) }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -177,7 +189,13 @@ fun MeScreen(
                         icon = Icons.Outlined.SystemUpdate,
                         title = "检查更新",
                         subtitle = "v${state.appVersion} · 可选升级",
-                        onClick = { onToolClick("update") },
+                        onClick = {
+                            val now = System.currentTimeMillis()
+                            // 800ms 内重复点击忽略，避免连点狂进页面
+                            if (now - lastUpdateTapAt < 800L) return@ActionCell
+                            lastUpdateTapAt = now
+                            onToolClick("update")
+                        },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -223,7 +241,21 @@ fun MeScreen(
                         icon = Icons.Outlined.Info,
                         title = "关于 Madus",
                         subtitle = "v${state.appVersion}",
-                        onClick = { onToolClick("about") },
+                        onClick = {
+                            val now = System.currentTimeMillis()
+                            // 超过 2 秒没点，重新计数（类似系统设置）
+                            if (now - lastAboutTapAt > 2_000L) aboutTaps = 0
+                            lastAboutTapAt = now
+                            aboutTaps += 1
+                            when {
+                                aboutTaps >= 10 -> {
+                                    aboutTaps = 0
+                                    onOpenEasterEgg()
+                                }
+                                // 只在 7/8/9 次提示剩余，前几下静默，避免一堆弹窗
+                                aboutTaps in 7..9 -> onAboutProgress(10 - aboutTaps)
+                            }
+                        },
                     )
                 }
             }
