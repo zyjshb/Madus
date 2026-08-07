@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      冷启动：系统 Splash 与 post 主题同构图、同底色，
+      退出时用代码做淡出，避免生硬切页。
+    -->
+    <style name="Theme.Madus.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_bg</item>
+        <!-- 透明占位：关掉系统默认巨大圆形图标；蛇标由 windowBackground 画 -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_empty</item>
+        <item name="windowSplashScreenAnimationDuration">0</item>
+        <item name="postSplashScreenTheme">@style/Theme.MadusMobile</item>
+    </style>
+
+    <style name="Theme.MadusMobile" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/splash_bg</item>
+        <item name="android:navigationBarColor">@color/splash_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <!-- 与系统开屏同构图：统一底色 + 居中静图 -->
+        <item name="android:windowBackground">@drawable/splash_logo</item>
+    </style>
+</resources>

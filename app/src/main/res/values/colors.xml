@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与蛇标 logo 底色一致（#1C1C1C），避免开屏出现「灰方框」 -->
+    <color name="ic_launcher_background">#1C1C1C</color>
+    <color name="splash_bg">#1C1C1C</color>
+    <color name="paper">#F7F5F2</color>
+    <color name="ink">#111111</color>
+</resources>

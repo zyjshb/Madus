@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Madus</string>
+    <!-- 正式版 1.0 -->
+    <string name="nav_home">首页</string>
+    <string name="nav_search">搜索</string>
+    <string name="nav_me">我的</string>
+    <string name="now_playing">正在播放</string>
+    <string name="source_bilibili">Bilibili</string>
+    <string name="playback_channel_name">正在播放</string>
+    <string name="playback_channel_desc">显示当前曲目，可暂停与切歌</string>
+</resources>

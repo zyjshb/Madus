@@ -1,0 +1,176 @@
+package com.madus.mobile.ui.screens
+
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import com.madus.mobile.domain.Track
+import com.madus.mobile.ui.SearchUiState
+import com.madus.mobile.ui.components.LineButton
+import com.madus.mobile.ui.components.TrackRow
+
+@Composable
+fun SearchScreen(
+    state: SearchUiState,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onSuggestionClick: (String) -> Unit = {},
+    /** 搜索点播：只传点中的那一首；队列保留逻辑在 ViewModel.playSearchTrack */
+    onPlayTrack: (Track) -> Unit,
+    onCollectTrack: (Track) -> Unit = {},
+    onOpenAiSearch: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val focus = LocalFocusManager.current
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(text = "搜索", style = MaterialTheme.typography.displayLarge)
+            if (onOpenAiSearch != null) {
+                Text(
+                    text = "AI 搜",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp))
+                        .clickable(onClick = onOpenAiSearch)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            BasicTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        focus.clearFocus()
+                        onSubmit()
+                    },
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                decorationBox = { inner ->
+                    if (state.query.isEmpty()) {
+                        Text(
+                            text = "歌名·歌手·UP·BV（中/英/日/韩…）",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    inner()
+                },
+            )
+            LineButton(
+                text = if (state.isSearching) "…" else "搜",
+                onClick = {
+                    focus.clearFocus()
+                    onSubmit()
+                },
+                filled = true,
+                enabled = !state.isSearching,
+            )
+        }
+
+        // 联想词：有结果时改词也要显示（不能再要求 results.isEmpty）
+        val showSuggestions = state.suggestions.isNotEmpty()
+        if (showSuggestions) {
+            Spacer(Modifier.height(8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)),
+            ) {
+                state.suggestions.forEachIndexed { index, tip ->
+                    Text(
+                        text = tip,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                focus.clearFocus()
+                                onSuggestionClick(tip)
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    )
+                    if (index != state.suggestions.lastIndex) {
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        // 正在打字看联想时，先不挤旧结果，点选/提交后再出列表
+        if (!showSuggestions) {
+            state.message?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
+            LazyColumn(
+                contentPadding = PaddingValues(bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items(state.results, key = { it.id }) { track ->
+                    TrackRow(
+                        track = track,
+                        onClick = { onPlayTrack(track) },
+                        onCollect = { onCollectTrack(track) },
+                    )
+                }
+            }
+        }
+    }
+}

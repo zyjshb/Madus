@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  黑底 + 居中蛇标。logo 底色已与 splash_bg 统一为 #1C1C1C，
+  不再出现「图标外一圈灰框」的割裂感。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_bg" />
+    <item
+        android:width="200dp"
+        android:height="200dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/logo_madus" />
+    </item>
+</layer-list>
