@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.7：打游戏时继续播放 + 后台轻量
-        versionCode = 227
-        versionName = "1.14.7"
+        // 1.14.8：P1 后台降载（预取/通知/进度），功能不变
+        versionCode = 228
+        versionName = "1.14.8"
         vectorDrawables.useSupportLibrary = true
     }
 

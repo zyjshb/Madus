@@ -33,6 +33,12 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var playerListener: Player.Listener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    /** 通知节流：同一文案不狂刷；切歌/播停仍立即更新 */
+    private var lastNotifAtMs: Long = 0L
+    private var lastNotifKey: String = ""
+    private val throttledRefreshRunnable = Runnable {
+        refreshNotification(force = true)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -57,18 +63,19 @@ class PlaybackService : MediaSessionService() {
 
             val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    refreshNotification()
+                    refreshNotification(force = true)
                 }
 
                 override fun onMediaItemTransition(
                     mediaItem: androidx.media3.common.MediaItem?,
                     reason: Int,
                 ) {
-                    refreshNotification()
+                    refreshNotification(force = true)
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    refreshNotification()
+                    // 缓冲等状态变化可节流，避免后台打游戏时通知狂刷
+                    refreshNotification(force = false)
                     if (playbackState == Player.STATE_IDLE && exo.mediaItemCount == 0) {
                         mainHandler.postDelayed({
                             if (exo.playbackState == Player.STATE_IDLE && exo.mediaItemCount == 0) {
@@ -80,16 +87,16 @@ class PlaybackService : MediaSessionService() {
                 }
 
                 override fun onEvents(player: Player, events: Player.Events) {
-                    if (events.contains(Player.EVENT_MEDIA_METADATA_CHANGED) ||
-                        events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)
-                    ) {
-                        refreshNotification()
+                    if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
+                        refreshNotification(force = true)
+                    } else if (events.contains(Player.EVENT_MEDIA_METADATA_CHANGED)) {
+                        refreshNotification(force = false)
                     }
                 }
             }
             playerListener = listener
             exo.addListener(listener)
-            refreshNotification()
+            refreshNotification(force = true)
         } catch (t: Throwable) {
             android.util.Log.e(TAG, "PlaybackService onCreate failed", t)
             stopSelf()
@@ -129,7 +136,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         // 自管通知（曲名真实 + 按钮），避免 Media3 默认空标题卡「准备中」类文案
-        enterForeground(buildPlaybackNotification())
+        refreshNotification(force = true)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -152,7 +159,30 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    private fun refreshNotification() {
+    /**
+     * @param force 切歌/播停必须立即刷；缓冲状态等可节流（后台打游戏更省）
+     */
+    private fun refreshNotification(force: Boolean = false) {
+        val engine = runCatching { MadusApp.instance.playerEngine }.getOrNull()
+        val st = engine?.state?.value
+        val exo = engine?.player
+        val title = st?.current?.title.orEmpty()
+        val playing = st?.isPlaying == true || exo?.isPlaying == true
+        val key = "$title|$playing|${st?.isLoading == true}"
+        val now = System.currentTimeMillis()
+        val minGap = if (MadusApp.instance.appInBackground) 2_000L else 800L
+        if (force) {
+            mainHandler.removeCallbacks(throttledRefreshRunnable)
+        } else if (key == lastNotifKey && now - lastNotifAtMs < minGap) {
+            return
+        } else if (now - lastNotifAtMs < minGap) {
+            // 合并短时间多次状态变化
+            mainHandler.removeCallbacks(throttledRefreshRunnable)
+            mainHandler.postDelayed(throttledRefreshRunnable, minGap - (now - lastNotifAtMs))
+            return
+        }
+        lastNotifAtMs = now
+        lastNotifKey = key
         enterForeground(buildPlaybackNotification())
     }
 

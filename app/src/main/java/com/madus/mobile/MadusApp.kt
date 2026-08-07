@@ -75,6 +75,14 @@ class MadusApp : Application() {
     @Volatile
     var currentQualityQn: Int = AudioQuality.Standard.qn
 
+    /**
+     * 整个 App 是否在后台（用户在打游戏/其它应用）。
+     * 仅供后台降载判断，**不改变**播放与功能可用性。
+     */
+    @Volatile
+    var appInBackground: Boolean = false
+        private set
+
     /** 设置里「视频模式」：开=看视频，关=听音乐 */
     @Volatile
     /** 默认音乐模式；DataStore 异步读入后会覆盖 */
@@ -127,14 +135,23 @@ class MadusApp : Application() {
             }
         }
 
-        // 进游戏/切到其它 App：仅降低进度轮询频率，不改播放与功能
+        // 进游戏/切到其它 App：后台降载（进度刷新、预取强度、通知节流、图片内存），不改播放与功能
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
+                appInBackground = false
                 playerEngine.setAppInBackground(false)
             }
 
             override fun onStop(owner: LifecycleOwner) {
+                appInBackground = true
                 playerEngine.setAppInBackground(true)
+                // 释放封面解码缓存，给游戏让出一点内存；磁盘缓存与功能不动
+                runCatching {
+                    com.madus.mobile.ui.components.MadusImageLoader
+                        .get(this@MadusApp)
+                        .memoryCache
+                        ?.clear()
+                }
             }
         })
 

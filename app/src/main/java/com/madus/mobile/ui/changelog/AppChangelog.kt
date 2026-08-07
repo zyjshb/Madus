@@ -29,6 +29,18 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.8",
+            date = "2026-08-07",
+            changed = listOf(
+                "P1 后台降载：进其它 App/打游戏时减少预取、通知刷新与进度写入频率",
+                "后台只预解析下一首；推荐无限流仅在快见底时轻量续刷",
+                "后台释放封面内存缓存，给游戏让出一点内存",
+            ),
+            known = listOf(
+                "不删不改任何功能；回前台后行为与原来一致",
+            ),
+        ),
+        Entry(
             version = "1.14.7",
             date = "2026-08-07",
             added = listOf(

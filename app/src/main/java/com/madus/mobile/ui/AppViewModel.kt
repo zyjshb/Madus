@@ -935,7 +935,8 @@ class AppViewModel(
         positionPersistJob?.cancel()
         positionPersistJob = viewModelScope.launch {
             while (isActive) {
-                delay(5_000)
+                // 后台拉长间隔，省 IO；前台仍 5s 一次
+                delay(if (MadusApp.instance.appInBackground) 15_000L else 5_000L)
                 persistCurrentPosition()
             }
         }
@@ -1174,10 +1175,11 @@ class AppViewModel(
             // 自动续播记忆（上下滑/重进同一条不从零开始）
             playIndex(pendingIndex)
 
-            // 后台并行预解析后续 2～3 首，视频切条更快
+            // 并行预解析后续曲目（前台 2～3 首；后台只预 1 首，省网络/CPU，切歌仍顺）
             launch {
+                val ahead = if (MadusApp.instance.appInBackground) 1 else 3
                 val from = pendingIndex + 1
-                val to = minOf(pendingIndex + 3, pendingQueue.size)
+                val to = minOf(pendingIndex + ahead, pendingQueue.size)
                 if (from >= to) return@launch
                 val jobs = (from until to).map { i ->
                     async(Dispatchers.IO) {
@@ -1564,8 +1566,10 @@ class AppViewModel(
     /** 后台预解析后续若干首的 playurl，降低熄屏切歌失败率 */
     private fun schedulePrefetchNextStreams() {
         viewModelScope.launch {
+            // 前台多预几首；进其它 App/打游戏时只预下一首
+            val ahead = if (MadusApp.instance.appInBackground) 1 else 3
             val from = pendingIndex + 1
-            val to = minOf(pendingIndex + 4, pendingQueue.size)
+            val to = minOf(pendingIndex + ahead, pendingQueue.size)
             if (from >= to) return@launch
             for (i in from until to) {
                 val t = pendingQueue.getOrNull(i) ?: continue
@@ -1699,8 +1703,16 @@ class AppViewModel(
         if (!isForYouQueue()) return
         expandJob?.cancel()
         expandJob = viewModelScope.launch {
-            delay(400)
-            runCatching { ensureInfiniteFeed() }
+            val bg = MadusApp.instance.appInBackground
+            delay(if (bg) 1_200L else 400L)
+            // 后台：队列还剩较多就不刷；真快见底再轻量续几首（不断播）
+            if (MadusApp.instance.appInBackground) {
+                val remain = pendingQueue.size - pendingIndex - 1
+                if (remain > 2) return@launch
+                runCatching { ensureInfiniteFeed(force = false, minAdd = 5) }
+            } else {
+                runCatching { ensureInfiniteFeed() }
+            }
         }
     }
 
