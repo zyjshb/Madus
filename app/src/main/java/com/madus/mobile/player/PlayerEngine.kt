@@ -14,6 +14,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -89,8 +90,6 @@ class PlayerEngine(context: Context) {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
-    private val loadControl = SwitchingLoadControl(gameLiteMode)
-
     private val switchingDataSourceFactory = DataSource.Factory {
         // 游戏轻量时不写边听缓存，省磁盘 IO；用户 autoCache 开关值不变
         if (autoCacheEnabled.get() && !gameLiteMode.get()) {
@@ -109,6 +108,26 @@ class PlayerEngine(context: Context) {
 
     private val audioFx = AudioFxController()
 
+    /**
+     * 固定用官方 DefaultLoadControl（勿自封装 LoadControl：Media3 新接口未完整实现会启动即崩）。
+     * 游戏轻量：略小缓冲；正常：系统默认量级。
+     */
+    private fun buildLoadControl(lite: Boolean): DefaultLoadControl {
+        return if (lite) {
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    /* minBufferMs */ 12_000,
+                    /* maxBufferMs */ 24_000,
+                    /* bufferForPlaybackMs */ 1_200,
+                    /* bufferForPlaybackAfterRebufferMs */ 2_000,
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+        } else {
+            DefaultLoadControl.Builder().build()
+        }
+    }
+
     /** 自然播完且非单曲循环时回调（主线程）。 */
     var onPlaybackEnded: (() -> Unit)? = null
 
@@ -124,7 +143,8 @@ class PlayerEngine(context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(appContext)
         .setMediaSourceFactory(mediaSourceFactory)
-        .setLoadControl(loadControl)
+        // 启动时用默认缓冲；轻量档主要通过预取/写盘/刷新频率生效，避免启动崩溃
+        .setLoadControl(buildLoadControl(lite = false))
         // 默认混音：不 handleAudioFocus，游戏点按钮不会把歌暂停
         .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus = */ false)
         .setHandleAudioBecomingNoisy(true)
@@ -214,12 +234,12 @@ class PlayerEngine(context: Context) {
     }
 
     /**
-     * 游戏轻量档：更小缓冲 + 暂停边听写盘。
+     * 游戏轻量档：暂停边听写盘 + 更省后台预取/刷新。
+     * 缓冲策略用官方 DefaultLoadControl 在构建时设定；运行中不重建播放器（防崩）。
      * 不关功能；仅参数。
      */
     fun setGameLiteMode(enabled: Boolean) {
         gameLiteMode.set(enabled)
-        // 下一缓冲决策会走 SwitchingLoadControl；不重建播放器
     }
 
     fun isGameLiteMode(): Boolean = gameLiteMode.get()
@@ -227,12 +247,6 @@ class PlayerEngine(context: Context) {
     /** 前后台：仅影响进度刷新频率，不改变播放逻辑。 */
     fun setAppInBackground(inBackground: Boolean) {
         backgroundMode.set(inBackground)
-        // 后台时尽量不占「前台」资源位（Media3 可略降后台占用）
-        mainHandler.post {
-            runCatching {
-                player.setForegroundMode(!inBackground && player.isPlaying)
-            }
-        }
     }
 
     /** @param minutes 0 = 取消 */

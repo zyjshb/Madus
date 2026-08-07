@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.10",
+            date = "2026-08-07",
+            fixed = listOf(
+                "1.14.9 更新后无法打开（启动崩溃）：缓冲策略封装错误",
+                "改回官方缓冲实现；游戏轻量功能保留（预取/写盘/刷新），可正常启动",
+            ),
+        ),
+        Entry(
             version = "1.14.9",
             date = "2026-08-07",
             added = listOf(

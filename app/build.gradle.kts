@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.9：P2 游戏轻量（缓冲/缓存参数开关）
-        versionCode = 229
-        versionName = "1.14.9"
+        // 1.14.10：热修 1.14.9 启动崩溃（LoadControl）
+        versionCode = 230
+        versionName = "1.14.10"
         vectorDrawables.useSupportLibrary = true
     }
 
