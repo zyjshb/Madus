@@ -3,7 +3,6 @@ package com.madus.mobile.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,10 +37,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/**
- * 「关于 Madus」连点解锁的彩蛋（仿安卓系统版本号彩蛋：版本铭牌 + 可涂鸦画板）。
- * 不是小恐龙；风格跟 Madus 线稿一致。
- */
+/** 关于页连点后的隐藏页：版本号 + 可涂画板。 */
 @Composable
 fun AboutEasterEggScreen(
     version: String,
@@ -67,18 +63,12 @@ fun AboutEasterEggScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Madus",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "开发者选项已开启（玩笑）",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                )
-            }
+            Text(
+                "Madus",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
             TextButton(onClick = {
                 strokes.clear()
                 current = emptyList()
@@ -87,11 +77,10 @@ fun AboutEasterEggScreen(
             }
         }
 
-        // 版本铭牌（仿安卓 About → 版本号页）
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -100,23 +89,8 @@ fun AboutEasterEggScreen(
                 fontWeight = FontWeight.Light,
                 color = colors.onBackground,
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "线稿听歌 · 端侧直连",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "在下方空白处涂鸦（像安卓旧版彩蛋画板）",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
-            )
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        // 画板
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -146,9 +120,8 @@ fun AboutEasterEggScreen(
                 },
         ) {
             val ink = colors.onBackground
-            val faint = colors.outline.copy(alpha = 0.35f)
+            val faint = colors.outline.copy(alpha = 0.25f)
             Canvas(modifier = Modifier.fillMaxSize()) {
-                // 轻网格
                 val step = 28.dp.toPx()
                 var x = 0f
                 while (x < size.width) {
@@ -180,15 +153,6 @@ fun AboutEasterEggScreen(
                 }
                 strokes.forEach { drawStroke(it, ink) }
                 drawStroke(current, ink)
-            }
-
-            if (strokes.isEmpty() && current.isEmpty()) {
-                Text(
-                    "用手指画画吧",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = colors.onSurfaceVariant.copy(alpha = 0.45f),
-                    modifier = Modifier.align(Alignment.Center),
-                )
             }
         }
     }

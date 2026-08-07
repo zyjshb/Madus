@@ -52,7 +52,6 @@ fun ImportPlaylistSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
-            // 输入框内不放示例字，保持空白，方便直接粘贴
             BasicTextField(
                 value = state.input,
                 onValueChange = onInput,

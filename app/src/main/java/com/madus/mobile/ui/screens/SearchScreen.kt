@@ -85,7 +85,7 @@ fun SearchScreen(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        "正在替换",
+                        "替换",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -95,7 +95,7 @@ fun SearchScreen(
                         maxLines = 2,
                     )
                     Text(
-                        "点下面一首正确结果即可换掉",
+                        "搜索后点结果",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

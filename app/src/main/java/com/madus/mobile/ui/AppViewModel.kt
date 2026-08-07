@@ -1267,7 +1267,7 @@ class AppViewModel(
         _search.update {
             it.copy(query = "", suggestions = emptyList(), results = emptyList(), message = null, isSearching = false)
         }
-        _toast.value = "换歌：输入正确歌名搜索，点结果替换「${track.title.take(16)}」"
+        _toast.value = "搜索后点结果即可替换"
     }
 
     fun cancelReplaceTrack() {

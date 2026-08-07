@@ -63,19 +63,13 @@ fun MeScreen(
     onOpenBiliLogin: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onToolClick: (String) -> Unit = {},
-    /** 连点达到次数后打开彩蛋（版本铭牌 + 画板） */
     onOpenEasterEgg: () -> Unit = {},
-    /**
-     * 安卓「版本号」式提示文案，由外层用 Toast/Snackbar 展示。
-     * 已在内部节流：不会每下都弹。
-     */
     onAboutSystemToast: (message: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val bili = state.sessions.firstOrNull { it.source == MusicSourceType.BILIBILI }
     val loggedInCount = state.sessions.count { it.isLoggedIn }
 
-    // 仿 Settings → 关于手机 → 版本号：连点 7 次
     val aboutTapsNeeded = 7
     var aboutTaps by remember { mutableIntStateOf(0) }
     var aboutUnlocked by remember { mutableStateOf(false) }
@@ -250,15 +244,13 @@ fun MeScreen(
                         subtitle = "v${state.appVersion}",
                         onClick = {
                             val now = System.currentTimeMillis()
-                            // 已解锁后：像安卓「已经是开发者」——偶尔提示一次，不狂弹
                             if (aboutUnlocked) {
                                 if (now - lastAboutToastAt > 1_500L) {
                                     lastAboutToastAt = now
-                                    onAboutSystemToast("无需再点击，你已经是开发者了")
+                                    onAboutSystemToast("不用再点了")
                                 }
                                 return@MeNavRow
                             }
-                            // 超过 1.5s 未点则重新计数（接近系统关于手机的手感）
                             if (now - lastAboutTapAt > 1_500L) aboutTaps = 0
                             lastAboutTapAt = now
                             aboutTaps += 1
@@ -268,23 +260,14 @@ fun MeScreen(
                                     aboutUnlocked = true
                                     aboutTaps = 0
                                     lastAboutToastAt = now
-                                    onAboutSystemToast("你已处于开发者模式")
                                     onOpenEasterEgg()
                                 }
-                                // 只剩 1～3 次时才提示（安卓也是后半段才出 Toast）
                                 remaining in 1..3 -> {
                                     if (now - lastAboutToastAt > 400L) {
                                         lastAboutToastAt = now
-                                        onAboutSystemToast(
-                                            if (remaining == 1) {
-                                                "再点击 1 次即可进入开发者模式"
-                                            } else {
-                                                "还差 $remaining 步即可进入开发者模式"
-                                            },
-                                        )
+                                        onAboutSystemToast("还差 $remaining 次")
                                     }
                                 }
-                                // 前几下完全静默
                             }
                         },
                     )

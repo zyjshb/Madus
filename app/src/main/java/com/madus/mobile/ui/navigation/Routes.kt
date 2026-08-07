@@ -29,7 +29,6 @@ object Routes {
     const val UPDATE = "update"
     /** 更新日志 */
     const val CHANGELOG = "changelog"
-    /** 关于 Madus 连点 10 次彩蛋（小恐龙） */
     const val ABOUT_EASTER_EGG = "about_easter_egg"
     /** AI 搜歌对话 */
     const val AI_CHAT = "ai_chat"
