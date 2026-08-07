@@ -460,12 +460,8 @@ class AppViewModel(
         if (t.id in longPlayDismissedIds) return
         if (_longPlayHint.value != null) return
         val pos = pb.positionMs
-        val dur = pb.durationMs.takeIf { it > 0 } ?: t.durationMs
-        // 总时长 ≥ 30 分钟，或已播满 20 分钟（时长未知时）
-        val longTrack = dur >= 30L * 60_000L
-        val playedLong = pos >= 15L * 60_000L
-        val veryLongPlay = pos >= 20L * 60_000L
-        if ((longTrack && playedLong) || veryLongPlay) {
+        // 同一曲连续听约 5 分钟提示可换歌（长循环 BGM 等）
+        if (pos >= 5L * 60_000L) {
             _longPlayHint.value = "已经听了一会儿了，可以换首歌"
         }
     }

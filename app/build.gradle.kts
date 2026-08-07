@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.17：小恐龙彩蛋 + 关于/外观拆行防误触
-        versionCode = 237
-        versionName = "1.14.17"
+        // 1.14.19：可玩的小恐龙
+        versionCode = 239
+        versionName = "1.14.19"
         vectorDrawables.useSupportLibrary = true
     }
 

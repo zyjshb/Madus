@@ -29,11 +29,22 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.19",
+            date = "2026-08-07",
+            fixed = listOf(
+                "小恐龙可玩：开始 / 跳 / 再来",
+            ),
+            changed = listOf(
+                "同一曲听约 5 分钟提示可换歌",
+                "外观与关于拆开，连点不易误触",
+            ),
+        ),
+        Entry(
             version = "1.14.17",
             date = "2026-08-07",
             changed = listOf(
-                "关于连点彩蛋改回小恐龙（更省卡）",
-                "外观设置与关于拆开，连点不易误触",
+                "关于连点彩蛋改回小恐龙",
+                "外观设置与关于拆开",
             ),
         ),
         Entry(
