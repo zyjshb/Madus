@@ -1,10 +1,11 @@
-# 发布 Madus 到 Gitee Releases（类似 gh release create）
-# 前置：环境变量 GITEE_TOKEN = 私人令牌（权限：projects / 发行版）
-# 获取：https://gitee.com/profile/personal_access_tokens
-# 用法（在 and/ 目录）：
-#   $env:GITEE_TOKEN = "你的令牌"
+# Publish Madus APK to Gitee Releases (like: gh release create)
+# Requires: $env:GITEE_TOKEN = private token (projects scope)
+# Create token: https://gitee.com/profile/personal_access_tokens
+#
+# Usage (in and/):
+#   $env:GITEE_TOKEN = "YOUR_TOKEN"
 #   .\scripts\publish-gitee-release.ps1 -Version 1.14.11
-#   .\scripts\publish-gitee-release.ps1 -Version 1.14.11 -SetDefaultMain
+#   .\scripts\publish-gitee-release.ps1 -Version 1.14.11 -SetDefaultMain -DeleteMaster
 
 param(
     [Parameter(Mandatory = $true)]
@@ -17,148 +18,137 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 if ([string]::IsNullOrWhiteSpace($Token)) {
-    throw "缺少 GITEE_TOKEN。请到 https://gitee.com/profile/personal_access_tokens 创建私人令牌后执行：`n  `$env:GITEE_TOKEN = 'xxx'"
+    throw "Missing GITEE_TOKEN. Create one at https://gitee.com/profile/personal_access_tokens then: `$env:GITEE_TOKEN='xxx'"
 }
 
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 
 $apk = Join-Path $root "apk\Madus-$Version.apk"
-if (-not (Test-Path $apk)) { throw "缺少 $apk ，请先打包" }
-if ($apk -match '(?i)debug') { throw "禁止上传 debug 包" }
+if (-not (Test-Path -LiteralPath $apk)) {
+    throw "APK not found: $apk (build first)"
+}
+if ($apk -match '(?i)debug') {
+    throw "Refuse to upload debug APK"
+}
 
 $tag = "v$Version"
 $apiBase = "https://gitee.com/api/v5/repos/$Owner/$Repo"
 $notesPath = Join-Path $root "scripts\release-notes-$Version.md"
-$body = if (Test-Path $notesPath) {
-    Get-Content $notesPath -Raw -Encoding UTF8
+if (Test-Path -LiteralPath $notesPath) {
+    $body = Get-Content -LiteralPath $notesPath -Raw -Encoding UTF8
 } else {
-    @"
+    $body = @"
 ## Madus $Version
 
-### 下载
+### Download
 - Madus-$Version.apk
 
-### 国内
-- Gitee：https://gitee.com/$Owner/$Repo/releases
-- GitHub 备用：https://github.com/zyjshb/Madus/releases
+### Mirrors
+- Gitee: https://gitee.com/$Owner/$Repo/releases
+- GitHub: https://github.com/zyjshb/Madus/releases
 
-安装：下载 → 允许未知来源 → 安装。
-App 内：我的 → 检查更新（优先 Gitee）。
+Install: download APK -> allow unknown sources -> install.
+In-app: Me -> Check update (prefers Gitee).
 "@
 }
 
-function Invoke-Gitee {
-    param([string]$Method, [string]$Url, [hashtable]$Form = $null, [string]$JsonBody = $null)
-    $sep = if ($Url.Contains("?")) { "&" } else { "?" }
-    $full = "$Url${sep}access_token=$([uri]::EscapeDataString($Token))"
-    if ($Form) {
-        return Invoke-RestMethod -Method $Method -Uri $full -Form $Form -TimeoutSec 300
-    }
-    if ($JsonBody) {
-        return Invoke-RestMethod -Method $Method -Uri $full -ContentType "application/json;charset=utf-8" -Body $JsonBody -TimeoutSec 60
-    }
-    return Invoke-RestMethod -Method $Method -Uri $full -TimeoutSec 60
+function Get-GiteeUri([string]$Path) {
+    $sep = if ($Path.Contains("?")) { "&" } else { "?" }
+    return "$Path${sep}access_token=$([uri]::EscapeDataString($Token))"
 }
 
 if ($SetDefaultMain) {
-    Write-Host "==> set default branch = main ..."
-    $payload = @{ default_branch = "main" } | ConvertTo-Json -Compress
-    # Gitee 部分接口用 form
+    Write-Host "==> set default_branch = main"
     try {
-        Invoke-RestMethod -Method Patch -Uri "$apiBase?access_token=$([uri]::EscapeDataString($Token))" `
+        Invoke-RestMethod -Method Patch -Uri (Get-GiteeUri $apiBase) `
             -Body @{ default_branch = "main" } -TimeoutSec 30 | Out-Null
-        Write-Host "default_branch -> main OK"
+        Write-Host "OK: default_branch -> main"
     } catch {
-        Write-Host "PATCH form failed, try JSON: $($_.Exception.Message)"
-        Invoke-Gitee -Method Patch -Url $apiBase -JsonBody $payload | Out-Null
-        Write-Host "default_branch -> main OK (json)"
+        Write-Host "WARN set default branch: $($_.Exception.Message)"
     }
 }
 
 if ($DeleteMaster) {
-    Write-Host "==> delete branch master (if exists) ..."
+    Write-Host "==> delete branch master (if not default)"
     try {
-        Invoke-Gitee -Method Delete -Url "$apiBase/branches/master" | Out-Null
-        Write-Host "master deleted"
+        Invoke-RestMethod -Method Delete -Uri (Get-GiteeUri "$apiBase/branches/master") -TimeoutSec 30 | Out-Null
+        Write-Host "OK: master deleted"
     } catch {
-        Write-Host "delete master skipped: $($_.Exception.Message)"
+        Write-Host "WARN delete master: $($_.Exception.Message)"
     }
 }
 
-Write-Host "==> push code to gitee main ..."
+Write-Host "==> git push gitee main:main"
 git push gitee main:main
-if ($LASTEXITCODE -ne 0) { throw "git push gitee 失败" }
+if ($LASTEXITCODE -ne 0) { throw "git push gitee failed" }
 
-# 若已有同 tag 发行版则删掉重建
-Write-Host "==> check existing release $tag ..."
+Write-Host "==> check existing release $tag"
 $existing = $null
 try {
-    $existing = Invoke-Gitee -Method Get -Url "$apiBase/releases/tags/$tag"
-} catch { $existing = $null }
+    $existing = Invoke-RestMethod -Method Get -Uri (Get-GiteeUri "$apiBase/releases/tags/$tag") -TimeoutSec 30
+} catch {
+    $existing = $null
+}
 
 if ($existing -and $existing.id) {
-    Write-Host "Release $tag 已存在 (id=$($existing.id))，删除后重建..."
+    Write-Host "Release $tag exists (id=$($existing.id)), deleting..."
     try {
-        Invoke-Gitee -Method Delete -Url "$apiBase/releases/$($existing.id)" | Out-Null
+        Invoke-RestMethod -Method Delete -Uri (Get-GiteeUri "$apiBase/releases/$($existing.id)") -TimeoutSec 30 | Out-Null
     } catch {
-        Write-Host "delete release warn: $($_.Exception.Message)"
+        Write-Host "WARN delete release: $($_.Exception.Message)"
     }
 }
 
-Write-Host "==> create release $tag ..."
-# Gitee 创建发行版常用 form 字段
-$form = @{
+Write-Host "==> create release $tag"
+$createUri = Get-GiteeUri "$apiBase/releases"
+# Gitee expects form fields for create release
+$release = Invoke-RestMethod -Method Post -Uri $createUri -Body @{
     tag_name         = $tag
     name             = "Madus $Version"
     body             = $body
     target_commitish = "main"
     prerelease       = "false"
-}
-$release = Invoke-RestMethod -Method Post `
-    -Uri "$apiBase/releases?access_token=$([uri]::EscapeDataString($Token))" `
-    -Form $form -TimeoutSec 60
+} -TimeoutSec 60
 
 $releaseId = $release.id
-if (-not $releaseId) { throw "创建发行版失败：无 id。响应：$($release | ConvertTo-Json -Depth 4)" }
+if (-not $releaseId) {
+    throw "Create release failed (no id): $($release | ConvertTo-Json -Depth 5 -Compress)"
+}
 Write-Host "release id = $releaseId"
 
-Write-Host "==> upload APK $($apk | Split-Path -Leaf) ..."
-# multipart 上传附件
-$uploadUri = "$apiBase/releases/$releaseId/attach_files?access_token=$([uri]::EscapeDataString($Token))"
+Write-Host "==> upload APK"
+$uploadUri = Get-GiteeUri "$apiBase/releases/$releaseId/attach_files"
 $fileItem = Get-Item -LiteralPath $apk
-# PowerShell 7+ -Form 支持文件；Windows PowerShell 5 用 .NET
-if ($PSVersionTable.PSVersion.Major -ge 6) {
-    $resp = Invoke-RestMethod -Method Post -Uri $uploadUri -Form @{
-        file = $fileItem
-    } -TimeoutSec 600
-} else {
-    Add-Type -AssemblyName System.Net.Http
-    $client = [System.Net.Http.HttpClient]::new()
-    $multipart = [System.Net.Http.MultipartFormDataContent]::new()
-    $fs = [System.IO.File]::OpenRead($fileItem.FullName)
-    try {
-        $streamContent = [System.Net.Http.StreamContent]::new($fs)
-        $streamContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("application/vnd.android.package-archive")
-        $multipart.Add($streamContent, "file", $fileItem.Name)
-        $task = $client.PostAsync($uploadUri, $multipart)
-        $task.Wait()
-        $result = $task.Result
-        $text = $result.Content.ReadAsStringAsync().Result
-        if (-not $result.IsSuccessStatusCode) {
-            throw "上传失败 HTTP $([int]$result.StatusCode): $text"
-        }
-        $resp = $text | ConvertFrom-Json
-    } finally {
-        $fs.Dispose()
-        $multipart.Dispose()
-        $client.Dispose()
+
+# Prefer HttpClient multipart (works on Windows PowerShell 5 + PS7)
+Add-Type -AssemblyName System.Net.Http | Out-Null
+$handler = [System.Net.Http.HttpClientHandler]::new()
+$client = [System.Net.Http.HttpClient]::new($handler)
+$client.Timeout = [TimeSpan]::FromMinutes(15)
+$multipart = [System.Net.Http.MultipartFormDataContent]::new()
+$fs = [System.IO.File]::OpenRead($fileItem.FullName)
+try {
+    $streamContent = [System.Net.Http.StreamContent]::new($fs)
+    $streamContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("application/octet-stream")
+    $multipart.Add($streamContent, "file", $fileItem.Name)
+    $task = $client.PostAsync($uploadUri, $multipart)
+    $task.Wait()
+    $httpResult = $task.Result
+    $text = $httpResult.Content.ReadAsStringAsync().Result
+    if (-not $httpResult.IsSuccessStatusCode) {
+        throw "Upload failed HTTP $([int]$httpResult.StatusCode): $text"
     }
+    Write-Host "Upload OK"
+    Write-Host $text
+} finally {
+    $fs.Dispose()
+    $multipart.Dispose()
+    $client.Dispose()
 }
 
-Write-Host "上传完成"
-Write-Host "Gitee Release: https://gitee.com/$Owner/$Repo/releases/tag/$tag"
-if ($resp) {
-    Write-Host ($resp | ConvertTo-Json -Depth 4 -Compress)
-}
+Write-Host ""
+Write-Host "Done: https://gitee.com/$Owner/$Repo/releases/tag/$tag"
