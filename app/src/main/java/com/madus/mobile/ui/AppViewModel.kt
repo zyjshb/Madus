@@ -259,6 +259,18 @@ data class ImportPlaylistUiState(
     val error: String? = null,
 )
 
+/**
+ * 换歌模式：导入/队列里听错了，去搜索选一首替换。
+ * [playlistId] 为 local-* 时会同步写回本地歌单。
+ */
+data class TrackReplaceUiState(
+    val active: Boolean = false,
+    val oldTrackId: String = "",
+    val oldTitle: String = "",
+    val playlistId: String? = null,
+    val queryHint: String = "",
+)
+
 class AppViewModel(
     private val registry: SourceRegistry = MadusApp.instance.sourceRegistry,
     private val player: PlayerController = MadusApp.instance.playerController,
@@ -334,6 +346,9 @@ class AppViewModel(
 
     private val _importPlaylist = MutableStateFlow(ImportPlaylistUiState())
     val importPlaylist: StateFlow<ImportPlaylistUiState> = _importPlaylist.asStateFlow()
+
+    private val _trackReplace = MutableStateFlow(TrackReplaceUiState())
+    val trackReplace: StateFlow<TrackReplaceUiState> = _trackReplace.asStateFlow()
 
     private val _biliRecognize = MutableStateFlow(BiliRecognizeUiState())
     val biliRecognize: StateFlow<BiliRecognizeUiState> = _biliRecognize.asStateFlow()
@@ -1198,7 +1213,105 @@ class AppViewModel(
      * 搜索点播：只播点中的这一首，**不**自动展开合集。
      * 整部合集仅在收藏「整部合集」时展开。
      */
+    /**
+     * 从队列/歌单发起「换歌」：预填搜索，用户点搜索结果后替换原曲。
+     * [playlistId] 为空时尝试用当前播放来源 local-*。
+     */
+    fun beginReplaceTrack(track: Track, playlistId: String? = null) {
+        val plId = playlistId
+            ?: _playlistDetail.value.playlist?.id?.takeIf { it.startsWith("local-") }
+            ?: _recommend.value.sourceId.takeIf { it.startsWith("local-") }
+        val hint = listOf(track.title, track.artist)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { track.title }
+        _trackReplace.value = TrackReplaceUiState(
+            active = true,
+            oldTrackId = track.id,
+            oldTitle = track.title,
+            playlistId = plId,
+            queryHint = hint,
+        )
+        onSearchQueryChange(hint)
+        submitSearch()
+        _toast.value = "换歌：搜到正确结果后点一下替换「${track.title.take(16)}」"
+    }
+
+    fun cancelReplaceTrack() {
+        _trackReplace.value = TrackReplaceUiState()
+        _toast.value = "已取消换歌"
+    }
+
+    /** 用搜索结果替换队列（及可选本地歌单）中的旧曲 */
+    fun applyReplaceTrack(newTrack: Track) {
+        val st = _trackReplace.value
+        if (!st.active || st.oldTrackId.isBlank()) {
+            playSearchTrack(newTrack)
+            return
+        }
+        val play = newTrack.copy(
+            title = newTrack.title.replace(Regex("""\s*·\s*\d+P$"""), ""),
+        )
+        val oldId = st.oldTrackId
+        val wasCurrent = pendingQueue.getOrNull(pendingIndex)?.id == oldId ||
+            playback.value.current?.id == oldId
+
+        // 1) 队列替换（保持位置）
+        if (pendingQueue.isNotEmpty()) {
+            val q = pendingQueue.toMutableList()
+            val idx = q.indexOfFirst { it.id == oldId }
+            if (idx >= 0) {
+                q[idx] = play
+                // 去掉其它重复的新 id
+                val cleaned = q.filterIndexed { i, t -> i == idx || t.id != play.id }
+                val newIndex = cleaned.indexOfFirst { it.id == play.id }.coerceAtLeast(0)
+                pendingQueue = cleaned
+                pendingIndex = if (wasCurrent) newIndex else {
+                    val curId = playback.value.current?.id
+                    cleaned.indexOfFirst { it.id == curId }.let { if (it < 0) pendingIndex.coerceIn(0, cleaned.lastIndex) else it }
+                }
+                _queueTracks.value = cleaned
+                _recommend.update { it.copy(feed = cleaned) }
+            }
+        }
+
+        // 2) 本地歌单写回
+        val plId = st.playlistId
+        if (!plId.isNullOrBlank() && plId.startsWith("local-")) {
+            viewModelScope.launch {
+                val ok = localPl.replaceTrack(plId, oldId, play)
+                if (ok) {
+                    refreshLibrary()
+                    // 若正在看该歌单详情，刷新列表
+                    val detail = _playlistDetail.value
+                    if (detail.playlist?.id == plId) {
+                        openPlaylist(detail.playlist!!)
+                    }
+                }
+            }
+        }
+
+        _trackReplace.value = TrackReplaceUiState()
+        _toast.value = "已替换为「${play.title.take(20)}」"
+
+        if (wasCurrent || pendingQueue.isEmpty()) {
+            val q = if (pendingQueue.isNotEmpty()) pendingQueue else listOf(play)
+            playTrack(
+                track = play,
+                queue = q,
+                resumeIfSame = false,
+                sourceLabel = null,
+                sourceId = null,
+            )
+        }
+    }
+
     fun playSearchTrack(track: Track) {
+        if (_trackReplace.value.active) {
+            applyReplaceTrack(track)
+            return
+        }
         // 去掉标题上的「 · NP」展示后缀，取真实 bvid 稿件
         val play = track.copy(
             title = track.title.replace(Regex("""\s*·\s*\d+P$"""), ""),
@@ -2360,6 +2473,10 @@ class AppViewModel(
 
     /** 队列页搜索点播：与主搜索相同（插播不替换） */
     fun playFromQueueSearch(track: Track) {
+        if (_trackReplace.value.active) {
+            applyReplaceTrack(track)
+            return
+        }
         playSearchTrack(track)
     }
 

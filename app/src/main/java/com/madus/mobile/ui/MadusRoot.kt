@@ -146,6 +146,7 @@ fun MadusRoot(
     val comments by vm.comments.collectAsStateWithLifecycle()
     val upSpace by vm.upSpace.collectAsStateWithLifecycle()
     val importPlaylist by vm.importPlaylist.collectAsStateWithLifecycle()
+    val trackReplace by vm.trackReplace.collectAsStateWithLifecycle()
     val biliRecognize by vm.biliRecognize.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
     val playerSettings by vm.playerSettings.collectAsStateWithLifecycle()
@@ -355,10 +356,26 @@ fun MadusRoot(
                         onQueryChange = vm::onSearchQueryChange,
                         onSubmit = vm::submitSearch,
                         onSuggestionClick = vm::applySearchSuggestion,
-                        onPlayTrack = ::playSearchAndOpen,
+                        onPlayTrack = { track ->
+                            if (trackReplace.active) {
+                                vm.applyReplaceTrack(track)
+                                // 换歌后回队列或歌单更顺手
+                                runCatching { nav.popBackStack(Routes.QUEUE, inclusive = false) }
+                            } else {
+                                playSearchAndOpen(track)
+                            }
+                        },
                         onCollectTrack = { vm.openCollectSheet(it) },
                         onOpenAiSearch = {
-                            nav.navigate(Routes.AI_CHAT) { launchSingleTop = true }
+                            if (!trackReplace.active) {
+                                nav.navigate(Routes.AI_CHAT) { launchSingleTop = true }
+                            }
+                        },
+                        replaceHintTitle = trackReplace.oldTitle.takeIf { trackReplace.active },
+                        onCancelReplace = if (trackReplace.active) {
+                            { vm.cancelReplaceTrack() }
+                        } else {
+                            null
                         },
                     )
                 }
@@ -645,6 +662,15 @@ fun MadusRoot(
                             }
                             vm.openUpSpace(track)
                         },
+                        onReplaceTrack = { track ->
+                            val pid = pl?.id
+                            vm.beginReplaceTrack(track, playlistId = pid)
+                            nav.navigate(RootTab.Search.route) {
+                                launchSingleTop = true
+                                popUpTo(RootTab.Home.route) { saveState = true }
+                                restoreState = true
+                            }
+                        },
                     )
                 }
                 composable(Routes.UP_SPACE) {
@@ -694,6 +720,13 @@ fun MadusRoot(
                         onPlayTrack = ::playAndOpen,
                         onClear = vm::clearQueue,
                         onRemove = vm::removeFromQueue,
+                        onReplaceTrack = { track ->
+                            vm.beginReplaceTrack(track)
+                            nav.navigate(RootTab.Search.route) {
+                                launchSingleTop = true
+                                // 从队列去搜索：保留返回栈
+                            }
+                        },
                         onPlayNext = vm::queuePlayNext,
                         onShuffle = vm::shuffleQueue,
                         onCycleMode = vm::cyclePlayMode,

@@ -65,6 +65,8 @@ fun PlaylistDetailScreen(
     onPrevPage: () -> Unit = {},
     onNextPage: () -> Unit = {},
     onOpenUp: (Track) -> Unit = {},
+    /** 导入匹配错了：去搜索换一首 */
+    onReplaceTrack: (Track) -> Unit = {},
     isLocalPlaylist: Boolean = false,
     canChangeCover: Boolean = false,
     canRename: Boolean = false,
@@ -228,12 +230,17 @@ fun PlaylistDetailScreen(
                             index = index + 1,
                             track = track,
                             canRemove = canRemoveTrack,
+                            canReplace = isLocalPlaylist,
                             menuOpen = trackMenuId == track.id,
                             onMenuOpen = { trackMenuId = track.id },
                             onMenuDismiss = { trackMenuId = null },
                             onClick = { onPlayTrack(track, state.tracks) },
                             onCollect = { onCollectTrack(track) },
                             onOpenUp = { onOpenUp(track) },
+                            onReplace = {
+                                trackMenuId = null
+                                onReplaceTrack(track)
+                            },
                             onRemove = {
                                 trackMenuId = null
                                 onRemoveTrack(track.id)
@@ -322,12 +329,14 @@ private fun PlaylistTrackRow(
     index: Int,
     track: Track,
     canRemove: Boolean,
+    canReplace: Boolean = false,
     menuOpen: Boolean,
     onMenuOpen: () -> Unit,
     onMenuDismiss: () -> Unit,
     onClick: () -> Unit,
     onCollect: () -> Unit,
     onOpenUp: () -> Unit = {},
+    onReplace: () -> Unit = {},
     onRemove: () -> Unit,
 ) {
     Row(
@@ -388,6 +397,15 @@ private fun PlaylistTrackRow(
                         onCollect()
                     },
                 )
+                if (canReplace) {
+                    DropdownMenuItem(
+                        text = { Text("搜索换歌") },
+                        onClick = {
+                            onMenuDismiss()
+                            onReplace()
+                        },
+                    )
+                }
                 if (canRemove) {
                     DropdownMenuItem(
                         text = { Text("移出歌单") },

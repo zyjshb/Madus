@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.4",
+            date = "2026-08-07",
+            added = listOf(
+                "换歌：队列点搜索图标 / 本地歌单 ⋯「搜索换歌」→ 搜索正确结果点一下替换",
+                "若来自本地导入歌单，替换会写回歌单并同步队列",
+            ),
+        ),
+        Entry(
             version = "1.14.3",
             date = "2026-08-07",
             changed = listOf(

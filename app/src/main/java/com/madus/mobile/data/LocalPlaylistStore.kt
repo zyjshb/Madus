@@ -145,6 +145,23 @@ class LocalPlaylistStore(private val context: Context) {
         return true
     }
 
+    /** 用新曲替换歌单里某一首（导入匹配错了时换歌） */
+    suspend fun replaceTrack(playlistId: String, oldTrackId: String, newTrack: Track): Boolean {
+        val all = list().toMutableList()
+        val idx = all.indexOfFirst { it.id == playlistId }
+        if (idx < 0) return false
+        val pl = all[idx]
+        val pos = pl.tracks.indexOfFirst { it.id == oldTrackId }
+        if (pos < 0) return false
+        val tracks = pl.tracks.toMutableList()
+        tracks[pos] = newTrack
+        // 若新 id 在别处重复，去掉其它位置，保留当前位
+        val cleaned = tracks.filterIndexed { i, t -> i == pos || t.id != newTrack.id }
+        all[idx] = pl.copy(tracks = cleaned)
+        save(all)
+        return true
+    }
+
     /** 追加多首（导入歌单）；同 id 跳过 */
     suspend fun addTracks(playlistId: String, tracks: List<Track>): Int {
         if (tracks.isEmpty()) return 0

@@ -42,6 +42,9 @@ fun SearchScreen(
     onPlayTrack: (Track) -> Unit,
     onCollectTrack: (Track) -> Unit = {},
     onOpenAiSearch: (() -> Unit)? = null,
+    /** 换歌模式：顶部提示 + 点结果即替换 */
+    replaceHintTitle: String? = null,
+    onCancelReplace: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val focus = LocalFocusManager.current
@@ -55,8 +58,11 @@ fun SearchScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(text = "搜索", style = MaterialTheme.typography.displayLarge)
-            if (onOpenAiSearch != null) {
+            Text(
+                text = if (replaceHintTitle != null) "换歌" else "搜索",
+                style = MaterialTheme.typography.displayLarge,
+            )
+            if (onOpenAiSearch != null && replaceHintTitle == null) {
                 Text(
                     text = "AI 搜",
                     style = MaterialTheme.typography.labelLarge,
@@ -66,6 +72,44 @@ fun SearchScreen(
                         .clickable(onClick = onOpenAiSearch)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
+            }
+        }
+        if (!replaceHintTitle.isNullOrBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "正在替换",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        replaceHintTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                    )
+                    Text(
+                        "点下面一首正确结果即可换掉",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (onCancelReplace != null) {
+                    Text(
+                        "取消",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier
+                            .clickable(onClick = onCancelReplace)
+                            .padding(8.dp),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(16.dp))

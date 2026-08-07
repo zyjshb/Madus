@@ -86,6 +86,8 @@ fun QueueScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onClear: () -> Unit,
     onRemove: (String) -> Unit,
+    /** 听错了：去搜索换一首（导入歌单常用） */
+    onReplaceTrack: (Track) -> Unit = {},
     onPlayNext: (Track) -> Unit,
     onShuffle: () -> Unit,
     onCycleMode: () -> Unit,
@@ -392,6 +394,7 @@ fun QueueScreen(
                         dragOffsetY = if (isDragging) dragOffsetY else 0f,
                         onClick = { onPlayTrack(track, tracks) },
                         onRemove = if (track.id == currentId) null else ({ onRemove(track.id) }),
+                        onReplace = { onReplaceTrack(track) },
                         onPlayNext = { onPlayNext(track) },
                         modifier = if (canDrag && realIndex >= 0) {
                             Modifier
@@ -464,6 +467,7 @@ private fun QueueTrackRow(
     isCurrent: Boolean,
     onClick: () -> Unit,
     onRemove: (() -> Unit)?,
+    onReplace: (() -> Unit)? = null,
     @Suppress("UNUSED_PARAMETER")
     onPlayNext: (() -> Unit)? = null,
     indexLabel: String = "",
@@ -532,6 +536,19 @@ private fun QueueTrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (onReplace != null) {
+            IconButton(
+                onClick = onReplace,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "搜索换歌",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Icon(
             Icons.Default.DragHandle,

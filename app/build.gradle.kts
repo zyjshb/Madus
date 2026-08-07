@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.3：检查更新页，用户选择是否升级
-        versionCode = 223
-        versionName = "1.14.3"
+        // 1.14.4：队列/歌单搜索换歌
+        versionCode = 224
+        versionName = "1.14.4"
         vectorDrawables.useSupportLibrary = true
     }
 
