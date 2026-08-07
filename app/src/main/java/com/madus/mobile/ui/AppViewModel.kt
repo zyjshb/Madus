@@ -1249,28 +1249,25 @@ class AppViewModel(
      * 整部合集仅在收藏「整部合集」时展开。
      */
     /**
-     * 从队列/歌单发起「换歌」：预填搜索，用户点搜索结果后替换原曲。
+     * 从队列/歌单发起「换歌」：搜索框保持空白，由用户自己输入后搜索，点结果替换原曲。
      * [playlistId] 为空时尝试用当前播放来源 local-*。
      */
     fun beginReplaceTrack(track: Track, playlistId: String? = null) {
         val plId = playlistId
             ?: _playlistDetail.value.playlist?.id?.takeIf { it.startsWith("local-") }
             ?: _recommend.value.sourceId.takeIf { it.startsWith("local-") }
-        val hint = listOf(track.title, track.artist)
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .joinToString(" ")
-            .ifBlank { track.title }
         _trackReplace.value = TrackReplaceUiState(
             active = true,
             oldTrackId = track.id,
             oldTitle = track.title,
             playlistId = plId,
-            queryHint = hint,
+            queryHint = "",
         )
-        onSearchQueryChange(hint)
-        submitSearch()
-        _toast.value = "换歌：搜到正确结果后点一下替换「${track.title.take(16)}」"
+        // 搜索框不预填旧歌名，避免干扰；清空结果
+        _search.update {
+            it.copy(query = "", suggestions = emptyList(), results = emptyList(), message = null, isSearching = false)
+        }
+        _toast.value = "换歌：输入正确歌名搜索，点结果替换「${track.title.take(16)}」"
     }
 
     fun cancelReplaceTrack() {

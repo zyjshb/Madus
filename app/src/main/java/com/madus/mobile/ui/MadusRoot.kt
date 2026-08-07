@@ -475,9 +475,11 @@ fun MadusRoot(
                         onOpenEasterEgg = {
                             nav.navigate(Routes.ABOUT_EASTER_EGG) { launchSingleTop = true }
                         },
-                        onAboutProgress = { remaining ->
+                        onAboutSystemToast = { msg ->
                             scope.launch {
-                                snackbar.showSnackbar("再点 $remaining 次打开彩蛋")
+                                // 短提示，不堆一串长弹窗
+                                snackbar.currentSnackbarData?.dismiss()
+                                snackbar.showSnackbar(msg)
                             }
                         },
                         onToolClick = { key ->

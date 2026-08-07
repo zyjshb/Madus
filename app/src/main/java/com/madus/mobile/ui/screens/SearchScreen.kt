@@ -139,9 +139,10 @@ fun SearchScreen(
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp))
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 decorationBox = { inner ->
-                    if (state.query.isEmpty()) {
+                    // 换歌模式：框内完全空白；普通搜索：轻提示
+                    if (state.query.isEmpty() && replaceHintTitle == null) {
                         Text(
-                            text = "歌名·歌手·UP·BV（中/英/日/韩…）",
+                            text = "歌名·歌手·UP·BV",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

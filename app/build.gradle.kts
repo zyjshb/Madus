@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.12：关于彩蛋小恐龙 + 导入框空白 + 连点降噪
-        versionCode = 232
-        versionName = "1.14.12"
+        // 1.14.13：换歌空搜索框 + 安卓式关于连点 + 涂鸦彩蛋
+        versionCode = 233
+        versionName = "1.14.13"
         vectorDrawables.useSupportLibrary = true
     }
 

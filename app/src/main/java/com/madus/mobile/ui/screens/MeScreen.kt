@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,19 +63,25 @@ fun MeScreen(
     onOpenBiliLogin: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onToolClick: (String) -> Unit = {},
-    /** 连点关于 10 次打开彩蛋 */
+    /** 连点达到次数后打开彩蛋（版本铭牌 + 画板） */
     onOpenEasterEgg: () -> Unit = {},
-    /** 剩余次数提示（仅 7/8/9 次时调用，避免狂弹） */
-    onAboutProgress: (remaining: Int) -> Unit = {},
+    /**
+     * 安卓「版本号」式提示文案，由外层用 Toast/Snackbar 展示。
+     * 已在内部节流：不会每下都弹。
+     */
+    onAboutSystemToast: (message: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val bili = state.sessions.firstOrNull { it.source == MusicSourceType.BILIBILI }
     val loggedInCount = state.sessions.count { it.isLoggedIn }
 
-    // 关于 / 检查更新：防连点刷屏
+    // 仿 Settings → 关于手机 → 版本号：连点 7 次
+    val aboutTapsNeeded = 7
     var aboutTaps by remember { mutableIntStateOf(0) }
+    var aboutUnlocked by remember { mutableStateOf(false) }
     var lastAboutTapAt by remember { mutableLongStateOf(0L) }
     var lastUpdateTapAt by remember { mutableLongStateOf(0L) }
+    var lastAboutToastAt by remember { mutableLongStateOf(0L) }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -243,17 +250,41 @@ fun MeScreen(
                         subtitle = "v${state.appVersion}",
                         onClick = {
                             val now = System.currentTimeMillis()
-                            // 超过 2 秒没点，重新计数（类似系统设置）
-                            if (now - lastAboutTapAt > 2_000L) aboutTaps = 0
+                            // 已解锁后：像安卓「已经是开发者」——偶尔提示一次，不狂弹
+                            if (aboutUnlocked) {
+                                if (now - lastAboutToastAt > 1_500L) {
+                                    lastAboutToastAt = now
+                                    onAboutSystemToast("无需再点击，你已经是开发者了")
+                                }
+                                return@MeNavRow
+                            }
+                            // 超过 1.5s 未点则重新计数（接近系统关于手机的手感）
+                            if (now - lastAboutTapAt > 1_500L) aboutTaps = 0
                             lastAboutTapAt = now
                             aboutTaps += 1
+                            val remaining = aboutTapsNeeded - aboutTaps
                             when {
-                                aboutTaps >= 10 -> {
+                                remaining <= 0 -> {
+                                    aboutUnlocked = true
                                     aboutTaps = 0
+                                    lastAboutToastAt = now
+                                    onAboutSystemToast("你已处于开发者模式")
                                     onOpenEasterEgg()
                                 }
-                                // 只在 7/8/9 次提示剩余，前几下静默，避免一堆弹窗
-                                aboutTaps in 7..9 -> onAboutProgress(10 - aboutTaps)
+                                // 只剩 1～3 次时才提示（安卓也是后半段才出 Toast）
+                                remaining in 1..3 -> {
+                                    if (now - lastAboutToastAt > 400L) {
+                                        lastAboutToastAt = now
+                                        onAboutSystemToast(
+                                            if (remaining == 1) {
+                                                "再点击 1 次即可进入开发者模式"
+                                            } else {
+                                                "还差 $remaining 步即可进入开发者模式"
+                                            },
+                                        )
+                                    }
+                                }
+                                // 前几下完全静默
                             }
                         },
                     )

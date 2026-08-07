@@ -29,15 +29,20 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
-            version = "1.14.12",
+            version = "1.14.13",
             date = "2026-08-07",
             added = listOf(
-                "关于 Madus 连点 10 次：打开线稿风小恐龙彩蛋（点屏跳跃）",
+                "关于 Madus 连点 7 次（仿安卓版本号）：版本铭牌 + 线稿涂鸦画板彩蛋",
             ),
             changed = listOf(
-                "外站导入输入框内不再显示示例文字，方便直接粘贴",
-                "关于 / 检查更新降低连点弹窗与重复进入频率",
+                "换歌搜索框不再预填旧歌名；导入框空白无示例字",
+                "关于连点改为安卓式「还差 N 步 / 已是开发者」提示",
             ),
+        ),
+        Entry(
+            version = "1.14.12",
+            date = "2026-08-07",
+            known = listOf("已由 1.14.13 取代（彩蛋与换歌搜索体验修正）"),
         ),
         Entry(
             version = "1.14.11",
