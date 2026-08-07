@@ -83,6 +83,13 @@ class MadusApp : Application() {
     var appInBackground: Boolean = false
         private set
 
+    /**
+     * 游戏轻量档（设置项）。预取/缓冲等参数会读此标志。
+     */
+    @Volatile
+    var gameLiteMode: Boolean = false
+        private set
+
     /** 设置里「视频模式」：开=看视频，关=听音乐 */
     @Volatile
     /** 默认音乐模式；DataStore 异步读入后会覆盖 */
@@ -125,6 +132,8 @@ class MadusApp : Application() {
                 playerEngine.setSoundFx(s.soundFx)
                 playerEngine.setAutoCache(s.autoCache)
                 playerEngine.setGameMixAudio(s.gameMixAudio)
+                playerEngine.setGameLiteMode(s.gameLiteMode)
+                gameLiteMode = s.gameLiteMode
             }
             playerPrefs.flow.collect { s ->
                 currentQualityQn = s.quality.qn
@@ -132,6 +141,8 @@ class MadusApp : Application() {
                 playerEngine.setSoundFx(s.soundFx)
                 playerEngine.setAutoCache(s.autoCache)
                 playerEngine.setGameMixAudio(s.gameMixAudio)
+                playerEngine.setGameLiteMode(s.gameLiteMode)
+                gameLiteMode = s.gameLiteMode
             }
         }
 

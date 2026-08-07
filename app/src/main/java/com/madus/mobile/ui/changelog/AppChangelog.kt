@@ -29,6 +29,19 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.9",
+            date = "2026-08-07",
+            added = listOf(
+                "播放设置：「游戏轻量」开关（默认关）— 更小缓冲、暂停边听写盘、后台更省",
+            ),
+            changed = listOf(
+                "P2：可切换缓冲策略；不关任何功能，关开关即恢复正常参数",
+            ),
+            known = listOf(
+                "打游戏时建议：继续播放开着 + 需要时再开游戏轻量",
+            ),
+        ),
+        Entry(
             version = "1.14.8",
             date = "2026-08-07",
             changed = listOf(

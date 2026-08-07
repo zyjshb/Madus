@@ -42,6 +42,7 @@ fun PlaybackPrefsScreen(
     onSoundFx: (SoundFx) -> Unit,
     onAutoCache: (Boolean) -> Unit,
     onGameMixAudio: (Boolean) -> Unit = {},
+    onGameLiteMode: (Boolean) -> Unit = {},
     onOpenCacheManager: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -133,6 +134,32 @@ fun PlaybackPrefsScreen(
                     Switch(
                         checked = playerSettings.gameMixAudio,
                         onCheckedChange = onGameMixAudio,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(tokens.cornerMd))
+                        .border(tokens.borderWidth, MaterialTheme.colorScheme.outline, RoundedCornerShape(tokens.cornerMd))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("游戏轻量", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (playerSettings.gameLiteMode) {
+                                "已开启 · 更小缓冲、后台更省（功能全保留）"
+                            } else {
+                                "已关闭 · 正常缓冲与预取"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = playerSettings.gameLiteMode,
+                        onCheckedChange = onGameLiteMode,
                     )
                 }
             }

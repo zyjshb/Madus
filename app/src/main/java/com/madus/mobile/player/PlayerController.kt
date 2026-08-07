@@ -29,6 +29,8 @@ class PlayerController(
 
     fun setGameMixAudio(enabled: Boolean) = engine.setGameMixAudio(enabled)
 
+    fun setGameLiteMode(enabled: Boolean) = engine.setGameLiteMode(enabled)
+
     fun setAppInBackground(inBackground: Boolean) = engine.setAppInBackground(inBackground)
 
     fun setSleepTimerMinutes(minutes: Int) = engine.setSleepTimerMinutes(minutes)

@@ -75,6 +75,11 @@ class PlayerEngine(context: Context) {
      */
     private val gameMixAudio = AtomicBoolean(true)
 
+    /**
+     * 游戏轻量：更小缓冲、暂停边听写盘（设置项仍保留，关轻量后恢复）。
+     */
+    private val gameLiteMode = AtomicBoolean(false)
+
     /** 应用在后台时放慢进度轮询，省 CPU（功能不变）。 */
     private val backgroundMode = AtomicBoolean(false)
 
@@ -84,8 +89,11 @@ class PlayerEngine(context: Context) {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
+    private val loadControl = SwitchingLoadControl(gameLiteMode)
+
     private val switchingDataSourceFactory = DataSource.Factory {
-        if (autoCacheEnabled.get()) {
+        // 游戏轻量时不写边听缓存，省磁盘 IO；用户 autoCache 开关值不变
+        if (autoCacheEnabled.get() && !gameLiteMode.get()) {
             CacheDataSource.Factory()
                 .setCache(StreamCache.get(appContext))
                 .setUpstreamDataSourceFactory(httpFactory)
@@ -116,6 +124,7 @@ class PlayerEngine(context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(appContext)
         .setMediaSourceFactory(mediaSourceFactory)
+        .setLoadControl(loadControl)
         // 默认混音：不 handleAudioFocus，游戏点按钮不会把歌暂停
         .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus = */ false)
         .setHandleAudioBecomingNoisy(true)
@@ -204,9 +213,26 @@ class PlayerEngine(context: Context) {
         }
     }
 
+    /**
+     * 游戏轻量档：更小缓冲 + 暂停边听写盘。
+     * 不关功能；仅参数。
+     */
+    fun setGameLiteMode(enabled: Boolean) {
+        gameLiteMode.set(enabled)
+        // 下一缓冲决策会走 SwitchingLoadControl；不重建播放器
+    }
+
+    fun isGameLiteMode(): Boolean = gameLiteMode.get()
+
     /** 前后台：仅影响进度刷新频率，不改变播放逻辑。 */
     fun setAppInBackground(inBackground: Boolean) {
         backgroundMode.set(inBackground)
+        // 后台时尽量不占「前台」资源位（Media3 可略降后台占用）
+        mainHandler.post {
+            runCatching {
+                player.setForegroundMode(!inBackground && player.isPlaying)
+            }
+        }
     }
 
     /** @param minutes 0 = 取消 */
@@ -439,8 +465,14 @@ class PlayerEngine(context: Context) {
                 if (player.isPlaying || player.playbackState == Player.STATE_BUFFERING) {
                     publishFromPlayer()
                 }
-                // 后台打游戏时降低状态刷新频率，省 CPU/电，UI 不可见时够用
-                delay(if (backgroundMode.get()) 1200L else 400L)
+                // 后台 / 游戏轻量时更慢刷新进度（功能不变）
+                val interval = when {
+                    backgroundMode.get() && gameLiteMode.get() -> 2_000L
+                    backgroundMode.get() -> 1_200L
+                    gameLiteMode.get() -> 700L
+                    else -> 400L
+                }
+                delay(interval)
             }
         }
     }

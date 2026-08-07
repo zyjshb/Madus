@@ -170,7 +170,12 @@ class PlaybackService : MediaSessionService() {
         val playing = st?.isPlaying == true || exo?.isPlaying == true
         val key = "$title|$playing|${st?.isLoading == true}"
         val now = System.currentTimeMillis()
-        val minGap = if (MadusApp.instance.appInBackground) 2_000L else 800L
+        val minGap = when {
+            MadusApp.instance.appInBackground && MadusApp.instance.gameLiteMode -> 3_000L
+            MadusApp.instance.appInBackground -> 2_000L
+            MadusApp.instance.gameLiteMode -> 1_200L
+            else -> 800L
+        }
         if (force) {
             mainHandler.removeCallbacks(throttledRefreshRunnable)
         } else if (key == lastNotifKey && now - lastNotifAtMs < minGap) {

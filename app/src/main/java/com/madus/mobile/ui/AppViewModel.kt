@@ -484,6 +484,18 @@ class AppViewModel(
         }
     }
 
+    fun setGameLiteMode(enabled: Boolean) {
+        viewModelScope.launch {
+            playerPrefs.setGameLiteMode(enabled)
+            player.setGameLiteMode(enabled)
+            _toast.value = if (enabled) {
+                "游戏轻量 · 已开（更小缓冲、后台更省，功能全保留）"
+            } else {
+                "游戏轻量 · 已关（恢复正常缓冲）"
+            }
+        }
+    }
+
     /**
      * 视频模式开关：开=看 B 站视频画面；关=纯音频听歌。
      * 切换后对当前曲重新取流。
@@ -936,7 +948,16 @@ class AppViewModel(
         positionPersistJob = viewModelScope.launch {
             while (isActive) {
                 // 后台拉长间隔，省 IO；前台仍 5s 一次
-                delay(if (MadusApp.instance.appInBackground) 15_000L else 5_000L)
+                val bg = MadusApp.instance.appInBackground
+                val lite = MadusApp.instance.gameLiteMode
+                delay(
+                    when {
+                        bg && lite -> 20_000L
+                        bg -> 15_000L
+                        lite -> 8_000L
+                        else -> 5_000L
+                    },
+                )
                 persistCurrentPosition()
             }
         }
@@ -1175,9 +1196,9 @@ class AppViewModel(
             // 自动续播记忆（上下滑/重进同一条不从零开始）
             playIndex(pendingIndex)
 
-            // 并行预解析后续曲目（前台 2～3 首；后台只预 1 首，省网络/CPU，切歌仍顺）
+            // 并行预解析：前台 3 / 后台 1 / 游戏轻量再压一档（至少保下一首）
             launch {
-                val ahead = if (MadusApp.instance.appInBackground) 1 else 3
+                val ahead = prefetchAheadCount()
                 val from = pendingIndex + 1
                 val to = minOf(pendingIndex + ahead, pendingQueue.size)
                 if (from >= to) return@launch
@@ -1563,11 +1584,22 @@ class AppViewModel(
         schedulePrefetchNextStreams()
     }
 
+    /** 预解析数量：不关功能，只压强度 */
+    private fun prefetchAheadCount(): Int {
+        val bg = MadusApp.instance.appInBackground
+        val lite = MadusApp.instance.gameLiteMode
+        return when {
+            lite && bg -> 1
+            lite -> 1
+            bg -> 1
+            else -> 3
+        }
+    }
+
     /** 后台预解析后续若干首的 playurl，降低熄屏切歌失败率 */
     private fun schedulePrefetchNextStreams() {
         viewModelScope.launch {
-            // 前台多预几首；进其它 App/打游戏时只预下一首
-            val ahead = if (MadusApp.instance.appInBackground) 1 else 3
+            val ahead = prefetchAheadCount()
             val from = pendingIndex + 1
             val to = minOf(pendingIndex + ahead, pendingQueue.size)
             if (from >= to) return@launch
@@ -1704,12 +1736,22 @@ class AppViewModel(
         expandJob?.cancel()
         expandJob = viewModelScope.launch {
             val bg = MadusApp.instance.appInBackground
-            delay(if (bg) 1_200L else 400L)
-            // 后台：队列还剩较多就不刷；真快见底再轻量续几首（不断播）
-            if (MadusApp.instance.appInBackground) {
+            val lite = MadusApp.instance.gameLiteMode
+            delay(
+                when {
+                    bg && lite -> 2_000L
+                    bg -> 1_200L
+                    lite -> 800L
+                    else -> 400L
+                },
+            )
+            // 后台/轻量：队列还剩较多就不刷；见底再轻量续几首（不断播）
+            if (bg || lite) {
                 val remain = pendingQueue.size - pendingIndex - 1
-                if (remain > 2) return@launch
-                runCatching { ensureInfiniteFeed(force = false, minAdd = 5) }
+                val threshold = if (lite && bg) 1 else 2
+                if (remain > threshold) return@launch
+                val minAdd = if (lite) 3 else 5
+                runCatching { ensureInfiniteFeed(force = false, minAdd = minAdd) }
             } else {
                 runCatching { ensureInfiniteFeed() }
             }

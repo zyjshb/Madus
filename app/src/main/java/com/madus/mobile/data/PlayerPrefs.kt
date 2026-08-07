@@ -83,6 +83,11 @@ data class PlayerSettings(
      * 其它音乐 App 长期占用时仍可能被系统打断。
      */
     val gameMixAudio: Boolean = true,
+    /**
+     * 游戏轻量档（P2）：只调缓冲/缓存/后台预取强度，**不关任何功能**。
+     * 开：更小缓冲、暂停边听写盘、后台更省；关：恢复正常参数。
+     */
+    val gameLiteMode: Boolean = false,
 )
 
 class PlayerPrefs(private val context: Context) {
@@ -93,6 +98,7 @@ class PlayerPrefs(private val context: Context) {
     private val keyGuideSeen = booleanPreferencesKey("short_video_guide_seen_v1")
     private val keyGestureMode = stringPreferencesKey("video_gesture_mode")
     private val keyGameMixAudio = booleanPreferencesKey("game_mix_audio")
+    private val keyGameLiteMode = booleanPreferencesKey("game_lite_mode")
     /** 各操作模式是否看过专属指引（按 mode.id 存） */
     private fun guideModeKey(mode: VideoGestureMode) =
         booleanPreferencesKey("short_video_guide_${mode.id}_v2")
@@ -108,6 +114,8 @@ class PlayerPrefs(private val context: Context) {
             gestureMode = VideoGestureMode.fromId(prefs[keyGestureMode]),
             // 默认开：打游戏点按钮不会把歌掐掉
             gameMixAudio = prefs[keyGameMixAudio] ?: true,
+            // 默认关：需要时用户再开「游戏轻量」
+            gameLiteMode = prefs[keyGameLiteMode] ?: false,
         )
     }
 
@@ -143,6 +151,10 @@ class PlayerPrefs(private val context: Context) {
 
     suspend fun setGameMixAudio(enabled: Boolean) {
         context.playerPrefsStore.edit { it[keyGameMixAudio] = enabled }
+    }
+
+    suspend fun setGameLiteMode(enabled: Boolean) {
+        context.playerPrefsStore.edit { it[keyGameLiteMode] = enabled }
     }
 
     suspend fun setVideoMode(enabled: Boolean) {
