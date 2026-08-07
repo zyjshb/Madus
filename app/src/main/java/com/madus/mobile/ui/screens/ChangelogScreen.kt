@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,7 +79,8 @@ fun ChangelogScreen(
         ) {
             item {
                 Text(
-                    text = "每一次正式更新的改动说明。连点「检查更新」3 次可打开本页。",
+                    text = "按「新增 / 变更 / 修复」分类（Keep a Changelog）。\n" +
+                        "打开方式：我的 → 检查更新 → 连点 3 次。",
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 4.dp),
@@ -135,30 +135,47 @@ fun ChangelogScreen(
                             color = colors.primary,
                         )
                     }
-                    Spacer(Modifier.height(10.dp))
-                    entry.highlights.forEach { line ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 3.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Text(
-                                text = "·",
-                                color = colors.onSurfaceVariant,
-                                modifier = Modifier.padding(end = 8.dp, top = 1.dp),
-                            )
-                            Text(
-                                text = line,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.onBackground.copy(alpha = 0.92f),
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
+                    ChangelogSection("新增", entry.added)
+                    ChangelogSection("变更", entry.changed)
+                    ChangelogSection("修复", entry.fixed)
+                    ChangelogSection("已知问题", entry.known)
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun ChangelogSection(title: String, lines: List<String>) {
+    if (lines.isEmpty()) return
+    val colors = MaterialTheme.colorScheme
+    Spacer(Modifier.height(10.dp))
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = colors.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(4.dp))
+    lines.forEach { line ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 3.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                text = "·",
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp, top = 1.dp),
+            )
+            Text(
+                text = line,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onBackground.copy(alpha = 0.92f),
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

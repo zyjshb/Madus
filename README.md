@@ -13,6 +13,7 @@ B 站音源 · 电台心智 · 端侧 AI 搜歌
 [![GitHub release](https://img.shields.io/github/v/release/zyjshb/Madus?color=black&label=Stable&logo=github)](https://github.com/zyjshb/Madus/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/zyjshb/Madus/total?label=Downloads&logo=github)](https://github.com/zyjshb/Madus/releases)
 [![License](https://img.shields.io/github/license/zyjshb/Madus?color=blue)](LICENSE)
+[![Changelog](https://img.shields.io/badge/Changelog-Keep%20a%20Changelog-lightgrey)](CHANGELOG.md)
 [![API](https://img.shields.io/badge/API-26%2B-brightgreen?logo=android)](https://android-arsenal.com/api?level=26)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.x-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-UI-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
