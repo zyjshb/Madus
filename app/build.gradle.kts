@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.30：去掉歌单进页长延迟，二次打开用缓存
-        versionCode = 250
-        versionName = "1.14.30"
+        // 1.14.31：0.3s 只挡误触播放；导航减负更跟手
+        versionCode = 251
+        versionName = "1.14.31"
         vectorDrawables.useSupportLibrary = true
     }
 

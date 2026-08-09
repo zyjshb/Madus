@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,7 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.PlaylistDetailUiState
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.LineButton
+import kotlinx.coroutines.delay
 
 /**
  * 汽水/Spotify：整页一个 LazyColumn，封面 header 跟着滚；仅顶栏钉死。
@@ -84,6 +86,13 @@ fun PlaylistDetailScreen(
     }
     var headerMenu by remember { mutableStateOf(false) }
     var trackMenuId by remember { mutableStateOf<String?>(null) }
+    // 只锁「播放」约 0.3s：挡退出后连点；返回/滑动不锁
+    var playArmed by remember(state.openGeneration) { mutableStateOf(false) }
+    LaunchedEffect(state.openGeneration) {
+        playArmed = false
+        delay(300)
+        playArmed = true
+    }
 
     // 系统返回与顶栏返回一致
     BackHandler {
@@ -239,8 +248,11 @@ fun PlaylistDetailScreen(
                             if (state.tracks.isNotEmpty()) {
                                 LineButton(
                                     text = "播放全部",
-                                    onClick = onPlayAll,
+                                    onClick = {
+                                        if (playArmed) onPlayAll()
+                                    },
                                     filled = true,
+                                    enabled = playArmed && !state.isLoading,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -257,7 +269,9 @@ fun PlaylistDetailScreen(
                             menuOpen = trackMenuId == track.id,
                             onMenuOpen = { trackMenuId = track.id },
                             onMenuDismiss = { trackMenuId = null },
-                            onClick = { onPlayTrack(track, state.tracks) },
+                            onClick = {
+                                if (playArmed) onPlayTrack(track, state.tracks)
+                            },
                             onCollect = { onCollectTrack(track) },
                             onOpenUp = { onOpenUp(track) },
                             onReplace = {

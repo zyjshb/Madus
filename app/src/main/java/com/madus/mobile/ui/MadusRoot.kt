@@ -193,37 +193,18 @@ fun MadusRoot(
     } else null
 
     /**
-     * 打开歌单详情栈：
-     * - 绝不能叠在 recommend 上面（否则返回会「掉进播放台」）
-     * - 只 navigate 到 playlist，与播放链路完全断开
+     * 打开歌单详情：轻量进栈，少做 pop/跳转，退出后再点不卡手。
+     * 仍避免叠在 recommend 上。
      */
     fun navigateToPlaylistScreen() {
         val cur = nav.currentBackStackEntry?.destination?.route
-        // 若当前在推荐台，先回到首页再进歌单，避免 Home→Recommend→Playlist
+        if (cur == Routes.PLAYLIST) {
+            // 已在详情：openPlaylist 已刷新数据
+            return
+        }
         if (cur == RootTab.Recommend.route) {
-            nav.navigate(RootTab.Home.route) {
-                popUpTo(nav.graph.findStartDestination().id) {
-                    saveState = true
-                }
-                launchSingleTop = true
-                restoreState = false
-            }
-        }
-        // 清掉已有 playlist，再压一层干净的
-        var guard = 0
-        while (
-            guard++ < 6 &&
-            nav.currentBackStackEntry?.destination?.route == Routes.PLAYLIST
-        ) {
-            if (!nav.popBackStack()) break
-        }
-        // 若弹完落到 recommend，再回首页
-        if (nav.currentBackStackEntry?.destination?.route == RootTab.Recommend.route) {
-            nav.navigate(RootTab.Home.route) {
-                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                launchSingleTop = true
-                restoreState = false
-            }
+            // 轻量：弹回首页再进歌单，避免叠在播放台上
+            nav.popBackStack(RootTab.Home.route, inclusive = false)
         }
         nav.navigate(Routes.PLAYLIST) {
             launchSingleTop = true
@@ -231,29 +212,21 @@ fun MadusRoot(
         }
     }
 
-    /** 打开歌单详情：只浏览，不开播、不跳推荐 */
+    /** 打开歌单详情：只浏览；极短保护防连点误触播放 */
     fun openPlaylistScreen(pl: com.madus.mobile.domain.Playlist) {
         vm.openPlaylist(pl)
         navigateToPlaylistScreen()
     }
 
-    /** 离开歌单详情：回到列表页；若栈下是推荐台则改回首页（避免「关掉歌单却进播放」） */
+    /** 离开歌单详情：一发 pop，尽量干脆 */
     fun leavePlaylistScreen() {
-        var guard = 0
-        while (
-            guard++ < 8 &&
-            nav.currentBackStackEntry?.destination?.route == Routes.PLAYLIST
-        ) {
-            if (!nav.popBackStack()) break
+        if (nav.currentBackStackEntry?.destination?.route == Routes.PLAYLIST) {
+            nav.popBackStack()
         }
         vm.cancelPlaylistLoad()
-        val after = nav.currentBackStackEntry?.destination?.route
-        if (after == RootTab.Recommend.route) {
-            nav.navigate(RootTab.Home.route) {
-                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                launchSingleTop = true
-                restoreState = false
-            }
+        // 若下面是推荐台，弹回首页（避免「关歌单却进播放」）
+        if (nav.currentBackStackEntry?.destination?.route == RootTab.Recommend.route) {
+            nav.popBackStack(RootTab.Home.route, inclusive = false)
         }
     }
 
@@ -776,14 +749,14 @@ fun MadusRoot(
                         },
                         onBack = { leavePlaylistScreen() },
                         onPlayTrack = { track, queue ->
-                            // 歌单页内开播，不跳推荐台；点迷你条再进完整台面
-                            vm.markExplicitPlaylistPlay()
+                            // 进页约 0.3s 内忽略（挡退出后连点）；过后再点立刻播
+                            if (!vm.markExplicitPlaylistPlay()) return@PlaylistDetailScreen
                             vm.playFromPlaylistDetail(track, queue)
                         },
                         onPlayAll = {
                             val tracks = playlistDetail.tracks
                             if (tracks.isEmpty()) return@PlaylistDetailScreen
-                            vm.markExplicitPlaylistPlay()
+                            if (!vm.markExplicitPlaylistPlay()) return@PlaylistDetailScreen
                             vm.playFromPlaylistDetail(startTrack = null, pageTracks = tracks)
                         },
                         onRename = { name ->

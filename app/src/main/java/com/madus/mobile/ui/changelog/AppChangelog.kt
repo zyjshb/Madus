@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.31",
+            date = "2026-08-10",
+            fixed = listOf(
+                "退出后连点不再误触「播放全部」：仅约 0.3 秒挡播放，滑动返回不卡",
+                "退出再进歌单导航更轻，减少卡手感",
+            ),
+        ),
+        Entry(
             version = "1.14.30",
             date = "2026-08-10",
             fixed = listOf(

@@ -3092,11 +3092,12 @@ class AppViewModel(
         playlistPlayJob = null
         playlistExplicitPlayToken = 0L
         val seq = ++playlistOpenSeq
-        // 导航已与播放台拆开，不再用长门闩（否则点播放要等 1s+ 像卡死）
-        playlistPlayUnlockAtMs = 0L
+        val now = android.os.SystemClock.elapsedRealtime()
+        // 仅挡「退出后连点落到播放全部」：约 0.3s，不挡滑动/返回
+        playlistPlayUnlockAtMs = now + 300L
         blockRecommendNavUntilMs = 0L
         val prev = _playlistDetail.value
-        // 同一歌单再进：立刻展示缓存列表，后台静默刷新，避免「加载中…」闪一下
+        // 同一歌单再进：立刻展示缓存列表，后台静默刷新
         val reuse = prev.playlist?.id == playlist.id &&
             prev.tracks.isNotEmpty() &&
             !prev.isLoading
@@ -3105,7 +3106,9 @@ class AppViewModel(
                 playlist = playlist.copy(
                     title = playlist.title.ifBlank { prev.playlist?.title.orEmpty() },
                     coverUrl = playlist.coverUrl ?: prev.playlist?.coverUrl,
-                    trackCount = playlist.trackCount.takeIf { it > 0 } ?: prev.playlist?.trackCount ?: prev.tracks.size,
+                    trackCount = playlist.trackCount.takeIf { it > 0 }
+                        ?: prev.playlist?.trackCount
+                        ?: prev.tracks.size,
                 ),
                 isLoading = false,
                 openGeneration = seq,
@@ -3245,10 +3248,14 @@ class AppViewModel(
         }
     }
 
-    fun canPlayFromPlaylistDetail(): Boolean = true
+    /** 进页后极短保护期：挡连点误触播放，不挡浏览 */
+    fun canPlayFromPlaylistDetail(): Boolean {
+        return android.os.SystemClock.elapsedRealtime() >= playlistPlayUnlockAtMs
+    }
 
     /** 用户在详情里点了「播放全部 / 某首歌」 */
     fun markExplicitPlaylistPlay(): Boolean {
+        if (!canPlayFromPlaylistDetail()) return false
         playlistExplicitPlayToken = android.os.SystemClock.elapsedRealtime()
         return true
     }
@@ -3784,6 +3791,7 @@ class AppViewModel(
         startTrack: Track?,
         pageTracks: List<Track>,
     ) {
+        if (!canPlayFromPlaylistDetail()) return
         // 取消上一次未完成的详情播放
         playlistPlayJob?.cancel()
         val openGen = playlistOpenSeq
