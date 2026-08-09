@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.PlaylistDetailUiState
 import com.madus.mobile.ui.components.CoverArt
@@ -86,12 +87,12 @@ fun PlaylistDetailScreen(
     }
     var headerMenu by remember { mutableStateOf(false) }
     var trackMenuId by remember { mutableStateOf<String?>(null) }
-    // 从列表点进来的同一记点击，可能落到「播放全部」/首曲上；进入后短暂吞掉播放手势
-    var playGesturesEnabled by remember(state.playlist?.id) { mutableStateOf(false) }
-    LaunchedEffect(state.playlist?.id, state.isLoading) {
+    // 按 openGeneration 重置：每次重新打开都先锁播放，与 VM 门闩一致
+    var playGesturesEnabled by remember(state.openGeneration) { mutableStateOf(false) }
+    LaunchedEffect(state.openGeneration, state.isLoading) {
         playGesturesEnabled = false
-        if (!state.isLoading) {
-            delay(350)
+        if (!state.isLoading && state.openGeneration > 0) {
+            delay(650)
             playGesturesEnabled = true
         }
     }
@@ -114,7 +115,8 @@ fun PlaylistDetailScreen(
 
     val hasManage = canRename || canChangeCover || canDeletePlaylist || canCleanInvalid
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         // 仅顶栏钉死
         Row(
             modifier = Modifier
@@ -254,6 +256,7 @@ fun PlaylistDetailScreen(
                                         if (playGesturesEnabled) onPlayAll()
                                     },
                                     filled = true,
+                                    enabled = playGesturesEnabled,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -327,6 +330,21 @@ fun PlaylistDetailScreen(
             }
         }
     }
+
+    // 进页后短暂吞掉全部点击，避免点封面进详情时落到「播放全部」
+    if (!playGesturesEnabled) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(8f)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    onClick = { /* 吞掉 */ },
+                ),
+        )
+    }
+    } // outer Box
 
     if (showRename) {
         AlertDialog(

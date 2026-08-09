@@ -228,6 +228,8 @@ data class PlaylistDetailUiState(
     val hasMore: Boolean = false,
     val total: Int = 0,
     val error: String? = null,
+    /** 每次 openPlaylist 递增；用于进页后屏蔽误触发的播放 */
+    val openGeneration: Int = 0,
 )
 
 data class UpSpaceUiState(
@@ -314,6 +316,9 @@ class AppViewModel(
     /** 串行化打开/关闭，避免二次进入被旧协程写空 */
     private var playlistOpenJob: Job? = null
     private var playlistOpenSeq: Int = 0
+    /** 打开详情后短时间内禁止「播放全部/点曲」真正开播（防二次进页误走播放链路） */
+    private var playlistPlayUnlockAtMs: Long = 0L
+    private var playlistPlayJob: Job? = null
 
     /** In-memory recent (mirrors RecentStore, newest last for push, UI reverses). */
     private val sessionRecent = mutableListOf<Track>()
@@ -3074,12 +3079,19 @@ class AppViewModel(
     }
 
     fun openPlaylist(playlist: Playlist) {
-        // 取消上一次加载，防止退出/再进时旧协程把列表写空
+        // 取消上一次加载 / 未完成的「从详情播放」，防止二次进入时旧任务突然开播
         playlistOpenJob?.cancel()
+        playlistPlayJob?.cancel()
+        playlistPlayJob = null
         val seq = ++playlistOpenSeq
+        // 进详情只浏览：约 700ms 内不允许真正开播/跳推荐
+        playlistPlayUnlockAtMs = android.os.SystemClock.elapsedRealtime() + 700L
         // 必须同步进入 loading：navigate 往往在同一帧执行。
-        // 若仍显示上一次的完整列表，「播放全部」会接住同一记点击 → 误跳推荐并开播。
-        _playlistDetail.value = PlaylistDetailUiState(playlist = playlist, isLoading = true)
+        _playlistDetail.value = PlaylistDetailUiState(
+            playlist = playlist,
+            isLoading = true,
+            openGeneration = seq,
+        )
         playlistOpenJob = viewModelScope.launch {
             val isBiliFav = !playlist.id.startsWith("local-") &&
                 playlist.id != "recent" &&
@@ -3101,6 +3113,7 @@ class AppViewModel(
                         playlist = playlist,
                         isLoading = false,
                         error = it.message ?: "加载失败",
+                        openGeneration = seq,
                     )
                     return@launch
                 }
@@ -3123,6 +3136,7 @@ class AppViewModel(
                     hasMore = page.hasMore,
                     total = page.total,
                     error = if (page.tracks.isEmpty()) "歌单为空" else null,
+                    openGeneration = seq,
                 )
                 // 回写首页/曲库列表封面（空白时补上）
                 if (!remoteCover.isNullOrBlank()) {
@@ -3164,6 +3178,7 @@ class AppViewModel(
                             playlist = playlist,
                             isLoading = false,
                             error = e.message ?: "加载失败",
+                            openGeneration = seq,
                         )
                         return@launch
                     }
@@ -3192,6 +3207,7 @@ class AppViewModel(
                 page = 1,
                 hasMore = false,
                 total = tracks.size,
+                openGeneration = seq,
                 error = if (tracks.isEmpty()) {
                     when (playlist.id) {
                         LikedStore.LIKED_ID -> "还没有喜欢的歌，点 ♡ 加入"
@@ -3201,6 +3217,14 @@ class AppViewModel(
                 } else null,
             )
         }
+    }
+
+    /**
+     * 用户是否被允许从歌单详情真正开播。
+     * 打开详情后短窗口内一律 false，避免「点封面进详情」被当成播放。
+     */
+    fun canPlayFromPlaylistDetail(): Boolean {
+        return android.os.SystemClock.elapsedRealtime() >= playlistPlayUnlockAtMs
     }
 
     /** 收藏夹「小说式」翻页：替换当前页，不追加 */
@@ -3570,7 +3594,11 @@ class AppViewModel(
     fun cancelPlaylistLoad() {
         playlistOpenJob?.cancel()
         playlistOpenJob = null
+        playlistPlayJob?.cancel()
+        playlistPlayJob = null
         playlistOpenSeq++
+        // 离开详情后更长时间禁止「迟到」的播放
+        playlistPlayUnlockAtMs = android.os.SystemClock.elapsedRealtime() + 500L
     }
 
     /** 真正丢掉详情（换页后或显式需要清空时） */
@@ -3723,9 +3751,21 @@ class AppViewModel(
      *
      * @param startTrack 起播曲；null 表示播放全部（从列表第一首）
      * @param pageTracks 当前页/详情里看到的列表（本地歌单即全量）
+     * @param onStarted 真正开始入队播放后回调（用于再跳推荐台）；被门闩拦截时不调用
      */
-    fun playFromPlaylistDetail(startTrack: Track?, pageTracks: List<Track>) {
-        viewModelScope.launch {
+    fun playFromPlaylistDetail(
+        startTrack: Track?,
+        pageTracks: List<Track>,
+        onStarted: (() -> Unit)? = null,
+    ) {
+        if (!canPlayFromPlaylistDetail()) {
+            android.util.Log.w("AppViewModel", "block playlist play: still in browse lock")
+            return
+        }
+        // 取消上一次未完成的详情播放，避免二次进页时旧任务晚到突然开播
+        playlistPlayJob?.cancel()
+        val openGen = playlistOpenSeq
+        playlistPlayJob = viewModelScope.launch {
             val pl = _playlistDetail.value.playlist
             val label = pl?.title?.ifBlank { "歌单" } ?: "歌单"
             val sourceId = pl?.id?.ifBlank { "playlist" } ?: "playlist"
@@ -3774,6 +3814,8 @@ class AppViewModel(
                 }
             }
 
+            if (openGen != playlistOpenSeq) return@launch
+
             // 播放跳过失效稿，避免点播卡住
             val finalTracks = tracks.filter {
                 it.bvid.isNotBlank() &&
@@ -3800,6 +3842,8 @@ class AppViewModel(
                 }
             } ?: finalTracks.first()
 
+            if (openGen != playlistOpenSeq) return@launch
+
             playTrack(
                 track = start,
                 queue = finalTracks,
@@ -3810,6 +3854,10 @@ class AppViewModel(
             )
             if (isBiliFav && finalTracks.size > pageTracks.size) {
                 _toast.value = "已加载全部 ${finalTracks.size} 首 · 顺序循环"
+            }
+            // 仅在仍是同一次打开时跳推荐台
+            if (openGen == playlistOpenSeq) {
+                onStarted?.invoke()
             }
         }
     }

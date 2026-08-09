@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.27",
+            date = "2026-08-10",
+            fixed = listOf(
+                "第二次点歌单封面只进详情，不再自动跳推荐并开播",
+            ),
+        ),
+        Entry(
             version = "1.14.26",
             date = "2026-08-10",
             fixed = listOf(

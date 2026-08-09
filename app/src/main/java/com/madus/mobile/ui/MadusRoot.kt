@@ -189,18 +189,24 @@ fun MadusRoot(
         "${m}:${s.toString().padStart(2, '0')}"
     } else null
 
-    /** 只负责进栈：保证 playlist 路由至多一层 */
+    /** 只负责进栈：保证 playlist 路由至多一层，绝不顺带进推荐 */
     fun navigateToPlaylistScreen() {
-        if (nav.currentBackStackEntry?.destination?.route == Routes.PLAYLIST) return
-        runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+        val cur = nav.currentBackStackEntry?.destination?.route
+        if (cur == Routes.PLAYLIST) return
+        // 不要 popUpTo 其它页；只清掉残留 playlist 再压一层
+        if (cur != null) {
+            runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+        }
         nav.navigate(Routes.PLAYLIST) {
             launchSingleTop = true
+            // 禁止 restore 到「上次从歌单点播放后的推荐态」
+            restoreState = false
         }
     }
 
-    /** 打开歌单详情：先同步 loading 再进栈，避免旧列表接住点击误播 */
+    /** 打开歌单详情：只浏览列表，不会开播、不会跳推荐 */
     fun openPlaylistScreen(pl: com.madus.mobile.domain.Playlist) {
-        // openPlaylist 内同步置 loading；必须在 navigate 之前调用
+        // openPlaylist 同步 loading + 播放门闩；必须在 navigate 之前
         vm.openPlaylist(pl)
         navigateToPlaylistScreen()
     }
@@ -745,15 +751,21 @@ fun MadusRoot(
                         },
                         onBack = { leavePlaylistScreen() },
                         onPlayTrack = { track, queue ->
+                            // 仅用户明确点曲；门闩拦截时不跳推荐
+                            if (!vm.canPlayFromPlaylistDetail()) return@PlaylistDetailScreen
                             // B 站收藏夹详情只有当前页 40 首：内部拉全量再入队并循环
-                            vm.playFromPlaylistDetail(track, queue)
-                            openRecommendPlayer()
+                            vm.playFromPlaylistDetail(track, queue) {
+                                openRecommendPlayer()
+                            }
                         },
                         onPlayAll = {
+                            if (!vm.canPlayFromPlaylistDetail()) return@PlaylistDetailScreen
                             val tracks = playlistDetail.tracks
                             if (tracks.isEmpty()) return@PlaylistDetailScreen
-                            vm.playFromPlaylistDetail(startTrack = null, pageTracks = tracks)
-                            openRecommendPlayer()
+                            // 真正开播成功后再进推荐台，避免「只进详情」被带着跳推荐
+                            vm.playFromPlaylistDetail(startTrack = null, pageTracks = tracks) {
+                                openRecommendPlayer()
+                            }
                         },
                         onRename = { name ->
                             val pid = pl?.id ?: return@PlaylistDetailScreen

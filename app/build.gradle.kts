@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.26：二次进歌单误触播放跳推荐
-        versionCode = 246
-        versionName = "1.14.26"
+        // 1.14.27：二次点封面只进详情、不开播
+        versionCode = 247
+        versionName = "1.14.27"
         vectorDrawables.useSupportLibrary = true
     }
 
