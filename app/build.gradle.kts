@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.28：歌单显式播放令牌，打开封面禁止跳推荐台
-        versionCode = 248
-        versionName = "1.14.28"
+        // 1.14.29：歌单不叠推荐栈；详情内播放不跳台
+        versionCode = 249
+        versionName = "1.14.29"
         vectorDrawables.useSupportLibrary = true
     }
 
