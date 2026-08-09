@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.27：二次点封面只进详情、不开播
-        versionCode = 247
-        versionName = "1.14.27"
+        // 1.14.28：歌单显式播放令牌，打开封面禁止跳推荐台
+        versionCode = 248
+        versionName = "1.14.28"
         vectorDrawables.useSupportLibrary = true
     }
 

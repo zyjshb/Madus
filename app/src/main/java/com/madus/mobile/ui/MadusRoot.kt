@@ -192,21 +192,27 @@ fun MadusRoot(
     /** 只负责进栈：保证 playlist 路由至多一层，绝不顺带进推荐 */
     fun navigateToPlaylistScreen() {
         val cur = nav.currentBackStackEntry?.destination?.route
-        if (cur == Routes.PLAYLIST) return
-        // 不要 popUpTo 其它页；只清掉残留 playlist 再压一层
-        if (cur != null) {
-            runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+        if (cur == Routes.PLAYLIST) {
+            // 已在详情：只刷新数据，禁止再 navigate 以免和推荐栈搅在一起
+            return
+        }
+        // 若栈上残留 playlist，先弹掉（不要误 pop 到 recommend）
+        var guard = 0
+        while (
+            guard++ < 4 &&
+            nav.currentBackStackEntry?.destination?.route == Routes.PLAYLIST
+        ) {
+            if (!nav.popBackStack()) break
         }
         nav.navigate(Routes.PLAYLIST) {
             launchSingleTop = true
-            // 禁止 restore 到「上次从歌单点播放后的推荐态」
             restoreState = false
         }
     }
 
     /** 打开歌单详情：只浏览列表，不会开播、不会跳推荐 */
     fun openPlaylistScreen(pl: com.madus.mobile.domain.Playlist) {
-        // openPlaylist 同步 loading + 播放门闩；必须在 navigate 之前
+        // 必须先 openPlaylist（同步 loading + 禁止跳推荐），再 navigate
         vm.openPlaylist(pl)
         navigateToPlaylistScreen()
     }
@@ -220,14 +226,19 @@ fun MadusRoot(
         ) {
             if (!nav.popBackStack()) break
         }
-        // 停掉加载协程即可；详情数据留给动画最后一帧，下次 open 会覆盖
         vm.cancelPlaylistLoad()
     }
 
-    /** 跳到推荐页电台台面（共用：点歌 / 搜索插播） */
-    fun openRecommendPlayer() {
-        // 弹出歌单栈：否则 popUpTo+saveState 会把「主页→歌单」存起来，
-        // 再点主页 restore 后仍停在歌单里。
+    /**
+     * 跳到推荐页电台台面。
+     * @param fromPlaylistPlay true=从歌单详情点播放；须已 markExplicitPlaylistPlay
+     */
+    fun openRecommendPlayer(fromPlaylistPlay: Boolean = false) {
+        if (fromPlaylistPlay && !vm.allowRecommendNavFromPlaylistPlay()) {
+            // 打开封面进详情时绝不能进这里
+            return
+        }
+        // 弹出歌单栈：否则 popUpTo+saveState 会把「主页→歌单」存起来
         runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
         vm.cancelPlaylistLoad()
         nav.navigate(RootTab.Recommend.route) {
@@ -235,7 +246,8 @@ fun MadusRoot(
                 saveState = true
             }
             launchSingleTop = true
-            restoreState = true
+            // 从歌单播放进台面时不要 restore 旧推荐栈
+            restoreState = !fromPlaylistPlay
         }
     }
 
@@ -751,21 +763,18 @@ fun MadusRoot(
                         },
                         onBack = { leavePlaylistScreen() },
                         onPlayTrack = { track, queue ->
-                            // 仅用户明确点曲；门闩拦截时不跳推荐
-                            if (!vm.canPlayFromPlaylistDetail()) return@PlaylistDetailScreen
-                            // B 站收藏夹详情只有当前页 40 首：内部拉全量再入队并循环
-                            vm.playFromPlaylistDetail(track, queue) {
-                                openRecommendPlayer()
-                            }
+                            // 必须在 onClick 同步路径签发令牌；失败=浏览保护期，忽略
+                            if (!vm.markExplicitPlaylistPlay()) return@PlaylistDetailScreen
+                            vm.playFromPlaylistDetail(track, queue)
+                            // 同步跳推荐台（持令牌）；禁止丢到异步回调里
+                            openRecommendPlayer(fromPlaylistPlay = true)
                         },
                         onPlayAll = {
-                            if (!vm.canPlayFromPlaylistDetail()) return@PlaylistDetailScreen
                             val tracks = playlistDetail.tracks
                             if (tracks.isEmpty()) return@PlaylistDetailScreen
-                            // 真正开播成功后再进推荐台，避免「只进详情」被带着跳推荐
-                            vm.playFromPlaylistDetail(startTrack = null, pageTracks = tracks) {
-                                openRecommendPlayer()
-                            }
+                            if (!vm.markExplicitPlaylistPlay()) return@PlaylistDetailScreen
+                            vm.playFromPlaylistDetail(startTrack = null, pageTracks = tracks)
+                            openRecommendPlayer(fromPlaylistPlay = true)
                         },
                         onRename = { name ->
                             val pid = pl?.id ?: return@PlaylistDetailScreen

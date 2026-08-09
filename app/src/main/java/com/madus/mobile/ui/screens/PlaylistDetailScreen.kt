@@ -87,12 +87,12 @@ fun PlaylistDetailScreen(
     }
     var headerMenu by remember { mutableStateOf(false) }
     var trackMenuId by remember { mutableStateOf<String?>(null) }
-    // 按 openGeneration 重置：每次重新打开都先锁播放，与 VM 门闩一致
+    // 按 openGeneration 重置：每次重新打开都先锁播放（与 VM 1.2s 门闩对齐）
     var playGesturesEnabled by remember(state.openGeneration) { mutableStateOf(false) }
     LaunchedEffect(state.openGeneration, state.isLoading) {
         playGesturesEnabled = false
         if (!state.isLoading && state.openGeneration > 0) {
-            delay(650)
+            delay(1_200)
             playGesturesEnabled = true
         }
     }
