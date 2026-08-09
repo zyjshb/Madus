@@ -776,14 +776,14 @@ fun MadusRoot(
                         },
                         onBack = { leavePlaylistScreen() },
                         onPlayTrack = { track, queue ->
-                            // 在歌单页内开播，不跳推荐台（避免二次进封面被当成播放）
-                            if (!vm.markExplicitPlaylistPlay()) return@PlaylistDetailScreen
+                            // 歌单页内开播，不跳推荐台；点迷你条再进完整台面
+                            vm.markExplicitPlaylistPlay()
                             vm.playFromPlaylistDetail(track, queue)
                         },
                         onPlayAll = {
                             val tracks = playlistDetail.tracks
                             if (tracks.isEmpty()) return@PlaylistDetailScreen
-                            if (!vm.markExplicitPlaylistPlay()) return@PlaylistDetailScreen
+                            vm.markExplicitPlaylistPlay()
                             vm.playFromPlaylistDetail(startTrack = null, pageTracks = tracks)
                         },
                         onRename = { name ->

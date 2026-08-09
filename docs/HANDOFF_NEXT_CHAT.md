@@ -2,8 +2,8 @@
 
 **日期：** 2026-08-10  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.29` / versionCode `249`  
-**正式包：** `and/apk/Madus-1.14.29.apk`  
+**当前版本：** `1.14.30` / versionCode `250`  
+**正式包：** `and/apk/Madus-1.14.30.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
 

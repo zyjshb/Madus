@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.29：歌单不叠推荐栈；详情内播放不跳台
-        versionCode = 249
-        versionName = "1.14.29"
+        // 1.14.30：去掉歌单进页长延迟，二次打开用缓存
+        versionCode = 250
+        versionName = "1.14.30"
         vectorDrawables.useSupportLibrary = true
     }
 

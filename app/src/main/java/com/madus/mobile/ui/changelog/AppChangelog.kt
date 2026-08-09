@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.30",
+            date = "2026-08-10",
+            fixed = listOf(
+                "去掉进歌单 1 秒多锁操作，打开和点播放更跟手",
+                "同一歌单再进直接出缓存列表，不再先闪加载中",
+            ),
+        ),
+        Entry(
             version = "1.14.29",
             date = "2026-08-10",
             fixed = listOf(

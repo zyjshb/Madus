@@ -3086,24 +3086,38 @@ class AppViewModel(
     }
 
     fun openPlaylist(playlist: Playlist) {
-        // 取消上一次加载 / 未完成的「从详情播放」，防止二次进入时旧任务突然开播
+        // 取消上一次加载 / 未完成的「从详情播放」
         playlistOpenJob?.cancel()
         playlistPlayJob?.cancel()
         playlistPlayJob = null
         playlistExplicitPlayToken = 0L
         val seq = ++playlistOpenSeq
-        val now = android.os.SystemClock.elapsedRealtime()
-        // 进详情只浏览：约 1.2s 内不允许真正开播
-        playlistPlayUnlockAtMs = now + 1_200L
-        // 2s 内禁止「无令牌」跳推荐（打开封面绝不能进播放台）
-        blockRecommendNavUntilMs = now + 2_000L
-        android.util.Log.i("MadusPlaylist", "openPlaylist id=${playlist.id} gen=$seq browseOnly")
-        // 必须同步进入 loading：navigate 往往在同一帧执行。
-        _playlistDetail.value = PlaylistDetailUiState(
-            playlist = playlist,
-            isLoading = true,
-            openGeneration = seq,
-        )
+        // 导航已与播放台拆开，不再用长门闩（否则点播放要等 1s+ 像卡死）
+        playlistPlayUnlockAtMs = 0L
+        blockRecommendNavUntilMs = 0L
+        val prev = _playlistDetail.value
+        // 同一歌单再进：立刻展示缓存列表，后台静默刷新，避免「加载中…」闪一下
+        val reuse = prev.playlist?.id == playlist.id &&
+            prev.tracks.isNotEmpty() &&
+            !prev.isLoading
+        _playlistDetail.value = if (reuse) {
+            prev.copy(
+                playlist = playlist.copy(
+                    title = playlist.title.ifBlank { prev.playlist?.title.orEmpty() },
+                    coverUrl = playlist.coverUrl ?: prev.playlist?.coverUrl,
+                    trackCount = playlist.trackCount.takeIf { it > 0 } ?: prev.playlist?.trackCount ?: prev.tracks.size,
+                ),
+                isLoading = false,
+                openGeneration = seq,
+                error = null,
+            )
+        } else {
+            PlaylistDetailUiState(
+                playlist = playlist,
+                isLoading = true,
+                openGeneration = seq,
+            )
+        }
         playlistOpenJob = viewModelScope.launch {
             val isBiliFav = !playlist.id.startsWith("local-") &&
                 playlist.id != "recent" &&
@@ -3231,51 +3245,12 @@ class AppViewModel(
         }
     }
 
-    /**
-     * 用户是否被允许从歌单详情真正开播。
-     * 打开详情后短窗口内一律 false，避免「点封面进详情」被当成播放。
-     */
-    fun canPlayFromPlaylistDetail(): Boolean {
-        return android.os.SystemClock.elapsedRealtime() >= playlistPlayUnlockAtMs
-    }
+    fun canPlayFromPlaylistDetail(): Boolean = true
 
-    /**
-     * 用户在详情里点了「播放全部 / 某首歌」时调用（须在 onClick 同步路径）。
-     * @return false 表示仍在浏览保护期，应忽略
-     */
+    /** 用户在详情里点了「播放全部 / 某首歌」 */
     fun markExplicitPlaylistPlay(): Boolean {
-        if (!canPlayFromPlaylistDetail()) {
-            android.util.Log.w("MadusPlaylist", "markExplicitPlay rejected: browse lock")
-            return false
-        }
         playlistExplicitPlayToken = android.os.SystemClock.elapsedRealtime()
-        // 允许紧接着的 openRecommendPlayer
-        blockRecommendNavUntilMs = 0L
         return true
-    }
-
-    /**
-     * 是否允许因「歌单播放」跳进推荐台。
-     * - 持有刚签发的显式播放令牌 → 允许并消费
-     * - 否则在打开详情后的保护期内 → 拒绝
-     */
-    fun allowRecommendNavFromPlaylistPlay(): Boolean {
-        val now = android.os.SystemClock.elapsedRealtime()
-        val token = playlistExplicitPlayToken
-        if (token != 0L && now - token < 3_000L) {
-            playlistExplicitPlayToken = 0L
-            return true
-        }
-        if (now < blockRecommendNavUntilMs) {
-            android.util.Log.e(
-                "MadusPlaylist",
-                "BLOCK recommend nav after playlist open (no explicit play token)",
-            )
-            return false
-        }
-        // 保护期外且无令牌：也不要从歌单路径乱跳（搜索/点播走另一入口）
-        android.util.Log.e("MadusPlaylist", "BLOCK recommend nav: missing play token")
-        return false
     }
 
     /** 收藏夹「小说式」翻页：替换当前页，不追加 */
@@ -3649,10 +3624,8 @@ class AppViewModel(
         playlistPlayJob = null
         playlistExplicitPlayToken = 0L
         playlistOpenSeq++
-        val now = android.os.SystemClock.elapsedRealtime()
-        // 离开详情后短暂禁止迟到播放 / 跳推荐
-        playlistPlayUnlockAtMs = now + 500L
-        blockRecommendNavUntilMs = now + 800L
+        playlistPlayUnlockAtMs = 0L
+        blockRecommendNavUntilMs = 0L
     }
 
     /** 真正丢掉详情（换页后或显式需要清空时） */
@@ -3811,15 +3784,9 @@ class AppViewModel(
         startTrack: Track?,
         pageTracks: List<Track>,
     ) {
-        // 必须先 markExplicitPlaylistPlay；无令牌一律当误触发
-        if (playlistExplicitPlayToken == 0L || !canPlayFromPlaylistDetail()) {
-            android.util.Log.w("MadusPlaylist", "block playFromPlaylistDetail: no explicit token / browse lock")
-            return
-        }
-        // 取消上一次未完成的详情播放，避免二次进页时旧任务晚到突然开播
+        // 取消上一次未完成的详情播放
         playlistPlayJob?.cancel()
         val openGen = playlistOpenSeq
-        android.util.Log.i("MadusPlaylist", "playFromPlaylistDetail gen=$openGen start=${startTrack?.id}")
         playlistPlayJob = viewModelScope.launch {
             val pl = _playlistDetail.value.playlist
             val label = pl?.title?.ifBlank { "歌单" } ?: "歌单"

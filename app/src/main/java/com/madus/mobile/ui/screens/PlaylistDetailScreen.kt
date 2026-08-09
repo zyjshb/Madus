@@ -33,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,12 +42,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.PlaylistDetailUiState
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.LineButton
-import kotlinx.coroutines.delay
 
 /**
  * 汽水/Spotify：整页一个 LazyColumn，封面 header 跟着滚；仅顶栏钉死。
@@ -87,17 +84,8 @@ fun PlaylistDetailScreen(
     }
     var headerMenu by remember { mutableStateOf(false) }
     var trackMenuId by remember { mutableStateOf<String?>(null) }
-    // 按 openGeneration 重置：每次重新打开都先锁播放（与 VM 1.2s 门闩对齐）
-    var playGesturesEnabled by remember(state.openGeneration) { mutableStateOf(false) }
-    LaunchedEffect(state.openGeneration, state.isLoading) {
-        playGesturesEnabled = false
-        if (!state.isLoading && state.openGeneration > 0) {
-            delay(1_200)
-            playGesturesEnabled = true
-        }
-    }
 
-    // 系统返回与顶栏返回一致，避免只 pop 不清理导致二次进入异常
+    // 系统返回与顶栏返回一致
     BackHandler {
         when {
             showRename -> showRename = false
@@ -115,8 +103,7 @@ fun PlaylistDetailScreen(
 
     val hasManage = canRename || canChangeCover || canDeletePlaylist || canCleanInvalid
 
-    Box(modifier = modifier.fillMaxSize()) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize()) {
         // 仅顶栏钉死
         Row(
             modifier = Modifier
@@ -252,11 +239,8 @@ fun PlaylistDetailScreen(
                             if (state.tracks.isNotEmpty()) {
                                 LineButton(
                                     text = "播放全部",
-                                    onClick = {
-                                        if (playGesturesEnabled) onPlayAll()
-                                    },
+                                    onClick = onPlayAll,
                                     filled = true,
-                                    enabled = playGesturesEnabled,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -273,9 +257,7 @@ fun PlaylistDetailScreen(
                             menuOpen = trackMenuId == track.id,
                             onMenuOpen = { trackMenuId = track.id },
                             onMenuDismiss = { trackMenuId = null },
-                            onClick = {
-                                if (playGesturesEnabled) onPlayTrack(track, state.tracks)
-                            },
+                            onClick = { onPlayTrack(track, state.tracks) },
                             onCollect = { onCollectTrack(track) },
                             onOpenUp = { onOpenUp(track) },
                             onReplace = {
@@ -330,21 +312,6 @@ fun PlaylistDetailScreen(
             }
         }
     }
-
-    // 进页后短暂吞掉全部点击，避免点封面进详情时落到「播放全部」
-    if (!playGesturesEnabled) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(8f)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    onClick = { /* 吞掉 */ },
-                ),
-        )
-    }
-    } // outer Box
 
     if (showRename) {
         AlertDialog(
