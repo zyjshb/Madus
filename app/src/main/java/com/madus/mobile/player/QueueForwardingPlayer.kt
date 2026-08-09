@@ -25,11 +25,9 @@ class QueueForwardingPlayer(
     }
 
     override fun seekToPrevious() {
-        if (currentPosition > 3_000) {
-            seekTo(0)
-        } else {
-            onPrevious()
-        }
+        // 一律交给 App 队列逻辑（含「队首循环到队尾」），
+        // 不要在这里单独做 3s 重头，否则与 VM 双重判断导致第一首要点两次。
+        onPrevious()
     }
 
     override fun seekToPreviousMediaItem() {

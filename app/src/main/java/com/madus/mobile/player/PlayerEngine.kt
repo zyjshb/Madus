@@ -312,11 +312,17 @@ class PlayerEngine(context: Context) {
                 }
             }
             PlayerCommand.Previous -> {
-                if (player.currentPosition > 3_000) player.seekTo(0)
-                else if (player.mediaItemCount > 1 && player.hasPreviousMediaItem()) {
+                // 上一首统一走外部队列回调（AppViewModel.previous），
+                // 避免引擎层 3s 重头与 VM 再判一次，导致第一首要点两下。
+                val ext = onExternalPrevious
+                if (ext != null) {
+                    ext.invoke()
+                } else if (player.currentPosition > 3_000) {
+                    player.seekTo(0)
+                } else if (player.mediaItemCount > 1 && player.hasPreviousMediaItem()) {
                     player.seekToPreviousMediaItem()
                 } else {
-                    onExternalPrevious?.invoke()
+                    player.seekTo(0)
                 }
             }
             is PlayerCommand.Seek -> {

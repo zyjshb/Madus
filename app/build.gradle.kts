@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.24：歌单二次进入空白 / 循环
-        versionCode = 244
-        versionName = "1.14.24"
+        // 1.14.25：退出歌单闪 0 首 + 第一首上一首双击
+        versionCode = 245
+        versionName = "1.14.25"
         vectorDrawables.useSupportLibrary = true
     }
 

@@ -1840,24 +1840,30 @@ class AppViewModel(
                 }
             }
             val pb = playback.value
-            // 纯音乐：播过 3s 再点上一首 = 重头播当前（常见播放器习惯）
-            // 视频模式 / 竖屏上下滑：始终切到上一条并续播记忆，不误重置当前
-            // 注意：曲终自动切歌必须用 startPos=0，否则历史进度 >3s 会让「上一首」永远重播当前
+            val canWrap = pendingQueue.size > 1 &&
+                (_playMode.value == PlayModeLabel.LOOP || _playMode.value == PlayModeLabel.SHUFFLE)
+
+            // 队首 + 循环：上一首直接到队尾。
+            // 不要先走「播过 3s 重头」——否则第一首要点两次才能到最后一首。
+            if (pendingIndex <= 0) {
+                if (canWrap) {
+                    playIndex(pendingQueue.lastIndex, startPos = 0L, skipDelta = -1)
+                } else {
+                    player.dispatch(PlayerCommand.Seek(0))
+                }
+                return@launch
+            }
+
+            // 非队首：纯音乐播过约 3s 再点上一首 = 重头播当前（常见播放器习惯）
+            // 视频模式 / 竖屏上下滑：始终切上一条
             val video = MadusApp.instance.videoModeEnabled ||
                 pb.current?.isVideoStream == true
             if (!video && pb.positionMs > 3_000) {
                 player.dispatch(PlayerCommand.Seek(0))
                 return@launch
             }
-            if (pendingIndex > 0) {
-                // skipDelta=-1：取流失败也往「更早」找，绝不跳到新歌
-                playIndex(pendingIndex - 1, startPos = 0L, skipDelta = -1)
-            } else if (_playMode.value == PlayModeLabel.LOOP || _playMode.value == PlayModeLabel.SHUFFLE) {
-                // 第一首再上一首 → 队尾，从头播
-                playIndex(pendingQueue.lastIndex, startPos = 0L, skipDelta = -1)
-            } else {
-                player.dispatch(PlayerCommand.Seek(0))
-            }
+            // skipDelta=-1：取流失败也往「更早」找，绝不跳到新歌
+            playIndex(pendingIndex - 1, startPos = 0L, skipDelta = -1)
         }
     }
 
@@ -3555,10 +3561,19 @@ class AppViewModel(
         )
     }
 
-    fun closePlaylist() {
+    /**
+     * 取消进行中的加载，但**保留**当前详情内容。
+     * 退出动画期间若立刻清空，会闪一下「歌单 · 0 首」。
+     */
+    fun cancelPlaylistLoad() {
         playlistOpenJob?.cancel()
         playlistOpenJob = null
         playlistOpenSeq++
+    }
+
+    /** 真正丢掉详情（换页后或显式需要清空时） */
+    fun closePlaylist() {
+        cancelPlaylistLoad()
         _playlistDetail.value = PlaylistDetailUiState()
     }
 

@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.25",
+            date = "2026-08-09",
+            fixed = listOf(
+                "退出歌单不再闪一下「0 首」空界面",
+                "歌单第一首点上一首直接到最后一首（不用点两次）",
+            ),
+        ),
+        Entry(
             version = "1.14.24",
             date = "2026-08-09",
             fixed = listOf(

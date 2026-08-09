@@ -204,7 +204,7 @@ fun MadusRoot(
         navigateToPlaylistScreen()
     }
 
-    /** 离开歌单详情：先 pop 再清状态，避免「先清空再露出下层空 playlist」 */
+    /** 离开歌单详情：只 pop，不立刻清空内容（避免退出动画闪「0 首」） */
     fun leavePlaylistScreen() {
         var guard = 0
         while (
@@ -213,15 +213,16 @@ fun MadusRoot(
         ) {
             if (!nav.popBackStack()) break
         }
-        vm.closePlaylist()
+        // 停掉加载协程即可；详情数据留给动画最后一帧，下次 open 会覆盖
+        vm.cancelPlaylistLoad()
     }
 
     /** 跳到推荐页电台台面（共用：点歌 / 搜索插播） */
     fun openRecommendPlayer() {
-        // 关掉歌单详情并弹出栈：否则 popUpTo+saveState 会把「主页→歌单」存起来，
+        // 弹出歌单栈：否则 popUpTo+saveState 会把「主页→歌单」存起来，
         // 再点主页 restore 后仍停在歌单里。
         runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
-        vm.closePlaylist()
+        vm.cancelPlaylistLoad()
         nav.navigate(RootTab.Recommend.route) {
             popUpTo(nav.graph.findStartDestination().id) {
                 saveState = true
@@ -320,13 +321,13 @@ fun MadusRoot(
                     LineSketchBottomBar(
                         route = route,
                         onSelect = { tab ->
-                            // 回主页/曲库时：若还盖着歌单详情，先关掉
+                            // 回主页/曲库时：若还盖着歌单详情，先 pop（不清空，避免闪 0 首）
                             if (tab == RootTab.Home || tab == RootTab.Library) {
                                 runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
                                 if (tab == RootTab.Home) {
                                     runCatching { nav.popBackStack(Routes.BILI_FAVS, inclusive = true) }
                                 }
-                                vm.closePlaylist()
+                                vm.cancelPlaylistLoad()
                             }
                             // 底栏进搜索 = 普通搜索，不是清屏短视频内搜索
                             if (tab == RootTab.Search) {

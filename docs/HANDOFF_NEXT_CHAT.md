@@ -2,8 +2,8 @@
 
 **日期：** 2026-08-09  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.24` / versionCode `244`  
-**正式包：** `and/apk/Madus-1.14.24.apk`  
+**当前版本：** `1.14.25` / versionCode `245`  
+**正式包：** `and/apk/Madus-1.14.25.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
 
@@ -60,7 +60,9 @@
 | **彩蛋（当前）** | **画板**（版本号 + 涂鸦 + 清除）。曾试过恐龙/风扇/掉音符，用户嫌卡或不好玩，**定稿画板** |
 | **B 站收藏封面** | `favFolders` 空 cover 时用夹内第一首补；进夹后回写首页/曲库列表 |
 | **长播提示** | 同一曲 **约 5 分钟** 顶部轻条「已经听了一会儿了，可以换首歌」；「知道了」/点条关闭；不挡操作 |
-| **歌单二次进入** | 打开收藏夹**不要**自动 purge（手动 ⋯ 清失效）；`openPlaylist` 必须可取消；playlist 路由 `launchSingleTop`、返回先 pop 再 `closePlaylist` |
+| **歌单二次进入** | 打开收藏夹**不要**自动 purge（手动 ⋯ 清失效）；`openPlaylist` 必须可取消；playlist 路由 `launchSingleTop` |
+| **退出歌单** | 只 pop + `cancelPlaylistLoad`，**不要**立刻 `closePlaylist`（否则退出动画闪 0 首） |
+| **上一首** | 队首+循环直接到队尾；非队首才 3s 重头；引擎/通知栏勿再单独 3s 拦截 |
 
 ---
 
