@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.22",
+            date = "2026-08-09",
+            added = listOf(
+                "B 站收藏夹可一键清除已删除/失效视频（单夹或全部）",
+            ),
+            fixed = listOf(
+                "歌单循环到第一首后点上一首误重播当前的问题",
+            ),
+        ),
+        Entry(
             version = "1.14.21",
             date = "2026-08-09",
             fixed = listOf(

@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,7 @@ fun BiliFavListScreen(
     playlists: List<Playlist>,
     onBack: () -> Unit,
     onOpen: (Playlist) -> Unit,
+    onCleanAllInvalid: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -54,6 +56,11 @@ fun BiliFavListScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (onCleanAllInvalid != null && playlists.isNotEmpty()) {
+                TextButton(onClick = onCleanAllInvalid) {
+                    Text("清失效")
+                }
             }
         }
 

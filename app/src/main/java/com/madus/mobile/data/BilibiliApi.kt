@@ -544,8 +544,27 @@ class BilibiliApi(
         if (m == null) return null
         if (m.has("type") && m.optInt("type") != 2) return null
         val bvid = m.optString("bvid", "")
-        if (bvid.isBlank()) return null
-        val title = stripHtml(m.optString("title", bvid))
+        val title = stripHtml(m.optString("title", bvid.ifBlank { "已失效视频" }))
+        val attr = m.optInt("attr", 0)
+        // 失效稿：attr 低位 / 标题 / 无 bvid；仍尽量保留 aid 以便展示，播放时会跳过
+        val invalid = (attr and 1) != 0 || isInvalidFavTitle(title)
+        if (bvid.isBlank() && !invalid) return null
+        if (bvid.isBlank() && invalid) {
+            // 纯失效占位：无 bvid 也可进列表，便于用户看到后再一键清理
+            val aid = m.opt("id")?.toString()?.takeIf { it != "null" && it.isNotBlank() }
+                ?: m.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty()
+            return Track(
+                id = "invalid-${aid.ifBlank { title.hashCode() }}",
+                title = title.ifBlank { "已失效视频" },
+                artist = "已失效",
+                album = "失效",
+                coverUrl = "",
+                durationMs = 0L,
+                source = MusicSourceType.BILIBILI,
+                bvid = "",
+                aid = aid,
+            )
+        }
         val cover = normalizeUrl(
             m.optString("cover", "")
                 .ifBlank { m.optString("pic", "") }
@@ -561,8 +580,8 @@ class BilibiliApi(
         return Track(
             id = if (cid.isNotBlank()) "${bvid}_$cid" else bvid,
             title = title,
-            artist = upper,
-            album = "收藏",
+            artist = if (invalid) "已失效" else upper,
+            album = if (invalid) "失效" else "收藏",
             coverUrl = cover,
             durationMs = durationMs,
             source = MusicSourceType.BILIBILI,
@@ -1675,6 +1694,81 @@ class BilibiliApi(
     suspend fun addToDefaultFav(track: Track): String? {
         val id = favFolders().firstOrNull()?.id.orEmpty()
         return addToFavFolder(track, id)
+    }
+
+    /**
+     * 清空收藏夹内全部失效/已删除稿件（B 站官方 clean 接口）。
+     * @return null 成功；否则错误信息
+     */
+    suspend fun cleanInvalidFavResources(mediaId: String): String? = withContext(Dispatchers.IO) {
+        val id = mediaId.trim()
+        if (id.isBlank()) return@withContext "收藏夹 id 为空"
+        val cookie = mergedCookieWithSystem()
+        if (!cookie.contains("SESSDATA")) return@withContext "请先登录 B 站"
+        val csrf = extractCookieValue(cookie, "bili_jct")
+        if (csrf.isBlank()) return@withContext "缺少 bili_jct，请重新登录 B 站"
+        val body =
+            "media_id=${URLEncoder.encode(id, "UTF-8")}" +
+                "&csrf=${URLEncoder.encode(csrf, "UTF-8")}"
+        val json = postForm(
+            "https://api.bilibili.com/x/v3/fav/resource/clean",
+            body,
+            cookie,
+            referer = "https://www.bilibili.com",
+        )
+        val code = json.optInt("code", -1)
+        if (code == 0) null else json.optString("message", "清理失败 code=$code")
+    }
+
+    /**
+     * 对当前账号所有自建收藏夹执行失效清理。
+     * @return 成功清理的夹数与失败信息摘要
+     */
+    suspend fun cleanInvalidInAllFavFolders(): CleanInvalidResult = withContext(Dispatchers.IO) {
+        val folders = favFolders()
+        if (folders.isEmpty()) {
+            return@withContext CleanInvalidResult(0, 0, "没有可清理的收藏夹")
+        }
+        var ok = 0
+        var fail = 0
+        val errors = mutableListOf<String>()
+        for (f in folders) {
+            val err = cleanInvalidFavResources(f.id)
+            if (err == null) {
+                ok++
+            } else {
+                fail++
+                if (errors.size < 3) errors.add("${f.title}: $err")
+            }
+            // 轻微间隔，降低风控
+            kotlinx.coroutines.delay(280)
+        }
+        CleanInvalidResult(
+            cleanedFolders = ok,
+            failedFolders = fail,
+            message = when {
+                fail == 0 -> "已清理 $ok 个收藏夹中的失效视频"
+                ok == 0 -> errors.firstOrNull() ?: "清理失败"
+                else -> "已清理 $ok 个夹，失败 $fail 个"
+            },
+        )
+    }
+
+    data class CleanInvalidResult(
+        val cleanedFolders: Int,
+        val failedFolders: Int,
+        val message: String,
+    )
+
+    /** 列表项是否为失效稿件（已删 / 不可见等） */
+    fun isInvalidFavTitle(title: String): Boolean {
+        val t = title.trim()
+        if (t.isEmpty()) return true
+        return t.contains("已失效") ||
+            t.contains("已删除") ||
+            t.equals("失效视频", ignoreCase = true) ||
+            t.contains("视频不见了") ||
+            t.contains("内容失效")
     }
 
     /**

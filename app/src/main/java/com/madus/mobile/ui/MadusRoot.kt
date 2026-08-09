@@ -705,6 +705,8 @@ fun MadusRoot(
                     val canRename = isLocal && !isLiked
                     val canRemove = isLocal || isLiked || isRecent
                     val canDeletePlaylist = isLocal && !isLiked
+                    val isBiliFav = !isLocal && !isRecent && !isLiked &&
+                        pl?.source == com.madus.mobile.domain.MusicSourceType.BILIBILI
                     PlaylistDetailScreen(
                         state = playlistDetail,
                         isLocalPlaylist = isLocal || isRecent,
@@ -712,6 +714,12 @@ fun MadusRoot(
                         canRename = canRename,
                         canRemoveTrack = canRemove,
                         canDeletePlaylist = canDeletePlaylist,
+                        canCleanInvalid = isBiliFav,
+                        onCleanInvalid = if (isBiliFav) {
+                            { vm.cleanInvalidInCurrentBiliFav() }
+                        } else {
+                            null
+                        },
                         onBack = {
                             vm.closePlaylist()
                             nav.popBackStack()
@@ -795,6 +803,7 @@ fun MadusRoot(
                             vm.openPlaylist(pl)
                             nav.navigate(Routes.PLAYLIST)
                         },
+                        onCleanAllInvalid = { vm.cleanInvalidInAllBiliFavs() },
                     )
                 }
                 composable(Routes.QUEUE) {

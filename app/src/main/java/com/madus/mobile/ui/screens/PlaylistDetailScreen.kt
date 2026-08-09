@@ -67,11 +67,14 @@ fun PlaylistDetailScreen(
     onOpenUp: (Track) -> Unit = {},
     /** 导入匹配错了：去搜索换一首 */
     onReplaceTrack: (Track) -> Unit = {},
+    /** B 站收藏夹：清除已删除/失效视频 */
+    onCleanInvalid: (() -> Unit)? = null,
     isLocalPlaylist: Boolean = false,
     canChangeCover: Boolean = false,
     canRename: Boolean = false,
     canRemoveTrack: Boolean = false,
     canDeletePlaylist: Boolean = false,
+    canCleanInvalid: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var showRename by remember { mutableStateOf(false) }
@@ -87,7 +90,7 @@ fun PlaylistDetailScreen(
         uri?.toString()?.let { onSetCover(it) }
     }
 
-    val hasManage = canRename || canChangeCover || canDeletePlaylist
+    val hasManage = canRename || canChangeCover || canDeletePlaylist || canCleanInvalid
 
     Column(modifier = modifier.fillMaxSize()) {
         // 仅顶栏钉死
@@ -140,6 +143,15 @@ fun PlaylistDetailScreen(
                                 onClick = {
                                     headerMenu = false
                                     onDeletePlaylist()
+                                },
+                            )
+                        }
+                        if (canCleanInvalid) {
+                            DropdownMenuItem(
+                                text = { Text("清除失效视频") },
+                                onClick = {
+                                    headerMenu = false
+                                    onCleanInvalid?.invoke()
                                 },
                             )
                         }

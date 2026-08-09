@@ -2,8 +2,8 @@
 
 **日期：** 2026-08-09  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.21` / versionCode `241`  
-**正式包：** `and/apk/Madus-1.14.21.apk`  
+**当前版本：** `1.14.22` / versionCode `242`  
+**正式包：** `and/apk/Madus-1.14.22.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
 
@@ -120,9 +120,9 @@ scripts/publish-gitee-release.ps1
 
 ## 8. 关机前状态（2026-08-09）
 
-- 已打 **1.14.21**：歌单播完误塞推荐、B 站/UP 队列只 40 首  
-- 有限歌单：`sourceId != recommend` 整表循环；B 站/UP 播放前拉全量  
-- 正式包：`apk/Madus-1.14.21.apk`  
+- 已发 **1.14.22**：B 站收藏夹清失效 + 上一首循环修复 + 1.14.21 歌单队列修复  
+- 清失效：`POST x/v3/fav/resource/clean`；单夹 ⋯ / 收藏列表「清失效」  
+- 正式包：`apk/Madus-1.14.22.apk`  
 
 **下次可做（用户未点名则别擅自大改）：**  
 按用户一句话继续小改/发版即可；彩蛋保持画板。  

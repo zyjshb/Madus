@@ -1595,7 +1595,9 @@ class AppViewModel(
                 }
                 if (next >= 0 && next != i) {
                     android.util.Log.w("AppViewModel", "skip unplayable ${track.title} → $next")
-                    playIndex(next, -1L, skipBudget - 1, delta)
+                    // 与本次切歌一致：显式从头则继续从头，避免跳坏链后又落到历史进度
+                    val contStart = if (startPos >= 0L) 0L else -1L
+                    playIndex(next, contStart, skipBudget - 1, delta)
                     return
                 }
             }
@@ -1739,22 +1741,24 @@ class AppViewModel(
 
         val mode = _playMode.value
         val atEnd = pendingIndex + 1 >= pendingQueue.size
+        // 切到「另一首」一律从头播：若用历史进度续播，第一首可能直接落在 >3s，
+        // 再点上一首会被当成「重头播当前」而无法回到队尾。
         when {
             !atEnd -> {
-                playIndex(pendingIndex + 1) // startPos=-1 → 有记忆则续播
+                playIndex(pendingIndex + 1, startPos = 0L)
                 if (isForYou) scheduleInfinitePrefetch()
             }
             isForYou -> {
                 // 见底：再强扩一次；绝不回到第一首（除非完全没新内容）
                 runCatching { ensureInfiniteFeed(force = true) }
                 if (pendingIndex + 1 < pendingQueue.size) {
-                    playIndex(pendingIndex + 1)
+                    playIndex(pendingIndex + 1, startPos = 0L)
                     scheduleInfinitePrefetch()
                 } else {
                     _toast.value = "正在加载更多推荐…"
                     runCatching { ensureInfiniteFeed(force = true, minAdd = 12) }
                     if (pendingIndex + 1 < pendingQueue.size) {
-                        playIndex(pendingIndex + 1)
+                        playIndex(pendingIndex + 1, startPos = 0L)
                     } else {
                         // 真没了才停，不循环
                         player.dispatch(PlayerCommand.Pause)
@@ -1763,10 +1767,13 @@ class AppViewModel(
                 }
             }
             mode == PlayModeLabel.LOOP || mode == PlayModeLabel.SHUFFLE -> {
-                playIndex(0)
+                playIndex(0, startPos = 0L)
             }
             mode == PlayModeLabel.SINGLE && userInitiated -> {
-                playIndex(if (pendingQueue.size > 1) (pendingIndex + 1) % pendingQueue.size else 0)
+                playIndex(
+                    if (pendingQueue.size > 1) (pendingIndex + 1) % pendingQueue.size else 0,
+                    startPos = 0L,
+                )
             }
             else -> {
                 player.dispatch(PlayerCommand.Pause)
@@ -1819,15 +1826,20 @@ class AppViewModel(
                 // 空队列不要再 Previous，避免与引擎回调打架
                 return@launch
             }
-            // 用当前曲 id 校准 index，防止 pendingIndex 与 UI/播放器脱节
+            // 用当前曲 id 校准 index；歌单有重复 id 时优先保留已对准的下标，
+            // 避免 indexOfFirst 总跳回第一首导致「上一首仍是这首」。
             val curId = playback.value.current?.id
             if (curId != null) {
-                val real = pendingQueue.indexOfFirst { it.id == curId }
-                if (real >= 0) pendingIndex = real
+                val at = pendingQueue.getOrNull(pendingIndex)
+                if (at?.id != curId) {
+                    val real = pendingQueue.indexOfFirst { it.id == curId }
+                    if (real >= 0) pendingIndex = real
+                }
             }
             val pb = playback.value
             // 纯音乐：播过 3s 再点上一首 = 重头播当前（常见播放器习惯）
             // 视频模式 / 竖屏上下滑：始终切到上一条并续播记忆，不误重置当前
+            // 注意：曲终自动切歌必须用 startPos=0，否则历史进度 >3s 会让「上一首」永远重播当前
             val video = MadusApp.instance.videoModeEnabled ||
                 pb.current?.isVideoStream == true
             if (!video && pb.positionMs > 3_000) {
@@ -1836,9 +1848,10 @@ class AppViewModel(
             }
             if (pendingIndex > 0) {
                 // skipDelta=-1：取流失败也往「更早」找，绝不跳到新歌
-                playIndex(pendingIndex - 1, skipDelta = -1)
+                playIndex(pendingIndex - 1, startPos = 0L, skipDelta = -1)
             } else if (_playMode.value == PlayModeLabel.LOOP || _playMode.value == PlayModeLabel.SHUFFLE) {
-                playIndex(pendingQueue.lastIndex, skipDelta = -1)
+                // 第一首再上一首 → 队尾，从头播
+                playIndex(pendingQueue.lastIndex, startPos = 0L, skipDelta = -1)
             } else {
                 player.dispatch(PlayerCommand.Seek(0))
             }
@@ -3520,6 +3533,56 @@ class AppViewModel(
     }
 
     /**
+     * 清除当前打开的 B 站收藏夹里已删除/失效稿件（同步到 B 站）。
+     */
+    fun cleanInvalidInCurrentBiliFav() {
+        viewModelScope.launch {
+            val pl = _playlistDetail.value.playlist ?: return@launch
+            val isBiliFav = !pl.id.startsWith("local-") &&
+                pl.id != "recent" &&
+                pl.id != LikedStore.LIKED_ID &&
+                pl.source == MusicSourceType.BILIBILI
+            if (!isBiliFav) {
+                _toast.value = "仅支持 B 站收藏夹"
+                return@launch
+            }
+            _toast.value = "正在清除失效视频…"
+            val err = runCatching { biliApi.cleanInvalidFavResources(pl.id) }.getOrElse { it.message }
+            if (err != null) {
+                _toast.value = "清理失败：$err"
+                return@launch
+            }
+            _toast.value = "已清除本夹失效视频"
+            openPlaylist(pl)
+            refreshHome()
+            refreshLibrary()
+        }
+    }
+
+    /**
+     * 一键清理账号下全部 B 站收藏夹中的失效视频。
+     */
+    fun cleanInvalidInAllBiliFavs() {
+        viewModelScope.launch {
+            _toast.value = "正在清理全部收藏夹失效视频…"
+            val result = runCatching { biliApi.cleanInvalidInAllFavFolders() }
+                .getOrElse {
+                    BilibiliApi.CleanInvalidResult(0, 0, it.message ?: "清理失败")
+                }
+            _toast.value = result.message
+            val open = _playlistDetail.value.playlist
+            if (open != null &&
+                open.source == MusicSourceType.BILIBILI &&
+                !open.id.startsWith("local-")
+            ) {
+                openPlaylist(open)
+            }
+            refreshHome()
+            refreshLibrary()
+        }
+    }
+
+    /**
      * 从 UP 主页点播：投稿/合集详情页同样是分页，播放时尽量拉全量再入队并循环。
      */
     fun playFromUpSpace(startTrack: Track, pageTracks: List<Track>) {
@@ -3666,29 +3729,42 @@ class AppViewModel(
                 }
             }
 
-            if (tracks.isEmpty()) {
-                _toast.value = "歌单为空"
+            // 播放跳过失效稿，避免点播卡住
+            val finalTracks = tracks.filter {
+                it.bvid.isNotBlank() &&
+                    it.album != "失效" &&
+                    !biliApi.isInvalidFavTitle(it.title)
+            }
+            if (finalTracks.isEmpty()) {
+                _toast.value = if (tracks.any {
+                        biliApi.isInvalidFavTitle(it.title) || it.album == "失效"
+                    }
+                ) {
+                    "本页只有失效视频，请用 ⋯ 清除失效"
+                } else {
+                    "歌单为空"
+                }
                 return@launch
             }
 
             val start = startTrack?.let { seed ->
-                tracks.firstOrNull {
+                finalTracks.firstOrNull {
                     it.id == seed.id ||
                         (it.bvid.isNotBlank() && it.bvid == seed.bvid &&
                             (seed.cid.isBlank() || it.cid == seed.cid))
                 }
-            } ?: tracks.first()
+            } ?: finalTracks.first()
 
             playTrack(
                 track = start,
-                queue = tracks,
+                queue = finalTracks,
                 loopAll = true,
                 resumeIfSame = false,
                 sourceLabel = label,
                 sourceId = sourceId,
             )
-            if (isBiliFav && tracks.size > pageTracks.size) {
-                _toast.value = "已加载全部 ${tracks.size} 首 · 顺序循环"
+            if (isBiliFav && finalTracks.size > pageTracks.size) {
+                _toast.value = "已加载全部 ${finalTracks.size} 首 · 顺序循环"
             }
         }
     }
