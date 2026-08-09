@@ -1,9 +1,9 @@
 # Madus 手机版 · 核心记忆（下机交接）
 
-**日期：** 2026-08-07（关机前更新）  
+**日期：** 2026-08-09  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.20` / versionCode `240`  
-**正式包：** `and/apk/Madus-1.14.20.apk`  
+**当前版本：** `1.14.21` / versionCode `241`  
+**正式包：** `and/apk/Madus-1.14.21.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
 
@@ -118,11 +118,11 @@ scripts/publish-gitee-release.ps1
 
 ---
 
-## 8. 关机前状态（2026-08-07）
+## 8. 关机前状态（2026-08-09）
 
-- 已发 **1.14.20**：画板彩蛋 + 启动清更新包 + 5 分钟换歌提示等  
-- GitHub / Gitee 双端 Release 已传  
-- `main` 与 `origin` / `gitee` 同步  
+- 已打 **1.14.21**：歌单播完误塞推荐、B 站/UP 队列只 40 首  
+- 有限歌单：`sourceId != recommend` 整表循环；B 站/UP 播放前拉全量  
+- 正式包：`apk/Madus-1.14.21.apk`  
 
 **下次可做（用户未点名则别擅自大改）：**  
-按用户一句话继续小改/发版即可；彩蛋不要再换成恐龙/风扇，**保持画板**除非用户再要求。  
+按用户一句话继续小改/发版即可；彩蛋保持画板。  

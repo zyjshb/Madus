@@ -29,6 +29,15 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.21",
+            date = "2026-08-09",
+            fixed = listOf(
+                "外站导入歌单播完不再自动塞推荐视频，改为整表循环",
+                "B 站收藏夹播放列表不再只剩当前页 40 首，会加载完整歌单",
+                "UP 投稿/合集点播同样拉全量入队并循环",
+            ),
+        ),
+        Entry(
             version = "1.14.20",
             date = "2026-08-07",
             added = listOf(

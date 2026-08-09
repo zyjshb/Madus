@@ -210,11 +210,15 @@ fun MadusRoot(
         queue: List<com.madus.mobile.domain.Track>,
         sourceLabel: String? = null,
         sourceId: String? = null,
+        loopAll: Boolean = false,
     ) {
         // 先点播（同步 suppress 推荐自动播），再跳转
+        // 有明确歌单/列表上下文时默认整表循环，不接推荐无限流
+        val finiteContext = !sourceId.isNullOrBlank() && sourceId != "recommend"
         vm.playTrack(
             track = track,
             queue = queue,
+            loopAll = loopAll || finiteContext,
             resumeIfSame = false,
             sourceLabel = sourceLabel,
             sourceId = sourceId,
@@ -360,7 +364,16 @@ fun MadusRoot(
                 composable(RootTab.Home.route) {
                     HomeScreen(
                         state = home,
-                        onPlayTrack = ::playAndOpen,
+                        // 首页最近播放是有限列表，必须带 source，避免沿用「recommend」后自动塞推荐
+                        onPlayTrack = { track, queue ->
+                            playAndOpen(
+                                track,
+                                queue,
+                                sourceLabel = "最近播放",
+                                sourceId = "recent",
+                                loopAll = true,
+                            )
+                        },
                         onOpenPlaylist = { pl ->
                             vm.openPlaylist(pl)
                             nav.navigate(Routes.PLAYLIST)
@@ -426,7 +439,25 @@ fun MadusRoot(
                         onNext = vm::next,
                         onPrevious = vm::previous,
                         onToggleLike = vm::toggleLikeCurrent,
-                        onPlayTrack = ::playAndOpen,
+                        onPlayTrack = { track, queue ->
+                            // 推荐页「最近」分段：有限列表循环，勿继承 recommend 无限流
+                            if (recommend.segment == com.madus.mobile.ui.RecommendSegment.Recent) {
+                                playAndOpen(
+                                    track,
+                                    queue,
+                                    sourceLabel = "最近播放",
+                                    sourceId = "recent",
+                                    loopAll = true,
+                                )
+                            } else {
+                                playAndOpen(
+                                    track,
+                                    queue,
+                                    sourceLabel = recommend.sourceLabel,
+                                    sourceId = recommend.sourceId,
+                                )
+                            }
+                        },
                         onOpenQueue = {
                             nav.navigate(Routes.QUEUE) { launchSingleTop = true }
                         },
@@ -493,7 +524,13 @@ fun MadusRoot(
                         },
                         onCreatePlaylist = vm::createLocalPlaylist,
                         onPlayTrack = { track, queue ->
-                            playAndOpen(track, queue, sourceLabel = "最近播放", sourceId = "recent")
+                            playAndOpen(
+                                track,
+                                queue,
+                                sourceLabel = "最近播放",
+                                sourceId = "recent",
+                                loopAll = true,
+                            )
                         },
                         onCollectTrack = { vm.openCollectSheet(it) },
                         onRemoveRecent = vm::removeFromRecent,
@@ -627,7 +664,13 @@ fun MadusRoot(
                         onClearStream = vm::clearStreamCacheOnly,
                         onClearAll = vm::clearStreamCache,
                         onPlay = { cached ->
-                            playAndOpen(cached.track, listOf(cached.track), sourceLabel = "缓存")
+                            playAndOpen(
+                                cached.track,
+                                listOf(cached.track),
+                                sourceLabel = "缓存",
+                                sourceId = "cache",
+                                loopAll = true,
+                            )
                         },
                     )
                 }
@@ -674,22 +717,15 @@ fun MadusRoot(
                             nav.popBackStack()
                         },
                         onPlayTrack = { track, queue ->
-                            playAndOpen(
-                                track,
-                                queue,
-                                sourceLabel = pl?.title,
-                                sourceId = pl?.id,
-                            )
+                            // B 站收藏夹详情只有当前页 40 首：内部拉全量再入队并循环
+                            vm.playFromPlaylistDetail(track, queue)
+                            openRecommendPlayer()
                         },
                         onPlayAll = {
                             val tracks = playlistDetail.tracks
-                            val first = tracks.firstOrNull() ?: return@PlaylistDetailScreen
-                            playAndOpen(
-                                first,
-                                tracks,
-                                sourceLabel = pl?.title,
-                                sourceId = pl?.id,
-                            )
+                            if (tracks.isEmpty()) return@PlaylistDetailScreen
+                            vm.playFromPlaylistDetail(startTrack = null, pageTracks = tracks)
+                            openRecommendPlayer()
                         },
                         onRename = { name ->
                             val pid = pl?.id ?: return@PlaylistDetailScreen
@@ -740,12 +776,9 @@ fun MadusRoot(
                         },
                         onTab = vm::setUpSpaceTab,
                         onPlayTrack = { track, queue ->
-                            playAndOpen(
-                                track,
-                                queue,
-                                sourceLabel = upSpace.profile?.name ?: "UP主",
-                                sourceId = "up-${upSpace.mid}",
-                            )
+                            // UP 投稿/合集详情也是分页；拉全量再入队，避免只有当前页
+                            vm.playFromUpSpace(track, queue)
+                            openRecommendPlayer()
                         },
                         onOpenSeason = vm::openUpSeason,
                         onCloseSeason = vm::closeUpSeason,
@@ -775,7 +808,15 @@ fun MadusRoot(
                             vm.clearQueueSearch()
                             nav.popBackStack()
                         },
-                        onPlayTrack = ::playAndOpen,
+                        onPlayTrack = { track, queue ->
+                            // 队列内点播：保留当前来源，有限歌单继续循环、不接推荐流
+                            playAndOpen(
+                                track,
+                                queue,
+                                sourceLabel = recommend.sourceLabel,
+                                sourceId = recommend.sourceId,
+                            )
+                        },
                         onClear = vm::clearQueue,
                         onRemove = vm::removeFromQueue,
                         onReplaceTrack = { track ->

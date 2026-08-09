@@ -1198,15 +1198,29 @@ class AppViewModel(
         sourceId: String? = null,
     ) {
         suppressRecommendAutoPlay = true
+        // 切入有限队列时停掉推荐流后台续刷，避免歌单里继续塞 related
+        if (sourceId != null && sourceId != "recommend") {
+            expandJob?.cancel()
+            expandJob = null
+            expandingFeed = false
+        } else if (sourceLabel != null && sourceId == null) {
+            // 有标签但未给 id：按有限上下文处理，不要继承旧的 recommend
+            expandJob?.cancel()
+            expandJob = null
+            expandingFeed = false
+        }
         val base = if (queue.isEmpty()) listOf(track) else queue
         pendingQueue = base
         pendingIndex = base.indexOfFirst { it.id == track.id }.let { if (it < 0) 0 else it }
         _queueTracks.value = base
         if (sourceLabel != null) {
+            // sourceId 未传时绝不能沿用「recommend」，否则歌单会变成无限流
+            val resolvedSourceId = sourceId?.takeIf { it.isNotBlank() }
+                ?: "ctx-${sourceLabel.hashCode().toUInt().toString(16)}"
             _recommend.update {
                 it.copy(
                     sourceLabel = sourceLabel,
-                    sourceId = sourceId ?: it.sourceId,
+                    sourceId = resolvedSourceId,
                     segment = RecommendSegment.Feed,
                     feed = base,
                 )
@@ -1760,10 +1774,14 @@ class AppViewModel(
         }
     }
 
+    /**
+     * 是否「为你推荐」无限流。
+     * **只用 sourceId 严格判断**，禁止用歌单名包含「推荐/为你」来猜——
+     * 网易云/QQ 导入歌单常带「每日推荐」「官方推荐」等字样，误判后会往播放列表
+     * 自动塞 related/热门视频，歌单播完也无法循环。
+     */
     private fun isForYouQueue(): Boolean {
-        val id = _recommend.value.sourceId
-        val label = _recommend.value.sourceLabel
-        return id == "recommend" || label.contains("推荐") || label.contains("为你")
+        return _recommend.value.sourceId == "recommend"
     }
 
     private fun scheduleInfinitePrefetch() {
@@ -2680,15 +2698,14 @@ class AppViewModel(
                 PlaySourceKind.Recent -> {
                     val recent = sessionRecent.asReversed().distinctBy { it.id }
                     if (recent.isEmpty()) return@launch
-                    _recommend.update {
-                        it.copy(
-                            sourceId = "recent",
-                            sourceLabel = "最近播放",
-                            segment = RecommendSegment.Recent,
-                            recent = recent,
-                        )
-                    }
-                    playTrack(recent.first(), recent, loopAll = true, resumeIfSame = true)
+                    playTrack(
+                        track = recent.first(),
+                        queue = recent,
+                        loopAll = true,
+                        resumeIfSame = true,
+                        sourceLabel = "最近播放",
+                        sourceId = "recent",
+                    )
                 }
                 PlaySourceKind.LocalPlaylist -> {
                     val pl = item.playlist ?: return@launch
@@ -2718,6 +2735,7 @@ class AppViewModel(
                 }
                 PlaySourceKind.BiliFav -> {
                     val pl = item.playlist ?: return@launch
+                    _toast.value = "正在加载完整歌单…"
                     val tracks = runCatching {
                         registry.get(MusicSourceType.BILIBILI)
                             ?.playlistTracks(pl.id, limit = 0).orEmpty()
@@ -2726,15 +2744,15 @@ class AppViewModel(
                         _collect.update { it.copy(toast = "该收藏夹暂无内容") }
                         return@launch
                     }
-                    _recommend.update {
-                        it.copy(
-                            sourceId = pl.id,
-                            sourceLabel = pl.title,
-                            segment = RecommendSegment.Feed,
-                            feed = tracks,
-                        )
-                    }
-                    playTrack(tracks.first(), tracks, loopAll = true, resumeIfSame = false)
+                    playTrack(
+                        track = tracks.first(),
+                        queue = tracks,
+                        loopAll = true,
+                        resumeIfSame = false,
+                        sourceLabel = pl.title,
+                        sourceId = pl.id,
+                    )
+                    _toast.value = "已加载 ${tracks.size} 首 · 顺序循环"
                 }
             }
         }
@@ -3499,6 +3517,180 @@ class AppViewModel(
 
     fun closePlaylist() {
         _playlistDetail.value = PlaylistDetailUiState()
+    }
+
+    /**
+     * 从 UP 主页点播：投稿/合集详情页同样是分页，播放时尽量拉全量再入队并循环。
+     */
+    fun playFromUpSpace(startTrack: Track, pageTracks: List<Track>) {
+        viewModelScope.launch {
+            val st = _upSpace.value
+            val name = st.profile?.name?.ifBlank { null } ?: "UP主"
+            val mid = st.mid
+            val season = st.selectedSeason
+
+            val tracks: List<Track> = if (mid.isBlank()) {
+                pageTracks
+            } else if (season != null) {
+                if (pageTracks.size >= 40 || st.hasMore) {
+                    _toast.value = "正在加载完整合集…"
+                }
+                val all = mutableListOf<Track>()
+                var page = 1
+                var hasMore = true
+                while (hasMore && page <= 100) {
+                    val result = runCatching {
+                        biliApi.seasonArchives(mid, season.seasonId, page = page, pageSize = 40)
+                    }.getOrNull() ?: break
+                    val named = result.tracks.map {
+                        it.copy(artist = it.artist.ifBlank { name }, ownerMid = mid)
+                    }
+                    if (named.isEmpty()) break
+                    all.addAll(named)
+                    hasMore = result.hasMore && named.isNotEmpty()
+                    page++
+                }
+                all.ifEmpty { pageTracks }
+            } else {
+                val totalHint = st.total
+                if (totalHint > UP_PAGE_SIZE || pageTracks.size >= UP_PAGE_SIZE || st.hasMore) {
+                    _toast.value = "正在加载 UP 全部投稿…"
+                }
+                val all = mutableListOf<Track>()
+                var page = 1
+                var hasMore = true
+                while (hasMore && page <= 100) {
+                    val result = runCatching {
+                        biliApi.upVideos(mid, page = page, pageSize = UP_PAGE_SIZE)
+                    }.getOrNull() ?: break
+                    val named = result.tracks.map {
+                        it.copy(artist = it.artist.ifBlank { name }, ownerMid = mid)
+                    }
+                    if (named.isEmpty()) break
+                    all.addAll(named)
+                    hasMore = result.hasMore && named.isNotEmpty()
+                    if (totalHint > 0 && all.size >= totalHint) break
+                    page++
+                }
+                all.ifEmpty { pageTracks }
+            }
+
+            if (tracks.isEmpty()) {
+                _toast.value = "没有可播放内容"
+                return@launch
+            }
+            val start = tracks.firstOrNull {
+                it.id == startTrack.id ||
+                    (it.bvid.isNotBlank() && it.bvid == startTrack.bvid)
+            } ?: startTrack
+            val sourceId = if (season != null) {
+                "up-$mid-season-${season.seasonId}"
+            } else {
+                "up-$mid"
+            }
+            val label = if (season != null) {
+                "${season.title.ifBlank { "合集" }} · $name"
+            } else {
+                name
+            }
+            playTrack(
+                track = start,
+                queue = tracks,
+                loopAll = true,
+                resumeIfSame = false,
+                sourceLabel = label,
+                sourceId = sourceId,
+            )
+            if (tracks.size > pageTracks.size) {
+                _toast.value = "已加载 ${tracks.size} 首 · 顺序循环"
+            }
+        }
+    }
+
+    /**
+     * 从歌单详情点播 / 播放全部。
+     * - B 站收藏夹：详情页是「小说式」每页 40 首，播放时必须拉全量入队，否则队列只有当前页。
+     * - 本地 / 喜欢 / 最近 / 导入歌单：已是全量列表。
+     * - 一律顺序循环，播完回到第一首；**不会**自动追加推荐视频。
+     *
+     * @param startTrack 起播曲；null 表示播放全部（从列表第一首）
+     * @param pageTracks 当前页/详情里看到的列表（本地歌单即全量）
+     */
+    fun playFromPlaylistDetail(startTrack: Track?, pageTracks: List<Track>) {
+        viewModelScope.launch {
+            val pl = _playlistDetail.value.playlist
+            val label = pl?.title?.ifBlank { "歌单" } ?: "歌单"
+            val sourceId = pl?.id?.ifBlank { "playlist" } ?: "playlist"
+            val isBiliFav = pl != null &&
+                !pl.id.startsWith("local-") &&
+                pl.id != "recent" &&
+                pl.id != LikedStore.LIKED_ID &&
+                pl.source == MusicSourceType.BILIBILI
+
+            val tracks: List<Track> = if (isBiliFav) {
+                // 已有全量且覆盖当前页时复用，避免重复拉
+                val existing = pendingQueue
+                val pageIds = pageTracks.map { it.id }.toSet()
+                val alreadyFull = existing.size > pageTracks.size &&
+                    _recommend.value.sourceId == pl.id &&
+                    pageIds.all { id -> existing.any { it.id == id } }
+                if (alreadyFull) {
+                    existing
+                } else {
+                    val totalHint = _playlistDetail.value.total
+                    if (totalHint > 40 || pageTracks.size >= 40 || _playlistDetail.value.hasMore) {
+                        _toast.value = "正在加载完整歌单…"
+                    }
+                    val all = runCatching {
+                        registry.get(MusicSourceType.BILIBILI)
+                            ?.playlistTracks(pl.id, limit = 0).orEmpty()
+                    }.getOrDefault(emptyList())
+                    when {
+                        all.isNotEmpty() -> all
+                        pageTracks.isNotEmpty() -> pageTracks
+                        else -> emptyList()
+                    }
+                }
+            } else {
+                pageTracks.ifEmpty {
+                    when {
+                        pl == null -> emptyList()
+                        pl.id == "recent" ->
+                            sessionRecent.asReversed().distinctBy { it.id }
+                        pl.id == LikedStore.LIKED_ID ->
+                            runCatching { likedStore.tracks() }.getOrDefault(emptyList())
+                        pl.id.startsWith("local-") ->
+                            runCatching { localPl.tracks(pl.id) }.getOrDefault(emptyList())
+                        else -> pageTracks
+                    }
+                }
+            }
+
+            if (tracks.isEmpty()) {
+                _toast.value = "歌单为空"
+                return@launch
+            }
+
+            val start = startTrack?.let { seed ->
+                tracks.firstOrNull {
+                    it.id == seed.id ||
+                        (it.bvid.isNotBlank() && it.bvid == seed.bvid &&
+                            (seed.cid.isBlank() || it.cid == seed.cid))
+                }
+            } ?: tracks.first()
+
+            playTrack(
+                track = start,
+                queue = tracks,
+                loopAll = true,
+                resumeIfSame = false,
+                sourceLabel = label,
+                sourceId = sourceId,
+            )
+            if (isBiliFav && tracks.size > pageTracks.size) {
+                _toast.value = "已加载全部 ${tracks.size} 首 · 顺序循环"
+            }
+        }
     }
 
     /**
