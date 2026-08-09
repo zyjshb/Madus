@@ -3077,8 +3077,10 @@ class AppViewModel(
         // 取消上一次加载，防止退出/再进时旧协程把列表写空
         playlistOpenJob?.cancel()
         val seq = ++playlistOpenSeq
+        // 必须同步进入 loading：navigate 往往在同一帧执行。
+        // 若仍显示上一次的完整列表，「播放全部」会接住同一记点击 → 误跳推荐并开播。
+        _playlistDetail.value = PlaylistDetailUiState(playlist = playlist, isLoading = true)
         playlistOpenJob = viewModelScope.launch {
-            _playlistDetail.value = PlaylistDetailUiState(playlist = playlist, isLoading = true)
             val isBiliFav = !playlist.id.startsWith("local-") &&
                 playlist.id != "recent" &&
                 playlist.id != LikedStore.LIKED_ID &&

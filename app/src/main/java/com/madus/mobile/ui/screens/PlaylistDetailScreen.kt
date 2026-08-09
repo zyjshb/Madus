@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,7 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.PlaylistDetailUiState
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.LineButton
+import kotlinx.coroutines.delay
 
 /**
  * 汽水/Spotify：整页一个 LazyColumn，封面 header 跟着滚；仅顶栏钉死。
@@ -84,6 +86,15 @@ fun PlaylistDetailScreen(
     }
     var headerMenu by remember { mutableStateOf(false) }
     var trackMenuId by remember { mutableStateOf<String?>(null) }
+    // 从列表点进来的同一记点击，可能落到「播放全部」/首曲上；进入后短暂吞掉播放手势
+    var playGesturesEnabled by remember(state.playlist?.id) { mutableStateOf(false) }
+    LaunchedEffect(state.playlist?.id, state.isLoading) {
+        playGesturesEnabled = false
+        if (!state.isLoading) {
+            delay(350)
+            playGesturesEnabled = true
+        }
+    }
 
     // 系统返回与顶栏返回一致，避免只 pop 不清理导致二次进入异常
     BackHandler {
@@ -239,7 +250,9 @@ fun PlaylistDetailScreen(
                             if (state.tracks.isNotEmpty()) {
                                 LineButton(
                                     text = "播放全部",
-                                    onClick = onPlayAll,
+                                    onClick = {
+                                        if (playGesturesEnabled) onPlayAll()
+                                    },
                                     filled = true,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
@@ -257,7 +270,9 @@ fun PlaylistDetailScreen(
                             menuOpen = trackMenuId == track.id,
                             onMenuOpen = { trackMenuId = track.id },
                             onMenuDismiss = { trackMenuId = null },
-                            onClick = { onPlayTrack(track, state.tracks) },
+                            onClick = {
+                                if (playGesturesEnabled) onPlayTrack(track, state.tracks)
+                            },
                             onCollect = { onCollectTrack(track) },
                             onOpenUp = { onOpenUp(track) },
                             onReplace = {

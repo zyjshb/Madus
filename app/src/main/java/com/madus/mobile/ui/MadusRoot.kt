@@ -198,8 +198,9 @@ fun MadusRoot(
         }
     }
 
-    /** 打开歌单详情：单实例进栈，避免叠多层后返回看到空白页 */
+    /** 打开歌单详情：先同步 loading 再进栈，避免旧列表接住点击误播 */
     fun openPlaylistScreen(pl: com.madus.mobile.domain.Playlist) {
+        // openPlaylist 内同步置 loading；必须在 navigate 之前调用
         vm.openPlaylist(pl)
         navigateToPlaylistScreen()
     }
