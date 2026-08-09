@@ -123,6 +123,7 @@ class BilibiliSource(
             ((limit + 19) / 20).coerceIn(1, 500)
         }
         val all = api.favTracks(playlistId, maxPages = pages)
+            .filter { !api.isInvalidTrack(it) }
         return if (limit <= 0) all else all.take(limit)
     }
 

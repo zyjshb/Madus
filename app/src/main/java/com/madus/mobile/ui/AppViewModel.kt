@@ -3072,9 +3072,16 @@ class AppViewModel(
                 playlist.source == MusicSourceType.BILIBILI
 
             if (isBiliFav) {
+                // 打开夹时自动清 B 站侧失效稿，再拉列表（列表默认不展示失效）
+                val purged = runCatching { biliApi.purgeInvalidFromFav(playlist.id) }.getOrNull()
                 // B 站收藏：分页 40 首，避免一次全量卡死
                 val page = runCatching {
-                    biliApi.favTracksPage(playlist.id, page = 1, pageSize = 40)
+                    biliApi.favTracksPage(
+                        playlist.id,
+                        page = 1,
+                        pageSize = 40,
+                        excludeInvalid = true,
+                    )
                 }.getOrElse {
                     _playlistDetail.value = PlaylistDetailUiState(
                         playlist = playlist,
@@ -3101,6 +3108,12 @@ class AppViewModel(
                     total = page.total,
                     error = if (page.tracks.isEmpty()) "歌单为空" else null,
                 )
+                if (purged != null && (purged.removedCount > 0 || purged.cleanApiOk)) {
+                    // 有清掉或 clean 成功时轻提示（无失效则不刷屏）
+                    if (purged.removedCount > 0) {
+                        _toast.value = "已自动清除 ${purged.removedCount} 条失效视频"
+                    }
+                }
                 // 回写首页/曲库列表封面（空白时补上）
                 if (!remoteCover.isNullOrBlank()) {
                     _home.update { h ->
@@ -3207,7 +3220,12 @@ class AppViewModel(
             if (target == st.page && st.tracks.isNotEmpty()) return@launch
             _playlistDetail.update { it.copy(loadingMore = true, error = null) }
             val result = runCatching {
-                biliApi.favTracksPage(pl.id, page = target, pageSize = 40)
+                biliApi.favTracksPage(
+                    pl.id,
+                    page = target,
+                    pageSize = 40,
+                    excludeInvalid = true,
+                )
             }.getOrElse {
                 _playlistDetail.update {
                     it.copy(loadingMore = false, error = it.error ?: "翻页失败")
@@ -3547,12 +3565,10 @@ class AppViewModel(
                 return@launch
             }
             _toast.value = "正在清除失效视频…"
-            val err = runCatching { biliApi.cleanInvalidFavResources(pl.id) }.getOrElse { it.message }
-            if (err != null) {
-                _toast.value = "清理失败：$err"
-                return@launch
-            }
-            _toast.value = "已清除本夹失效视频"
+            val result = runCatching { biliApi.purgeInvalidFromFav(pl.id) }
+                .getOrElse { BilibiliApi.PurgeInvalidResult(0, it.message ?: "清理失败", false) }
+            _toast.value = result.message
+            // 强制重载列表（openPlaylist 内会再 purge 一次，无残留即可）
             openPlaylist(pl)
             refreshHome()
             refreshLibrary()

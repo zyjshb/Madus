@@ -489,13 +489,15 @@ class BilibiliApi(
 
     /**
      * 收藏夹单页（默认 40 首/页，接口 ps 最大常按 20 时内部拼两页）。
+     * @param excludeInvalid 默认 true：列表不展示已失效/已删除稿（仍可走 purge 从 B 站真正删掉）
      */
     suspend fun favTracksPage(
         mediaId: String,
         page: Int = 1,
         pageSize: Int = 40,
+        excludeInvalid: Boolean = true,
     ): FavPage = withContext(Dispatchers.IO) {
-        val cookie = mergedCookie()
+        val cookie = mergedCookieWithSystem().ifBlank { mergedCookie() }
         if (!cookie.contains("SESSDATA") || mediaId.isBlank()) {
             return@withContext FavPage(emptyList(), false, page)
         }
@@ -503,11 +505,13 @@ class BilibiliApi(
         val apiPs = 20
         // 用户页 page 按 want 计；内部用 apiPs 取
         val startApiPn = ((page - 1) * want) / apiPs + 1
-        val needApiPages = ((want + apiPs - 1) / apiPs).coerceAtLeast(1)
+        // 过滤失效后本页可能不足 want，多拉几页 API 补满
+        val needApiPages = (((want + apiPs - 1) / apiPs) + if (excludeInvalid) 4 else 0).coerceAtLeast(1)
         val out = mutableListOf<Track>()
         var total = 0
         var hasMore = false
         var lastMedias = 0
+        var invalidSkipped = 0
         for (i in 0 until needApiPages) {
             val pn = startApiPn + i
             val url =
@@ -525,7 +529,18 @@ class BilibiliApi(
             total = data.optJSONObject("info")?.optInt("media_count", 0)
                 ?: data.optInt("media_count", total)
             for (j in 0 until medias.length()) {
-                parseFavMedia(medias.optJSONObject(j))?.let { out.add(it) }
+                val raw = medias.optJSONObject(j) ?: continue
+                if (excludeInvalid && isInvalidFavJson(raw)) {
+                    invalidSkipped++
+                    continue
+                }
+                parseFavMedia(raw)?.let { t ->
+                    if (excludeInvalid && isInvalidTrack(t)) {
+                        invalidSkipped++
+                    } else {
+                        out.add(t)
+                    }
+                }
                 if (out.size >= want) break
             }
             hasMore = when {
@@ -534,10 +549,15 @@ class BilibiliApi(
             }
             if (!hasMore || out.size >= want) break
         }
-        // 用户页还有没有下一页
-        val loadedThrough = (page - 1) * want + out.size
-        if (total > 0) hasMore = loadedThrough < total
-        FavPage(tracks = out.take(want), hasMore = hasMore && out.isNotEmpty(), page = page, total = total)
+        // 用户页还有没有下一页（按接口 total 粗算；过滤失效后 hasMore 以接口为准）
+        val loadedThrough = (page - 1) * want + out.size + invalidSkipped
+        if (total > 0) hasMore = loadedThrough < total || hasMore
+        FavPage(
+            tracks = out.take(want),
+            hasMore = hasMore && out.isNotEmpty(),
+            page = page,
+            total = (total - invalidSkipped).coerceAtLeast(out.size),
+        )
     }
 
     private fun parseFavMedia(m: JSONObject?): Track? {
@@ -545,26 +565,8 @@ class BilibiliApi(
         if (m.has("type") && m.optInt("type") != 2) return null
         val bvid = m.optString("bvid", "")
         val title = stripHtml(m.optString("title", bvid.ifBlank { "已失效视频" }))
-        val attr = m.optInt("attr", 0)
-        // 失效稿：attr 低位 / 标题 / 无 bvid；仍尽量保留 aid 以便展示，播放时会跳过
-        val invalid = (attr and 1) != 0 || isInvalidFavTitle(title)
+        val invalid = isInvalidFavJson(m)
         if (bvid.isBlank() && !invalid) return null
-        if (bvid.isBlank() && invalid) {
-            // 纯失效占位：无 bvid 也可进列表，便于用户看到后再一键清理
-            val aid = m.opt("id")?.toString()?.takeIf { it != "null" && it.isNotBlank() }
-                ?: m.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty()
-            return Track(
-                id = "invalid-${aid.ifBlank { title.hashCode() }}",
-                title = title.ifBlank { "已失效视频" },
-                artist = "已失效",
-                album = "失效",
-                coverUrl = "",
-                durationMs = 0L,
-                source = MusicSourceType.BILIBILI,
-                bvid = "",
-                aid = aid,
-            )
-        }
         val cover = normalizeUrl(
             m.optString("cover", "")
                 .ifBlank { m.optString("pic", "") }
@@ -577,11 +579,25 @@ class BilibiliApi(
         val aid = m.opt("aid")?.toString()?.takeIf { it != "null" && it.isNotBlank() }
             ?: m.opt("id")?.toString()?.takeIf { it != "null" }.orEmpty()
         val cid = m.opt("cid")?.toString()?.takeIf { it != "null" }.orEmpty()
+        if (invalid) {
+            val idBase = bvid.ifBlank { aid.ifBlank { "invalid" } }
+            return Track(
+                id = "invalid-$idBase",
+                title = title.ifBlank { "已失效视频" },
+                artist = "已失效",
+                album = "失效",
+                coverUrl = cover,
+                durationMs = 0L,
+                source = MusicSourceType.BILIBILI,
+                bvid = bvid,
+                aid = aid.filter { it.isDigit() },
+            )
+        }
         return Track(
             id = if (cid.isNotBlank()) "${bvid}_$cid" else bvid,
             title = title,
-            artist = if (invalid) "已失效" else upper,
-            album = if (invalid) "失效" else "收藏",
+            artist = upper,
+            album = "收藏",
             coverUrl = cover,
             durationMs = durationMs,
             source = MusicSourceType.BILIBILI,
@@ -590,6 +606,30 @@ class BilibiliApi(
             cid = cid,
             ownerMid = mid,
         )
+    }
+
+    /** 接口 JSON 判定失效稿 */
+    private fun isInvalidFavJson(m: JSONObject): Boolean {
+        val title = stripHtml(m.optString("title", ""))
+        val attr = m.optInt("attr", 0)
+        val bvid = m.optString("bvid", "")
+        val cover = m.optString("cover", "").ifBlank { m.optString("pic", "") }
+        // attr 最低位为 1 常表示失效；标题/无 bvid/空封面+零时长 兜底
+        if ((attr and 1) != 0) return true
+        if (isInvalidFavTitle(title)) return true
+        if (bvid.isBlank() && isInvalidFavTitle(title.ifBlank { "已失效视频" })) return true
+        // 失效稿常见：无 bvid 或标题为空
+        if (bvid.isBlank() && title.isBlank()) return true
+        if (bvid.isBlank() && cover.isBlank() && m.optLong("duration", 0L) <= 0L) return true
+        return false
+    }
+
+    fun isInvalidTrack(t: Track): Boolean {
+        if (t.album == "失效" || t.artist == "已失效") return true
+        if (t.id.startsWith("invalid-")) return true
+        if (isInvalidFavTitle(t.title)) return true
+        if (t.bvid.isBlank() && t.aid.isBlank()) return true
+        return false
     }
 
     /**
@@ -1709,6 +1749,7 @@ class BilibiliApi(
         if (csrf.isBlank()) return@withContext "缺少 bili_jct，请重新登录 B 站"
         val body =
             "media_id=${URLEncoder.encode(id, "UTF-8")}" +
+                "&platform=web" +
                 "&csrf=${URLEncoder.encode(csrf, "UTF-8")}"
         val json = postForm(
             "https://api.bilibili.com/x/v3/fav/resource/clean",
@@ -1721,8 +1762,107 @@ class BilibiliApi(
     }
 
     /**
+     * 批量从收藏夹删除指定稿件（resources = aid:2）。
+     */
+    suspend fun batchDelFavResources(mediaId: String, aids: List<String>): String? =
+        withContext(Dispatchers.IO) {
+            val id = mediaId.trim()
+            val list = aids.map { it.filter { c -> c.isDigit() } }.filter { it.isNotBlank() }.distinct()
+            if (id.isBlank() || list.isEmpty()) return@withContext null
+            val cookie = mergedCookieWithSystem()
+            if (!cookie.contains("SESSDATA")) return@withContext "请先登录 B 站"
+            val csrf = extractCookieValue(cookie, "bili_jct")
+            if (csrf.isBlank()) return@withContext "缺少 bili_jct，请重新登录 B 站"
+            val resources = list.joinToString(",") { "$it:2" }
+            val body =
+                "resources=${URLEncoder.encode(resources, "UTF-8")}" +
+                    "&media_id=${URLEncoder.encode(id, "UTF-8")}" +
+                    "&platform=web" +
+                    "&csrf=${URLEncoder.encode(csrf, "UTF-8")}"
+            val json = postForm(
+                "https://api.bilibili.com/x/v3/fav/resource/batch-del",
+                body,
+                cookie,
+                referer = "https://www.bilibili.com",
+            )
+            val code = json.optInt("code", -1)
+            if (code == 0) null else json.optString("message", "删除失败 code=$code")
+        }
+
+    /**
+     * 扫描收藏夹内仍存在的失效稿 aid（最多扫 50 个 API 页 ≈ 1000 条）。
+     */
+    suspend fun listInvalidFavAids(mediaId: String, maxApiPages: Int = 50): List<String> =
+        withContext(Dispatchers.IO) {
+            val id = mediaId.trim()
+            if (id.isBlank()) return@withContext emptyList()
+            val cookie = mergedCookieWithSystem().ifBlank { mergedCookie() }
+            if (!cookie.contains("SESSDATA")) return@withContext emptyList()
+            val aids = linkedSetOf<String>()
+            val apiPs = 20
+            var pn = 1
+            while (pn <= maxApiPages) {
+                val url =
+                    "https://api.bilibili.com/x/v3/fav/resource/list" +
+                        "?media_id=${URLEncoder.encode(id, "UTF-8")}" +
+                        "&pn=$pn&ps=$apiPs&keyword=&order=mtime&type=0&tid=0&platform=web"
+                val json = getJson(url, cookie, referer = "https://www.bilibili.com")
+                val data = json.optJSONObject("data")
+                val medias = data?.optJSONArray("medias")
+                if (medias == null || medias.length() == 0) break
+                for (j in 0 until medias.length()) {
+                    val m = medias.optJSONObject(j) ?: continue
+                    if (!isInvalidFavJson(m)) continue
+                    val aid = m.opt("id")?.toString()?.filter { it.isDigit() }.orEmpty()
+                        .ifBlank { m.opt("aid")?.toString()?.filter { it.isDigit() }.orEmpty() }
+                    if (aid.isNotBlank()) aids.add(aid)
+                }
+                val hasMore = when {
+                    data.has("has_more") -> data.optBoolean("has_more", false)
+                    else -> medias.length() >= apiPs
+                }
+                if (!hasMore) break
+                pn++
+            }
+            aids.toList()
+        }
+
+    /**
+     * 彻底清除夹内失效：先官方 clean，再扫列表 batch-del 残留。
+     */
+    suspend fun purgeInvalidFromFav(mediaId: String): PurgeInvalidResult = withContext(Dispatchers.IO) {
+        val id = mediaId.trim()
+        if (id.isBlank()) {
+            return@withContext PurgeInvalidResult(0, "收藏夹 id 为空")
+        }
+        // 1) 官方一键清失效
+        val cleanErr = cleanInvalidFavResources(id)
+        // 2) 扫残留失效 aid，批量删
+        val leftover = listInvalidFavAids(id)
+        var batchOk = 0
+        var batchFail = 0
+        for (chunk in leftover.chunked(20)) {
+            val err = batchDelFavResources(id, chunk)
+            if (err == null) batchOk += chunk.size else batchFail += chunk.size
+            kotlinx.coroutines.delay(220)
+        }
+        val msg = when {
+            cleanErr == null && leftover.isEmpty() -> "已清除失效视频"
+            cleanErr == null && batchOk > 0 -> "已清除失效视频（含 $batchOk 条）"
+            cleanErr == null && batchFail > 0 -> "部分失效未能删除"
+            cleanErr != null && batchOk > 0 -> "已删除 $batchOk 条失效（clean: $cleanErr）"
+            cleanErr != null && leftover.isEmpty() -> "清理完成"
+            else -> cleanErr ?: "清理失败"
+        }
+        PurgeInvalidResult(
+            removedCount = batchOk,
+            message = msg,
+            cleanApiOk = cleanErr == null,
+        )
+    }
+
+    /**
      * 对当前账号所有自建收藏夹执行失效清理。
-     * @return 成功清理的夹数与失败信息摘要
      */
     suspend fun cleanInvalidInAllFavFolders(): CleanInvalidResult = withContext(Dispatchers.IO) {
         val folders = favFolders()
@@ -1731,25 +1871,29 @@ class BilibiliApi(
         }
         var ok = 0
         var fail = 0
+        var totalRemoved = 0
         val errors = mutableListOf<String>()
         for (f in folders) {
-            val err = cleanInvalidFavResources(f.id)
-            if (err == null) {
+            val r = runCatching { purgeInvalidFromFav(f.id) }.getOrElse {
+                PurgeInvalidResult(0, it.message ?: "失败", false)
+            }
+            if (r.cleanApiOk || r.removedCount > 0) {
                 ok++
+                totalRemoved += r.removedCount
             } else {
                 fail++
-                if (errors.size < 3) errors.add("${f.title}: $err")
+                if (errors.size < 3) errors.add("${f.title}: ${r.message}")
             }
-            // 轻微间隔，降低风控
-            kotlinx.coroutines.delay(280)
+            kotlinx.coroutines.delay(320)
         }
         CleanInvalidResult(
             cleanedFolders = ok,
             failedFolders = fail,
             message = when {
-                fail == 0 -> "已清理 $ok 个收藏夹中的失效视频"
+                fail == 0 && totalRemoved > 0 -> "已清理 $ok 个夹，去掉约 $totalRemoved 条失效"
+                fail == 0 -> "已处理 $ok 个收藏夹中的失效视频"
                 ok == 0 -> errors.firstOrNull() ?: "清理失败"
-                else -> "已清理 $ok 个夹，失败 $fail 个"
+                else -> "已处理 $ok 个夹，失败 $fail 个"
             },
         )
     }
@@ -1760,6 +1904,12 @@ class BilibiliApi(
         val message: String,
     )
 
+    data class PurgeInvalidResult(
+        val removedCount: Int,
+        val message: String,
+        val cleanApiOk: Boolean = true,
+    )
+
     /** 列表项是否为失效稿件（已删 / 不可见等） */
     fun isInvalidFavTitle(title: String): Boolean {
         val t = title.trim()
@@ -1768,7 +1918,11 @@ class BilibiliApi(
             t.contains("已删除") ||
             t.equals("失效视频", ignoreCase = true) ||
             t.contains("视频不见了") ||
-            t.contains("内容失效")
+            t.contains("内容失效") ||
+            t.contains("up主已删除") ||
+            t.contains("UP主已删除") ||
+            t.contains("稿件不可见") ||
+            t.contains("视频已失效")
     }
 
     /**
