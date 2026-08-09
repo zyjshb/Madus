@@ -311,6 +311,9 @@ class AppViewModel(
 
     private val _playlistDetail = MutableStateFlow(PlaylistDetailUiState())
     val playlistDetail: StateFlow<PlaylistDetailUiState> = _playlistDetail.asStateFlow()
+    /** 串行化打开/关闭，避免二次进入被旧协程写空 */
+    private var playlistOpenJob: Job? = null
+    private var playlistOpenSeq: Int = 0
 
     /** In-memory recent (mirrors RecentStore, newest last for push, UI reverses). */
     private val sessionRecent = mutableListOf<Track>()
@@ -2396,6 +2399,7 @@ class AppViewModel(
         viewModelScope.launch {
             localPl.create(title.ifBlank { defaultPlaylistName() })
             refreshHome()
+            refreshLibrary()
         }
     }
 
@@ -3064,7 +3068,10 @@ class AppViewModel(
     }
 
     fun openPlaylist(playlist: Playlist) {
-        viewModelScope.launch {
+        // 取消上一次加载，防止退出/再进时旧协程把列表写空
+        playlistOpenJob?.cancel()
+        val seq = ++playlistOpenSeq
+        playlistOpenJob = viewModelScope.launch {
             _playlistDetail.value = PlaylistDetailUiState(playlist = playlist, isLoading = true)
             val isBiliFav = !playlist.id.startsWith("local-") &&
                 playlist.id != "recent" &&
@@ -3072,9 +3079,7 @@ class AppViewModel(
                 playlist.source == MusicSourceType.BILIBILI
 
             if (isBiliFav) {
-                // 打开夹时自动清 B 站侧失效稿，再拉列表（列表默认不展示失效）
-                val purged = runCatching { biliApi.purgeInvalidFromFav(playlist.id) }.getOrNull()
-                // B 站收藏：分页 40 首，避免一次全量卡死
+                // 仅拉列表并过滤失效展示；不在打开时 purge（purge 会改 B 站数据且易与二次进入竞态导致空白）
                 val page = runCatching {
                     biliApi.favTracksPage(
                         playlist.id,
@@ -3083,6 +3088,7 @@ class AppViewModel(
                         excludeInvalid = true,
                     )
                 }.getOrElse {
+                    if (seq != playlistOpenSeq) return@launch
                     _playlistDetail.value = PlaylistDetailUiState(
                         playlist = playlist,
                         isLoading = false,
@@ -3090,6 +3096,7 @@ class AppViewModel(
                     )
                     return@launch
                 }
+                if (seq != playlistOpenSeq || !isActive) return@launch
                 // 夹封面：优先用户自定义 → 接口封面 → 列表第一首封面
                 val remoteCover = playlist.coverUrl?.takeIf { it.isNotBlank() }
                     ?: page.tracks.firstOrNull()?.coverUrl
@@ -3099,6 +3106,7 @@ class AppViewModel(
                         coverUrl = remoteCover ?: playlist.coverUrl,
                     ),
                 )
+                if (seq != playlistOpenSeq) return@launch
                 _playlistDetail.value = PlaylistDetailUiState(
                     playlist = pl,
                     tracks = page.tracks,
@@ -3108,12 +3116,6 @@ class AppViewModel(
                     total = page.total,
                     error = if (page.tracks.isEmpty()) "歌单为空" else null,
                 )
-                if (purged != null && (purged.removedCount > 0 || purged.cleanApiOk)) {
-                    // 有清掉或 clean 成功时轻提示（无失效则不刷屏）
-                    if (purged.removedCount > 0) {
-                        _toast.value = "已自动清除 ${purged.removedCount} 条失效视频"
-                    }
-                }
                 // 回写首页/曲库列表封面（空白时补上）
                 if (!remoteCover.isNullOrBlank()) {
                     _home.update { h ->
@@ -3149,6 +3151,7 @@ class AppViewModel(
                     runCatching {
                         registry.get(playlist.source)?.playlistTracks(playlist.id, limit = 0).orEmpty()
                     }.getOrElse { e ->
+                        if (seq != playlistOpenSeq) return@launch
                         _playlistDetail.value = PlaylistDetailUiState(
                             playlist = playlist,
                             isLoading = false,
@@ -3157,6 +3160,7 @@ class AppViewModel(
                         return@launch
                     }
             }
+            if (seq != playlistOpenSeq || !isActive) return@launch
             val base = when {
                 playlist.id == "recent" ->
                     Playlist(
@@ -3172,6 +3176,7 @@ class AppViewModel(
                 else -> playlist
             }
             val pl = applyCover(base)
+            if (seq != playlistOpenSeq) return@launch
             _playlistDetail.value = PlaylistDetailUiState(
                 playlist = pl,
                 tracks = tracks,
@@ -3211,6 +3216,7 @@ class AppViewModel(
         viewModelScope.launch {
             val st = _playlistDetail.value
             val pl = st.playlist ?: return@launch
+            val openId = pl.id
             val isBiliFav = !pl.id.startsWith("local-") &&
                 pl.id != "recent" &&
                 pl.id != LikedStore.LIKED_ID &&
@@ -3227,11 +3233,14 @@ class AppViewModel(
                     excludeInvalid = true,
                 )
             }.getOrElse {
+                if (_playlistDetail.value.playlist?.id != openId) return@launch
                 _playlistDetail.update {
                     it.copy(loadingMore = false, error = it.error ?: "翻页失败")
                 }
                 return@launch
             }
+            // 已退出或换了歌单则丢弃结果
+            if (_playlistDetail.value.playlist?.id != openId) return@launch
             if (result.tracks.isEmpty() && target > 1) {
                 _playlistDetail.update {
                     it.copy(loadingMore = false, hasMore = false, error = "已经是最后一页")
@@ -3547,6 +3556,9 @@ class AppViewModel(
     }
 
     fun closePlaylist() {
+        playlistOpenJob?.cancel()
+        playlistOpenJob = null
+        playlistOpenSeq++
         _playlistDetail.value = PlaylistDetailUiState()
     }
 
@@ -3568,7 +3580,7 @@ class AppViewModel(
             val result = runCatching { biliApi.purgeInvalidFromFav(pl.id) }
                 .getOrElse { BilibiliApi.PurgeInvalidResult(0, it.message ?: "清理失败", false) }
             _toast.value = result.message
-            // 强制重载列表（openPlaylist 内会再 purge 一次，无残留即可）
+            // 手动清理后再重载列表
             openPlaylist(pl)
             refreshHome()
             refreshLibrary()

@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.20：画板彩蛋 + 安装后清理更新包
-        versionCode = 243
-        versionName = "1.14.23"
+        // 1.14.24：歌单二次进入空白 / 循环
+        versionCode = 244
+        versionName = "1.14.24"
         vectorDrawables.useSupportLibrary = true
     }
 

@@ -29,6 +29,18 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.24",
+            date = "2026-08-09",
+            fixed = listOf(
+                "B 站收藏夹点第二次变空白",
+                "本地/导入歌单反复进出空白与正常界面循环",
+                "歌单详情系统返回与顶栏返回一致，不再叠多层详情页",
+            ),
+            changed = listOf(
+                "打开收藏夹不再自动 purge（仍过滤失效展示；清失效改手动）",
+            ),
+        ),
+        Entry(
             version = "1.14.23",
             date = "2026-08-09",
             fixed = listOf(

@@ -1,6 +1,7 @@
 package com.madus.mobile.ui.screens
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
@@ -83,6 +84,16 @@ fun PlaylistDetailScreen(
     }
     var headerMenu by remember { mutableStateOf(false) }
     var trackMenuId by remember { mutableStateOf<String?>(null) }
+
+    // 系统返回与顶栏返回一致，避免只 pop 不清理导致二次进入异常
+    BackHandler {
+        when {
+            showRename -> showRename = false
+            headerMenu -> headerMenu = false
+            trackMenuId != null -> trackMenuId = null
+            else -> onBack()
+        }
+    }
 
     val pickCover = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),

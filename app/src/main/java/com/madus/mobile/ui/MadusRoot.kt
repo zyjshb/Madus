@@ -189,12 +189,39 @@ fun MadusRoot(
         "${m}:${s.toString().padStart(2, '0')}"
     } else null
 
+    /** 只负责进栈：保证 playlist 路由至多一层 */
+    fun navigateToPlaylistScreen() {
+        if (nav.currentBackStackEntry?.destination?.route == Routes.PLAYLIST) return
+        runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+        nav.navigate(Routes.PLAYLIST) {
+            launchSingleTop = true
+        }
+    }
+
+    /** 打开歌单详情：单实例进栈，避免叠多层后返回看到空白页 */
+    fun openPlaylistScreen(pl: com.madus.mobile.domain.Playlist) {
+        vm.openPlaylist(pl)
+        navigateToPlaylistScreen()
+    }
+
+    /** 离开歌单详情：先 pop 再清状态，避免「先清空再露出下层空 playlist」 */
+    fun leavePlaylistScreen() {
+        var guard = 0
+        while (
+            guard++ < 8 &&
+            nav.currentBackStackEntry?.destination?.route == Routes.PLAYLIST
+        ) {
+            if (!nav.popBackStack()) break
+        }
+        vm.closePlaylist()
+    }
+
     /** 跳到推荐页电台台面（共用：点歌 / 搜索插播） */
     fun openRecommendPlayer() {
         // 关掉歌单详情并弹出栈：否则 popUpTo+saveState 会把「主页→歌单」存起来，
         // 再点主页 restore 后仍停在歌单里。
-        vm.closePlaylist()
         runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+        vm.closePlaylist()
         nav.navigate(RootTab.Recommend.route) {
             popUpTo(nav.graph.findStartDestination().id) {
                 saveState = true
@@ -293,13 +320,13 @@ fun MadusRoot(
                     LineSketchBottomBar(
                         route = route,
                         onSelect = { tab ->
-                            // 回主页时：若还盖着歌单详情，先关掉，保证看到首页列表
-                            if (tab == RootTab.Home) {
-                                val cur = nav.currentBackStackEntry?.destination?.route
-                                if (cur == Routes.PLAYLIST) {
-                                    vm.closePlaylist()
-                                    runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+                            // 回主页/曲库时：若还盖着歌单详情，先关掉
+                            if (tab == RootTab.Home || tab == RootTab.Library) {
+                                runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+                                if (tab == RootTab.Home) {
+                                    runCatching { nav.popBackStack(Routes.BILI_FAVS, inclusive = true) }
                                 }
+                                vm.closePlaylist()
                             }
                             // 底栏进搜索 = 普通搜索，不是清屏短视频内搜索
                             if (tab == RootTab.Search) {
@@ -374,10 +401,7 @@ fun MadusRoot(
                                 loopAll = true,
                             )
                         },
-                        onOpenPlaylist = { pl ->
-                            vm.openPlaylist(pl)
-                            nav.navigate(Routes.PLAYLIST)
-                        },
+                        onOpenPlaylist = { pl -> openPlaylistScreen(pl) },
                         onCollectTrack = { vm.openCollectSheet(it) },
                         onRemoveRecent = vm::removeFromRecent,
                         onClearRecent = vm::clearRecent,
@@ -507,13 +531,10 @@ fun MadusRoot(
                     LaunchedEffect(Unit) { vm.refreshLibrary() }
                     LibraryScreen(
                         state = library,
-                        onOpenPlaylist = { pl ->
-                            vm.openPlaylist(pl)
-                            nav.navigate(Routes.PLAYLIST)
-                        },
+                        onOpenPlaylist = { pl -> openPlaylistScreen(pl) },
                         onOpenRecent = {
                             vm.openRecentPlaylist()
-                            nav.navigate(Routes.PLAYLIST)
+                            navigateToPlaylistScreen()
                         },
                         onOpenBiliList = {
                             nav.navigate(Routes.BILI_FAVS) { launchSingleTop = true }
@@ -720,10 +741,7 @@ fun MadusRoot(
                         } else {
                             null
                         },
-                        onBack = {
-                            vm.closePlaylist()
-                            nav.popBackStack()
-                        },
+                        onBack = { leavePlaylistScreen() },
                         onPlayTrack = { track, queue ->
                             // B 站收藏夹详情只有当前页 40 首：内部拉全量再入队并循环
                             vm.playFromPlaylistDetail(track, queue)
@@ -747,7 +765,7 @@ fun MadusRoot(
                             val pid = pl?.id ?: return@PlaylistDetailScreen
                             if (canDeletePlaylist) {
                                 vm.deleteLocalPlaylist(pid)
-                                nav.popBackStack()
+                                leavePlaylistScreen()
                             }
                         },
                         onCollectTrack = { vm.openCollectSheet(it) },
@@ -799,10 +817,7 @@ fun MadusRoot(
                     BiliFavListScreen(
                         playlists = home.playlists,
                         onBack = { nav.popBackStack() },
-                        onOpen = { pl ->
-                            vm.openPlaylist(pl)
-                            nav.navigate(Routes.PLAYLIST)
-                        },
+                        onOpen = { pl -> openPlaylistScreen(pl) },
                         onCleanAllInvalid = { vm.cleanInvalidInAllBiliFavs() },
                     )
                 }
