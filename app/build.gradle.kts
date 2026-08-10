@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.31：0.3s 只挡误触播放；导航减负更跟手
-        versionCode = 251
-        versionName = "1.14.31"
+        // 1.14.32：导入上限 2000；退出再进歌单不再误触开播
+        versionCode = 252
+        versionName = "1.14.32"
         vectorDrawables.useSupportLibrary = true
     }
 

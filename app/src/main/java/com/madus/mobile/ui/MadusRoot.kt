@@ -749,7 +749,7 @@ fun MadusRoot(
                         },
                         onBack = { leavePlaylistScreen() },
                         onPlayTrack = { track, queue ->
-                            // 进页约 0.3s 内忽略（挡退出后连点）；过后再点立刻播
+                            // 进页短门闩 + 详情页手指落定后才可播（挡退出后连点误触）
                             if (!vm.markExplicitPlaylistPlay()) return@PlaylistDetailScreen
                             vm.playFromPlaylistDetail(track, queue)
                         },

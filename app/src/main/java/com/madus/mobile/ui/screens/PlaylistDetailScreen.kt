@@ -41,6 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.Track
@@ -86,11 +88,29 @@ fun PlaylistDetailScreen(
     }
     var headerMenu by remember { mutableStateOf(false) }
     var trackMenuId by remember { mutableStateOf<String?>(null) }
-    // 只锁「播放」约 0.3s：挡退出后连点；返回/滑动不锁
+    /**
+     * 退出再进/连点时，点歌单封面的「抬起」常会落到详情里的「播放全部」。
+     * 策略：进页后先锁播放；等手指全部抬起并安静一小段再解锁。
+     * 只挡播放，不挡滑动/返回。
+     */
     var playArmed by remember(state.openGeneration) { mutableStateOf(false) }
+    var pointerDown by remember(state.openGeneration) { mutableStateOf(false) }
     LaunchedEffect(state.openGeneration) {
         playArmed = false
-        delay(300)
+        val openedAt = System.nanoTime()
+        // 若进页时手指还按着（连点/穿透点击），等到抬起后再安静一段时间
+        var quietMs = 0
+        while (quietMs < 180) {
+            if (pointerDown) {
+                quietMs = 0
+            } else {
+                quietMs += 16
+            }
+            delay(16)
+        }
+        // 最短约 0.45s：挡「退出→马上再点歌单」把抬起落到「播放全部」
+        val elapsedMs = (System.nanoTime() - openedAt) / 1_000_000L
+        if (elapsedMs < 450L) delay(450L - elapsedMs)
         playArmed = true
     }
 
@@ -112,7 +132,18 @@ fun PlaylistDetailScreen(
 
     val hasManage = canRename || canChangeCover || canDeletePlaylist || canCleanInvalid
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(state.openGeneration) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        pointerDown = event.changes.any { it.pressed }
+                    }
+                }
+            },
+    ) {
         // 仅顶栏钉死
         Row(
             modifier = Modifier

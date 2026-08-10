@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.32",
+            date = "2026-08-10",
+            changed = listOf(
+                "网易/QQ 等外站导入上限由 500 提到 2000 首（过大仍会截断并提示）",
+            ),
+            fixed = listOf(
+                "退出再马上点歌单，不再误触「播放全部」自己开播（等手指抬起后再允许播放）",
+            ),
+        ),
+        Entry(
             version = "1.14.31",
             date = "2026-08-10",
             fixed = listOf(

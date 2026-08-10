@@ -45,7 +45,8 @@ class ExternalPlaylistImporter(
 
     suspend fun importPlaylist(
         input: String,
-        maxSongs: Int = 500,
+        /** 默认 2000：网易/QQ 大歌单可进；过大易被 B 站搜索限流且导入很久 */
+        maxSongs: Int = 2000,
         onProgress: (done: Int, total: Int, label: String) -> Unit = { _, _, _ -> },
     ): ImportResult = withContext(Dispatchers.IO) {
         val raw = input.trim()
@@ -60,7 +61,9 @@ class ExternalPlaylistImporter(
                 emptyList(),
                 "无法识别。可贴网易云/QQ/酷狗/酷我歌单链接，或每行「歌名 - 歌手」",
             )
-        val songs = parsed.songs.take(maxSongs.coerceIn(1, 800))
+        val cap = maxSongs.coerceIn(1, 3000)
+        val totalParsed = parsed.songs.size
+        val songs = parsed.songs.take(cap)
         if (songs.isEmpty()) {
             return@withContext ImportResult(
                 parsed.title,
@@ -80,13 +83,17 @@ class ExternalPlaylistImporter(
             } else {
                 failed.add(song)
             }
-            delay(100)
+            // 大歌单略加快，减轻总耗时；仍留间隔降低 B 站搜索压力
+            delay(if (songs.size > 400) 60L else 100L)
         }
         onProgress(songs.size, songs.size, "完成")
         val msg = buildString {
             append("${parsed.platform}「${parsed.title}」")
             append(" · 命中 ${matched.size}/${songs.size}")
             if (failed.isNotEmpty()) append(" · 未匹配 ${failed.size}")
+            if (totalParsed > songs.size) {
+                append(" · 原歌单 ${totalParsed} 首，本次导入前 ${songs.size} 首")
+            }
         }
         ImportResult(
             playlistTitle = parsed.title.ifBlank { "导入歌单" },
@@ -539,7 +546,7 @@ class ExternalPlaylistImporter(
                     out.add(SourceSong(t, ""))
             }
         }
-        return out.distinctBy { it.title to it.artist }.take(500)
+        return out.distinctBy { it.title to it.artist }.take(3000)
     }
 
     private fun extractQueryId(url: String, key: String): String? {
