@@ -1134,6 +1134,7 @@ fun MadusRoot(
                 onDismiss = vm::dismissImportPlaylistSheet,
                 onInput = vm::onImportPlaylistInput,
                 onStart = vm::startImportPlaylist,
+                onContinue = vm::continueImportPlaylist,
             )
         }
 

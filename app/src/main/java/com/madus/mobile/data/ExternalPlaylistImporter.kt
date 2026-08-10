@@ -35,72 +35,102 @@ class ExternalPlaylistImporter(
         val songs: List<SourceSong>,
     )
 
+    data class MatchBatchResult(
+        val matched: List<Track>,
+        val failed: List<SourceSong>,
+    )
+
     data class ImportResult(
         val playlistTitle: String,
         val platform: String,
         val matched: List<Track>,
         val failed: List<SourceSong>,
         val message: String,
+        /** 解析到的全部曲目数（未截断） */
+        val totalParsed: Int = 0,
+        /** 本批在全部列表中的起点（0-based） */
+        val batchOffset: Int = 0,
+        /** 本批尝试匹配的条数 */
+        val batchTried: Int = 0,
     )
 
-    suspend fun importPlaylist(
-        input: String,
-        /** 默认 2000：网易/QQ 大歌单可进；过大易被 B 站搜索限流且导入很久 */
-        maxSongs: Int = 2000,
-        onProgress: (done: Int, total: Int, label: String) -> Unit = { _, _, _ -> },
-    ): ImportResult = withContext(Dispatchers.IO) {
+    /**
+     * 解析输入得到完整曲目列表（不做 B 站匹配）。
+     * 失败时 message 非空。
+     */
+    suspend fun parseForImport(input: String): Pair<ParsedPlaylist?, String> = withContext(Dispatchers.IO) {
         val raw = input.trim()
         if (raw.isBlank()) {
-            return@withContext ImportResult("", "", emptyList(), emptyList(), "请粘贴链接或歌名歌手文本")
+            return@withContext null to "请粘贴链接或歌名歌手文本"
         }
         val parsed = parse(raw)
-            ?: return@withContext ImportResult(
-                "",
-                "",
-                emptyList(),
-                emptyList(),
-                "无法识别。可贴网易云/QQ/酷狗/酷我歌单链接，或每行「歌名 - 歌手」",
-            )
-        val cap = maxSongs.coerceIn(1, 3000)
-        val totalParsed = parsed.songs.size
-        val songs = parsed.songs.take(cap)
-        if (songs.isEmpty()) {
-            return@withContext ImportResult(
-                parsed.title,
-                parsed.platform,
-                emptyList(),
-                emptyList(),
-                "歌单是空的或未能解析曲目（可改贴「歌名 - 歌手」多行）",
-            )
+            ?: return@withContext null to "无法识别。可贴网易云/QQ/酷狗/酷我歌单链接，或每行「歌名 - 歌手」"
+        if (parsed.songs.isEmpty()) {
+            return@withContext null to "歌单是空的或未能解析曲目（可改贴「歌名 - 歌手」多行）"
         }
+        val capped = parsed.copy(songs = parsed.songs.take(PARSE_CAP))
+        capped to ""
+    }
+
+    /**
+     * 对一批外站曲目做 B 站匹配（通常 [BATCH_SIZE] 首）。
+     */
+    suspend fun matchSongsBatch(
+        songs: List<SourceSong>,
+        platform: String,
+        onProgress: (done: Int, total: Int, label: String) -> Unit = { _, _, _ -> },
+    ): MatchBatchResult = withContext(Dispatchers.IO) {
+        if (songs.isEmpty()) return@withContext MatchBatchResult(emptyList(), emptyList())
         val matched = mutableListOf<Track>()
         val failed = mutableListOf<SourceSong>()
         songs.forEachIndexed { index, song ->
             onProgress(index, songs.size, song.title)
             val hit = matchToBili(song)
             if (hit != null) {
-                matched.add(hit.copy(album = "导入·${parsed.platform}"))
+                matched.add(hit.copy(album = "导入·$platform"))
             } else {
                 failed.add(song)
             }
-            // 大歌单略加快，减轻总耗时；仍留间隔降低 B 站搜索压力
-            delay(if (songs.size > 400) 60L else 100L)
+            delay(100)
         }
         onProgress(songs.size, songs.size, "完成")
+        MatchBatchResult(matched, failed)
+    }
+
+    /**
+     * 一次性导入（兼容旧调用）：默认只匹配前 [BATCH_SIZE] 首。
+     * 大歌单请用 [parseForImport] + [matchSongsBatch] 分批。
+     */
+    suspend fun importPlaylist(
+        input: String,
+        maxSongs: Int = BATCH_SIZE,
+        onProgress: (done: Int, total: Int, label: String) -> Unit = { _, _, _ -> },
+    ): ImportResult = withContext(Dispatchers.IO) {
+        val (parsed, err) = parseForImport(input)
+        if (parsed == null) {
+            return@withContext ImportResult("", "", emptyList(), emptyList(), err)
+        }
+        val cap = maxSongs.coerceIn(1, PARSE_CAP)
+        val totalParsed = parsed.songs.size
+        val songs = parsed.songs.take(cap)
+        val batch = matchSongsBatch(songs, parsed.platform, onProgress)
         val msg = buildString {
             append("${parsed.platform}「${parsed.title}」")
-            append(" · 命中 ${matched.size}/${songs.size}")
-            if (failed.isNotEmpty()) append(" · 未匹配 ${failed.size}")
+            append(" · 命中 ${batch.matched.size}/${songs.size}")
+            if (batch.failed.isNotEmpty()) append(" · 未匹配 ${batch.failed.size}")
             if (totalParsed > songs.size) {
-                append(" · 原歌单 ${totalParsed} 首，本次导入前 ${songs.size} 首")
+                append(" · 原歌单 ${totalParsed} 首，本批 ${songs.size} 首")
             }
         }
         ImportResult(
             playlistTitle = parsed.title.ifBlank { "导入歌单" },
             platform = parsed.platform,
-            matched = matched,
-            failed = failed,
+            matched = batch.matched,
+            failed = batch.failed,
             message = msg,
+            totalParsed = totalParsed,
+            batchOffset = 0,
+            batchTried = songs.size,
         )
     }
 
@@ -546,7 +576,7 @@ class ExternalPlaylistImporter(
                     out.add(SourceSong(t, ""))
             }
         }
-        return out.distinctBy { it.title to it.artist }.take(3000)
+        return out.distinctBy { it.title to it.artist }.take(PARSE_CAP)
     }
 
     private fun extractQueryId(url: String, key: String): String? {
@@ -584,5 +614,9 @@ class ExternalPlaylistImporter(
 
     companion object {
         private const val TAG = "ExtPlImport"
+        /** 每批匹配数量：先导一批，用户确认后再继续下一批 */
+        const val BATCH_SIZE = 500
+        /** 解析保留上限（再多就别硬扛了） */
+        const val PARSE_CAP = 5000
     }
 }

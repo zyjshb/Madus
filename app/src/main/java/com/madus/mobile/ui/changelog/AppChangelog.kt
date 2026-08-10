@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.33",
+            date = "2026-08-10",
+            changed = listOf(
+                "外站导入改为每批 500 首：先导一批，可点「继续添加」再导下一批",
+            ),
+        ),
+        Entry(
             version = "1.14.32",
             date = "2026-08-10",
             changed = listOf(

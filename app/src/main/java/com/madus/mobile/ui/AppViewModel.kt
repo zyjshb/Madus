@@ -259,6 +259,15 @@ data class ImportPlaylistUiState(
     val progress: String = "",
     val result: String? = null,
     val error: String? = null,
+    /** 还有未导入曲目，可点「继续添加」 */
+    val canContinue: Boolean = false,
+    /** 还剩多少首未匹配 */
+    val remaining: Int = 0,
+    /** 原歌单总曲目 */
+    val totalSongs: Int = 0,
+    /** 已累计命中写入的数量 */
+    val importedCount: Int = 0,
+    val playlistTitle: String = "",
 )
 
 /**
@@ -3549,19 +3558,48 @@ class AppViewModel(
         _upSpace.value = UpSpaceUiState()
     }
 
+    /** 外站导入分批会话：解析一次，每批 500 首 */
+    private data class ImportBatchSession(
+        val platform: String,
+        val title: String,
+        val allSongs: List<ExternalPlaylistImporter.SourceSong>,
+        val playlistId: String,
+        val playlistTitle: String,
+        var nextOffset: Int,
+        var totalMatched: Int,
+        var totalFailed: Int,
+    )
+
+    private var importBatchSession: ImportBatchSession? = null
+
     fun openImportPlaylistSheet() {
+        importBatchSession = null
         _importPlaylist.value = ImportPlaylistUiState(visible = true)
     }
 
     fun dismissImportPlaylistSheet() {
         if (_importPlaylist.value.isWorking) return
+        importBatchSession = null
         _importPlaylist.value = ImportPlaylistUiState()
     }
 
     fun onImportPlaylistInput(text: String) {
-        _importPlaylist.update { it.copy(input = text, error = null, result = null) }
+        // 改输入则丢弃未完成的分批会话
+        if (importBatchSession != null) {
+            importBatchSession = null
+        }
+        _importPlaylist.update {
+            it.copy(
+                input = text,
+                error = null,
+                result = null,
+                canContinue = false,
+                remaining = 0,
+            )
+        }
     }
 
+    /** 开始导入：解析全表，先匹配写入第一批 500 首 */
     fun startImportPlaylist() {
         viewModelScope.launch {
             val input = _importPlaylist.value.input
@@ -3569,43 +3607,160 @@ class AppViewModel(
                 _importPlaylist.update { it.copy(error = "请粘贴链接或歌单文本") }
                 return@launch
             }
+            importBatchSession = null
             _importPlaylist.update {
-                it.copy(isWorking = true, progress = "解析中…", error = null, result = null)
+                it.copy(
+                    isWorking = true,
+                    progress = "解析中…",
+                    error = null,
+                    result = null,
+                    canContinue = false,
+                    remaining = 0,
+                    importedCount = 0,
+                )
             }
-            val result = try {
-                externalImporter.importPlaylist(input) { done, total, label ->
-                    _importPlaylist.update {
-                        it.copy(progress = "B站匹配 $done/$total · $label")
-                    }
-                }
+            val (parsed, parseErr) = try {
+                externalImporter.parseForImport(input)
             } catch (t: Throwable) {
                 _importPlaylist.update {
-                    it.copy(isWorking = false, error = t.message ?: "导入失败")
+                    it.copy(isWorking = false, error = t.message ?: "解析失败")
                 }
                 return@launch
             }
-            if (result.matched.isEmpty()) {
+            if (parsed == null) {
+                _importPlaylist.update {
+                    it.copy(isWorking = false, error = parseErr.ifBlank { "无法解析" })
+                }
+                return@launch
+            }
+            val plTitle = "${parsed.title.ifBlank { "导入歌单" }} · ${parsed.platform}"
+            val pl = localPl.create(plTitle)
+            val session = ImportBatchSession(
+                platform = parsed.platform,
+                title = parsed.title,
+                allSongs = parsed.songs,
+                playlistId = pl.id,
+                playlistTitle = pl.title,
+                nextOffset = 0,
+                totalMatched = 0,
+                totalFailed = 0,
+            )
+            importBatchSession = session
+            runImportBatch(isFirst = true)
+        }
+    }
+
+    /** 继续导入下一批 500 首（追加到同一本地歌单） */
+    fun continueImportPlaylist() {
+        viewModelScope.launch {
+            val session = importBatchSession
+            if (session == null || session.nextOffset >= session.allSongs.size) {
+                _importPlaylist.update {
+                    it.copy(error = "没有更多可导入的曲目了", canContinue = false)
+                }
+                return@launch
+            }
+            if (_importPlaylist.value.isWorking) return@launch
+            _importPlaylist.update {
+                it.copy(isWorking = true, progress = "准备下一批…", error = null)
+            }
+            runImportBatch(isFirst = false)
+        }
+    }
+
+    private suspend fun runImportBatch(isFirst: Boolean) {
+        val session = importBatchSession ?: return
+        val batchSize = ExternalPlaylistImporter.BATCH_SIZE
+        val start = session.nextOffset
+        val end = (start + batchSize).coerceAtMost(session.allSongs.size)
+        val batch = session.allSongs.subList(start, end)
+        val batchNo = (start / batchSize) + 1
+        val totalBatches = ((session.allSongs.size + batchSize - 1) / batchSize).coerceAtLeast(1)
+
+        val match = try {
+            externalImporter.matchSongsBatch(
+                songs = batch,
+                platform = session.platform,
+            ) { done, total, label ->
                 _importPlaylist.update {
                     it.copy(
-                        isWorking = false,
-                        error = result.message.ifBlank { "没有匹配到 B 站可播内容" },
+                        progress = "第 $batchNo/$totalBatches 批 · B站匹配 $done/$total · $label",
                     )
                 }
-                return@launch
             }
-            val pl = localPl.create("${result.playlistTitle} · ${result.platform}")
-            localPl.addTracks(pl.id, result.matched)
-            refreshLibrary()
-            refreshHome()
+        } catch (t: Throwable) {
+            _importPlaylist.update {
+                it.copy(isWorking = false, error = t.message ?: "本批导入失败")
+            }
+            return
+        }
+
+        if (match.matched.isNotEmpty()) {
+            localPl.addTracks(session.playlistId, match.matched)
+        }
+        session.nextOffset = end
+        session.totalMatched += match.matched.size
+        session.totalFailed += match.failed.size
+        refreshLibrary()
+        refreshHome()
+
+        val remaining = session.allSongs.size - session.nextOffset
+        val canContinue = remaining > 0
+        val resultText = buildString {
+            append("${session.platform}「${session.title}」")
+            append(" · 本批命中 ${match.matched.size}/${batch.size}")
+            if (match.failed.isNotEmpty()) append(" · 本批未匹配 ${match.failed.size}")
+            append(" · 累计 ${session.totalMatched} 首")
+            append(" · 已写入「${session.playlistTitle}」")
+            if (canContinue) {
+                append("\n还剩 $remaining 首，可继续添加（每次 $batchSize 首）")
+            } else if (session.allSongs.size > batchSize) {
+                append("\n全部批次已完成")
+            }
+        }
+
+        if (isFirst && session.totalMatched == 0 && !canContinue) {
+            // 整表就一批且全失败
             _importPlaylist.update {
                 it.copy(
                     isWorking = false,
                     progress = "",
-                    result = result.message + " · 已写入本地歌单「${pl.title}」",
-                    input = "",
+                    error = "没有匹配到 B 站可播内容",
+                    result = null,
+                    canContinue = false,
+                    remaining = 0,
+                    totalSongs = session.allSongs.size,
+                    importedCount = 0,
                 )
             }
-            _toast.value = "导入完成 · ${result.matched.size} 首"
+            return
+        }
+
+        _importPlaylist.update {
+            it.copy(
+                isWorking = false,
+                progress = "",
+                error = if (isFirst && match.matched.isEmpty() && canContinue) {
+                    "本批未匹配到，可继续下一批"
+                } else {
+                    null
+                },
+                result = resultText,
+                input = if (canContinue) it.input else "",
+                canContinue = canContinue,
+                remaining = remaining,
+                totalSongs = session.allSongs.size,
+                importedCount = session.totalMatched,
+                playlistTitle = session.playlistTitle,
+            )
+        }
+        _toast.value = if (canContinue) {
+            "已导入 ${session.totalMatched} 首 · 还剩 $remaining"
+        } else {
+            "导入完成 · ${session.totalMatched} 首"
+        }
+        if (!canContinue) {
+            importBatchSession = null
         }
     }
 

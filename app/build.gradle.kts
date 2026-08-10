@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.32：导入上限 2000；退出再进歌单不再误触开播
-        versionCode = 252
-        versionName = "1.14.32"
+        // 1.14.33：导入每批 500，可继续下一批
+        versionCode = 253
+        versionName = "1.14.33"
         vectorDrawables.useSupportLibrary = true
     }
 
