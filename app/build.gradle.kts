@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.33：导入每批 500，可继续下一批
-        versionCode = 253
-        versionName = "1.14.33"
+        // 1.14.35：网络使用 4 档，默认均衡
+        versionCode = 255
+        versionName = "1.14.35"
         vectorDrawables.useSupportLibrary = true
     }
 

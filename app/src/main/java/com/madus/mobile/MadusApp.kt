@@ -84,10 +84,18 @@ class MadusApp : Application() {
         private set
 
     /**
-     * 游戏轻量档（设置项）。预取/缓冲等参数会读此标志。
+     * 游戏轻量档（设置项，与网络档「最省」同步）。
      */
     @Volatile
     var gameLiteMode: Boolean = false
+        private set
+
+    /**
+     * 网络使用强度（预取/续刷/写盘）。默认均衡。
+     */
+    @Volatile
+    var networkIntensity: com.madus.mobile.data.NetworkIntensity =
+        com.madus.mobile.data.NetworkIntensity.BALANCED
         private set
 
     /** 设置里「视频模式」：开=看视频，关=听音乐 */
@@ -137,7 +145,9 @@ class MadusApp : Application() {
                 playerEngine.setAutoCache(s.autoCache)
                 playerEngine.setGameMixAudio(s.gameMixAudio)
                 playerEngine.setGameLiteMode(s.gameLiteMode)
+                playerEngine.setNetworkIntensity(s.networkIntensity)
                 gameLiteMode = s.gameLiteMode
+                networkIntensity = s.networkIntensity
             }
             playerPrefs.flow.collect { s ->
                 currentQualityQn = s.quality.qn
@@ -146,7 +156,9 @@ class MadusApp : Application() {
                 playerEngine.setAutoCache(s.autoCache)
                 playerEngine.setGameMixAudio(s.gameMixAudio)
                 playerEngine.setGameLiteMode(s.gameLiteMode)
+                playerEngine.setNetworkIntensity(s.networkIntensity)
                 gameLiteMode = s.gameLiteMode
+                networkIntensity = s.networkIntensity
             }
         }
 

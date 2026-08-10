@@ -675,6 +675,7 @@ fun MadusRoot(
                         onAutoCache = vm::setAutoCache,
                         onGameMixAudio = vm::setGameMixAudio,
                         onGameLiteMode = vm::setGameLiteMode,
+                        onNetworkIntensity = vm::setNetworkIntensity,
                         onOpenCacheManager = {
                             vm.refreshCacheManager()
                             nav.navigate(Routes.CACHE_MANAGER) { launchSingleTop = true }

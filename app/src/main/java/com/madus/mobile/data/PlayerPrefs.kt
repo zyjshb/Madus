@@ -41,9 +41,6 @@ enum class SoundFx(val id: String, val label: String, val subtitle: String) {
 }
 
 /**
- * 短视频手势操作模式（仅影响竖屏清屏 / 横屏全屏交互，不影响音源）。
- */
-/**
  * 短视频手势模式（对照三家主流产品）：
  *
  * 抖音：单击暂停/续播；双击点赞；长按 2 倍速（松手恢复）；上下滑切条；侧栏信息常显。
@@ -66,6 +63,87 @@ val VIDEO_SPEED_OPTIONS: List<Float> = listOf(
     0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f, 8.0f, 10.0f,
 )
 
+/**
+ * 网络使用强度（用户可选 4 档）。
+ * 只调预取 / 推荐续刷 / 边听写盘，**不关**点播、切歌、歌单等功能。
+ */
+enum class NetworkIntensity(
+    val id: String,
+    val label: String,
+    val subtitle: String,
+) {
+    MINIMAL("minimal", "最省", "基本能播 · 少预取 · 打游戏优先"),
+    BALANCED("balanced", "均衡", "日常听歌 · 预取下一首"),
+    SMOOTH("smooth", "流畅", "多预取 · 切歌更跟手"),
+    FULL("full", "充足", "尽量预取 · 推荐多补 · 不断播优先"),
+    ;
+
+    companion object {
+        fun fromId(id: String?) = entries.find { it.id == id } ?: BALANCED
+    }
+
+    /** 前台预解析后续几首 */
+    val prefetchForeground: Int
+        get() = when (this) {
+            MINIMAL -> 0
+            BALANCED -> 1
+            SMOOTH -> 2
+            FULL -> 3
+        }
+
+    /** 后台预解析后续几首 */
+    val prefetchBackground: Int
+        get() = when (this) {
+            MINIMAL -> 0
+            BALANCED -> 1
+            SMOOTH -> 1
+            FULL -> 2
+        }
+
+    /** 进后台后延迟多久再预取 */
+    val backgroundPrefetchDelayMs: Long
+        get() = when (this) {
+            MINIMAL -> 3_000L
+            BALANCED -> 1_500L
+            SMOOTH -> 800L
+            FULL -> 200L
+        }
+
+    /**
+     * 后台推荐流：剩余 ≤ 此值才续刷。
+     * -1 = 后台不主动续（见底再播时再取）。
+     */
+    val backgroundFeedRemainThreshold: Int
+        get() = when (this) {
+            MINIMAL -> -1
+            BALANCED -> 1
+            SMOOTH -> 2
+            FULL -> 4
+        }
+
+    val thriftFeedMinAdd: Int
+        get() = when (this) {
+            MINIMAL -> 2
+            BALANCED -> 3
+            SMOOTH -> 6
+            FULL -> 12
+        }
+
+    /** 是否允许边听写盘（仍受 autoCache 总开关约束） */
+    fun allowAutoCacheWrite(appInBackground: Boolean): Boolean = when (this) {
+        MINIMAL -> false
+        BALANCED -> !appInBackground
+        SMOOTH, FULL -> true
+    }
+
+    /** 推荐续刷是否走省网路径 */
+    fun thriftFeed(appInBackground: Boolean): Boolean = when (this) {
+        MINIMAL -> true
+        BALANCED, SMOOTH -> appInBackground
+        FULL -> false
+    }
+}
+
 data class PlayerSettings(
     val quality: AudioQuality = AudioQuality.Standard,
     val soundFx: SoundFx = SoundFx.Flat,
@@ -84,10 +162,11 @@ data class PlayerSettings(
      */
     val gameMixAudio: Boolean = true,
     /**
-     * 游戏轻量档（P2）：只调缓冲/缓存/后台预取强度，**不关任何功能**。
-     * 开：更小缓冲、暂停边听写盘、后台更省；关：恢复正常参数。
+     * 旧「游戏轻量」：与 [networkIntensity] == MINIMAL 同步。
      */
     val gameLiteMode: Boolean = false,
+    /** 网络使用强度（预取/续刷/写盘） */
+    val networkIntensity: NetworkIntensity = NetworkIntensity.BALANCED,
 )
 
 class PlayerPrefs(private val context: Context) {
@@ -99,23 +178,26 @@ class PlayerPrefs(private val context: Context) {
     private val keyGestureMode = stringPreferencesKey("video_gesture_mode")
     private val keyGameMixAudio = booleanPreferencesKey("game_mix_audio")
     private val keyGameLiteMode = booleanPreferencesKey("game_lite_mode")
+    private val keyNetworkIntensity = stringPreferencesKey("network_intensity")
     /** 各操作模式是否看过专属指引（按 mode.id 存） */
     private fun guideModeKey(mode: VideoGestureMode) =
         booleanPreferencesKey("short_video_guide_${mode.id}_v2")
 
     val flow: Flow<PlayerSettings> = context.playerPrefsStore.data.map { prefs ->
+        val gameLite = prefs[keyGameLiteMode] ?: false
+        val hasNetKey = prefs.contains(keyNetworkIntensity)
+        val storedNet = NetworkIntensity.fromId(prefs[keyNetworkIntensity])
+        // 旧用户只开了游戏轻量、从未选过网络档 → 按最省
+        val net = if (gameLite && !hasNetKey) NetworkIntensity.MINIMAL else storedNet
         PlayerSettings(
             quality = AudioQuality.fromId(prefs[keyQuality]),
             soundFx = SoundFx.fromId(prefs[keyFx]),
-            // 默认关：轻量化在线播放
             autoCache = prefs[keyAutoCache] ?: false,
-            // 默认音乐模式；用户可在推荐页切换视频模式
             videoMode = prefs[keyVideoMode] ?: false,
             gestureMode = VideoGestureMode.fromId(prefs[keyGestureMode]),
-            // 默认开：打游戏点按钮不会把歌掐掉
             gameMixAudio = prefs[keyGameMixAudio] ?: true,
-            // 默认关：需要时用户再开「游戏轻量」
-            gameLiteMode = prefs[keyGameLiteMode] ?: false,
+            gameLiteMode = gameLite || net == NetworkIntensity.MINIMAL,
+            networkIntensity = net,
         )
     }
 
@@ -154,7 +236,17 @@ class PlayerPrefs(private val context: Context) {
     }
 
     suspend fun setGameLiteMode(enabled: Boolean) {
-        context.playerPrefsStore.edit { it[keyGameLiteMode] = enabled }
+        context.playerPrefsStore.edit {
+            it[keyGameLiteMode] = enabled
+            if (enabled) it[keyNetworkIntensity] = NetworkIntensity.MINIMAL.id
+        }
+    }
+
+    suspend fun setNetworkIntensity(level: NetworkIntensity) {
+        context.playerPrefsStore.edit {
+            it[keyNetworkIntensity] = level.id
+            it[keyGameLiteMode] = level == NetworkIntensity.MINIMAL
+        }
     }
 
     suspend fun setVideoMode(enabled: Boolean) {

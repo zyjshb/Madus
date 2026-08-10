@@ -1,6 +1,7 @@
 package com.madus.mobile.player
 
 import androidx.media3.common.PlaybackException
+import com.madus.mobile.data.NetworkIntensity
 import com.madus.mobile.data.SoundFx
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.PlayerCommand
@@ -30,6 +31,8 @@ class PlayerController(
     fun setGameMixAudio(enabled: Boolean) = engine.setGameMixAudio(enabled)
 
     fun setGameLiteMode(enabled: Boolean) = engine.setGameLiteMode(enabled)
+
+    fun setNetworkIntensity(level: NetworkIntensity) = engine.setNetworkIntensity(level)
 
     fun setAppInBackground(inBackground: Boolean) = engine.setAppInBackground(inBackground)
 

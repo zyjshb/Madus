@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
+import com.madus.mobile.data.NetworkIntensity
 import com.madus.mobile.data.SoundFx
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.PlayerCommand
@@ -77,12 +78,22 @@ class PlayerEngine(context: Context) {
     private val gameMixAudio = AtomicBoolean(true)
 
     /**
-     * 游戏轻量：更小缓冲、暂停边听写盘（设置项仍保留，关轻量后恢复）。
+     * 游戏轻量 / 网络最省：暂停边听写盘等。
      */
     private val gameLiteMode = AtomicBoolean(false)
 
     /** 应用在后台时放慢进度轮询，省 CPU（功能不变）。 */
     private val backgroundMode = AtomicBoolean(false)
+
+    /** 网络强度档位（0=最省 … 3=充足），用 ordinal 存 */
+    private val networkIntensityOrdinal = java.util.concurrent.atomic.AtomicInteger(
+        NetworkIntensity.BALANCED.ordinal,
+    )
+
+    private fun networkIntensity(): NetworkIntensity {
+        val i = networkIntensityOrdinal.get().coerceIn(0, NetworkIntensity.entries.lastIndex)
+        return NetworkIntensity.entries[i]
+    }
 
     private val mediaAudioAttributes: AudioAttributes =
         AudioAttributes.Builder()
@@ -91,8 +102,10 @@ class PlayerEngine(context: Context) {
             .build()
 
     private val switchingDataSourceFactory = DataSource.Factory {
-        // 游戏轻量时不写边听缓存，省磁盘 IO；用户 autoCache 开关值不变
-        if (autoCacheEnabled.get() && !gameLiteMode.get()) {
+        // 受 autoCache + 网络档位约束；最省档永不写边听缓存
+        val allow = autoCacheEnabled.get() &&
+            networkIntensity().allowAutoCacheWrite(backgroundMode.get())
+        if (allow) {
             CacheDataSource.Factory()
                 .setCache(StreamCache.get(appContext))
                 .setUpstreamDataSourceFactory(httpFactory)
@@ -109,23 +122,19 @@ class PlayerEngine(context: Context) {
     private val audioFx = AudioFxController()
 
     /**
-     * 固定用官方 DefaultLoadControl（勿自封装 LoadControl：Media3 新接口未完整实现会启动即崩）。
-     * 游戏轻量：略小缓冲；正常：系统默认量级。
+     * 只用官方 DefaultLoadControl（勿自封装：Media3 漏接口会启动即崩）。
+     * 缓冲略小于官方默认 50s，减轻后台抢网；游戏轻量主要靠预取/写盘/续刷。
      */
-    private fun buildLoadControl(lite: Boolean): DefaultLoadControl {
-        return if (lite) {
-            DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                    /* minBufferMs */ 12_000,
-                    /* maxBufferMs */ 24_000,
-                    /* bufferForPlaybackMs */ 1_200,
-                    /* bufferForPlaybackAfterRebufferMs */ 2_000,
-                )
-                .setPrioritizeTimeOverSizeThresholds(true)
-                .build()
-        } else {
-            DefaultLoadControl.Builder().build()
-        }
+    private fun buildSafeLoadControl(): DefaultLoadControl {
+        return DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs */ 12_000,
+                /* maxBufferMs */ 20_000,
+                /* bufferForPlaybackMs */ 1_000,
+                /* bufferForPlaybackAfterRebufferMs */ 1_800,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
     }
 
     /** 自然播完且非单曲循环时回调（主线程）。 */
@@ -143,8 +152,7 @@ class PlayerEngine(context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(appContext)
         .setMediaSourceFactory(mediaSourceFactory)
-        // 启动时用默认缓冲；轻量档主要通过预取/写盘/刷新频率生效，避免启动崩溃
-        .setLoadControl(buildLoadControl(lite = false))
+        .setLoadControl(buildSafeLoadControl())
         // 默认混音：不 handleAudioFocus，游戏点按钮不会把歌暂停
         .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus = */ false)
         .setHandleAudioBecomingNoisy(true)
@@ -234,9 +242,8 @@ class PlayerEngine(context: Context) {
     }
 
     /**
-     * 游戏轻量档：暂停边听写盘 + 更省后台预取/刷新。
-     * 缓冲策略用官方 DefaultLoadControl 在构建时设定；运行中不重建播放器（防崩）。
-     * 不关功能；仅参数。
+     * 游戏轻量档：与网络「最省」同步用。
+     * 不重建播放器（防崩）。
      */
     fun setGameLiteMode(enabled: Boolean) {
         gameLiteMode.set(enabled)
@@ -244,7 +251,15 @@ class PlayerEngine(context: Context) {
 
     fun isGameLiteMode(): Boolean = gameLiteMode.get()
 
-    /** 前后台：仅影响进度刷新频率，不改变播放逻辑。 */
+    fun setNetworkIntensity(level: NetworkIntensity) {
+        networkIntensityOrdinal.set(level.ordinal)
+        // 最省档同步 gameLite 标志，供通知节流等旧逻辑
+        if (level == NetworkIntensity.MINIMAL) gameLiteMode.set(true)
+    }
+
+    fun networkIntensityLevel(): NetworkIntensity = networkIntensity()
+
+    /** 前后台：放慢进度刷新；写盘策略由网络档位决定。不改变点播逻辑。 */
     fun setAppInBackground(inBackground: Boolean) {
         backgroundMode.set(inBackground)
     }
@@ -485,11 +500,13 @@ class PlayerEngine(context: Context) {
                 if (player.isPlaying || player.playbackState == Player.STATE_BUFFERING) {
                     publishFromPlayer()
                 }
-                // 后台 / 游戏轻量时更慢刷新进度（功能不变）
+                // 后台 / 省网档时更慢刷新进度（功能不变）
+                val net = networkIntensity()
                 val interval = when {
-                    backgroundMode.get() && gameLiteMode.get() -> 2_000L
+                    backgroundMode.get() && net == NetworkIntensity.MINIMAL -> 2_000L
                     backgroundMode.get() -> 1_200L
-                    gameLiteMode.get() -> 700L
+                    net == NetworkIntensity.MINIMAL -> 700L
+                    net == NetworkIntensity.FULL -> 350L
                     else -> 400L
                 }
                 delay(interval)

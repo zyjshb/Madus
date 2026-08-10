@@ -29,6 +29,27 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.35",
+            date = "2026-08-10",
+            added = listOf(
+                "播放设置：网络使用四档（最省 / 均衡 / 流畅 / 充足）",
+            ),
+            changed = listOf(
+                "预取与推荐续刷按档位调节；不关点播切歌等功能",
+            ),
+        ),
+        Entry(
+            version = "1.14.34",
+            date = "2026-08-10",
+            fixed = listOf(
+                "修复自定义缓冲导致启动即崩（改回官方缓冲）",
+            ),
+            changed = listOf(
+                "后台少预取、推荐流轻量续刷，减轻打游戏抢网",
+                "整体缓冲略收（约 12–20 秒），比原先 50 秒省网",
+            ),
+        ),
+        Entry(
             version = "1.14.33",
             date = "2026-08-10",
             changed = listOf(

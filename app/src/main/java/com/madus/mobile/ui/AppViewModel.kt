@@ -549,11 +549,23 @@ class AppViewModel(
         viewModelScope.launch {
             playerPrefs.setGameLiteMode(enabled)
             player.setGameLiteMode(enabled)
-            _toast.value = if (enabled) {
-                "游戏轻量 · 已开（更小缓冲、后台更省，功能全保留）"
-            } else {
-                "游戏轻量 · 已关（恢复正常缓冲）"
+            if (enabled) {
+                player.setNetworkIntensity(com.madus.mobile.data.NetworkIntensity.MINIMAL)
             }
+            _toast.value = if (enabled) {
+                "网络已切到「最省」"
+            } else {
+                "游戏轻量 · 已关"
+            }
+        }
+    }
+
+    fun setNetworkIntensity(level: com.madus.mobile.data.NetworkIntensity) {
+        viewModelScope.launch {
+            playerPrefs.setNetworkIntensity(level)
+            player.setNetworkIntensity(level)
+            player.setGameLiteMode(level == com.madus.mobile.data.NetworkIntensity.MINIMAL)
+            _toast.value = "网络使用 · ${level.label}"
         }
     }
 
@@ -1659,25 +1671,29 @@ class AppViewModel(
         schedulePrefetchNextStreams()
     }
 
-    /** 预解析数量：不关功能，只压强度 */
+    /** 预解析数量：由用户网络档位决定（不关功能） */
     private fun prefetchAheadCount(): Int {
-        val bg = MadusApp.instance.appInBackground
-        val lite = MadusApp.instance.gameLiteMode
-        return when {
-            lite && bg -> 1
-            lite -> 1
-            bg -> 1
-            else -> 3
+        val net = MadusApp.instance.networkIntensity
+        return if (MadusApp.instance.appInBackground) {
+            net.prefetchBackground
+        } else {
+            net.prefetchForeground
         }
     }
 
-    /** 后台预解析后续若干首的 playurl，降低熄屏切歌失败率 */
+    /** 预解析后续 playurl；最省档可跳过 */
     private fun schedulePrefetchNextStreams() {
         viewModelScope.launch {
+            val bg = MadusApp.instance.appInBackground
+            val net = MadusApp.instance.networkIntensity
             val ahead = prefetchAheadCount()
+            if (ahead <= 0) return@launch
+            // 后台延迟，先把带宽让给当前曲和游戏
+            if (bg) delay(net.backgroundPrefetchDelayMs)
             val from = pendingIndex + 1
             val to = minOf(pendingIndex + ahead, pendingQueue.size)
             if (from >= to) return@launch
+            val thrift = net.thriftFeed(bg) || net == com.madus.mobile.data.NetworkIntensity.MINIMAL
             for (i in from until to) {
                 val t = pendingQueue.getOrNull(i) ?: continue
                 val url = t.streamUrl
@@ -1686,7 +1702,10 @@ class AppViewModel(
                 if (durable) continue
                 // 已有 http 预取也不强刷，留给 play 时再取；空地址才预取
                 if (!url.isNullOrBlank() && url.startsWith("http")) continue
-                val r = resolveOne(t.copy(streamUrl = null), forceRefresh = true) ?: continue
+                val r = resolveOne(
+                    t.copy(streamUrl = null),
+                    forceRefresh = !thrift,
+                ) ?: continue
                 pendingQueue = pendingQueue.toMutableList().also { list ->
                     if (i in list.indices && list[i].id == r.id) list[i] = r
                 }
@@ -1820,24 +1839,41 @@ class AppViewModel(
         expandJob?.cancel()
         expandJob = viewModelScope.launch {
             val bg = MadusApp.instance.appInBackground
-            val lite = MadusApp.instance.gameLiteMode
+            val net = MadusApp.instance.networkIntensity
             delay(
                 when {
-                    bg && lite -> 2_000L
-                    bg -> 1_200L
-                    lite -> 800L
+                    bg && net == com.madus.mobile.data.NetworkIntensity.MINIMAL -> 5_000L
+                    bg -> 3_000L
+                    net == com.madus.mobile.data.NetworkIntensity.MINIMAL -> 1_500L
                     else -> 400L
                 },
             )
-            // 后台/轻量：队列还剩较多就不刷；见底再轻量续几首（不断播）
-            if (bg || lite) {
-                val remain = pendingQueue.size - pendingIndex - 1
-                val threshold = if (lite && bg) 1 else 2
-                if (remain > threshold) return@launch
-                val minAdd = if (lite) 3 else 5
-                runCatching { ensureInfiniteFeed(force = false, minAdd = minAdd) }
+            val remain = pendingQueue.size - pendingIndex - 1
+            if (bg) {
+                val th = net.backgroundFeedRemainThreshold
+                // 最省：后台不主动续推荐
+                if (th < 0) return@launch
+                if (remain > th) return@launch
+                runCatching {
+                    ensureInfiniteFeed(
+                        force = false,
+                        minAdd = net.thriftFeedMinAdd,
+                        thriftNet = true,
+                    )
+                }
+            } else if (net.thriftFeed(appInBackground = false) ||
+                net == com.madus.mobile.data.NetworkIntensity.MINIMAL
+            ) {
+                if (remain > 3) return@launch
+                runCatching {
+                    ensureInfiniteFeed(
+                        force = false,
+                        minAdd = net.thriftFeedMinAdd,
+                        thriftNet = true,
+                    )
+                }
             } else {
-                runCatching { ensureInfiniteFeed() }
+                runCatching { ensureInfiniteFeed(minAdd = net.thriftFeedMinAdd) }
             }
         }
     }
@@ -4330,12 +4366,19 @@ class AppViewModel(
 
     /**
      * 无限流续刷：剩余不足时自动拉取更多，不回绕旧列表。
+     * @param thriftNet 后台/打游戏：只轻量 related，不扫热门/多分区/搜索，省网。
      */
-    private suspend fun ensureInfiniteFeed(force: Boolean = false, minAdd: Int = 15) {
+    private suspend fun ensureInfiniteFeed(
+        force: Boolean = false,
+        minAdd: Int = 15,
+        thriftNet: Boolean = false,
+    ) {
         if (!isForYouQueue()) return
         if (expandingFeed) return
         val remain = pendingQueue.size - pendingIndex - 1
-        if (!force && remain > 10) return
+        val bgNow = MadusApp.instance.appInBackground || MadusApp.instance.gameLiteMode
+        val thrift = thriftNet || bgNow
+        if (!force && remain > if (thrift) 2 else 10) return
         expandingFeed = true
         try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -4350,7 +4393,7 @@ class AppViewModel(
                 // 用当前尾部多首当种子，链式 related（越刷越远）
                 val tailSeeds = pendingQueue
                     .drop((pendingIndex - 2).coerceAtLeast(0))
-                    .take(6)
+                    .take(if (thrift) 2 else 6)
                     .reversed()
 
                 val batch = linkedMapOf<String, Track>()
@@ -4360,54 +4403,58 @@ class AppViewModel(
                 }
 
                 for (seed in tailSeeds) {
-                    if (batch.size >= minAdd + 10) break
+                    if (batch.size >= minAdd + if (thrift) 2 else 10) break
                     val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
                     if (bv.isBlank()) continue
-                    runCatching { biliApi.relatedTracks(bv, 18) }.getOrDefault(emptyList())
-                        .forEach { putNew(it) }
-                }
-
-                // B 站首页 rcmd 续页
-                runCatching {
-                    biliApi.homepageRcmd(
-                        limit = 20,
-                        freshIdx = (pendingIndex / 8 + 2).coerceAtLeast(2),
-                    )
-                }.getOrDefault(emptyList()).forEach { putNew(it) }
-
-                // 兴趣作者再搜一波
-                val artists = (liked + recent + localSample)
-                    .map { it.artist.trim() }
-                    .filter { it.isNotBlank() && it != "Bilibili" }
-                    .distinct()
-                    .shuffled()
-                    .take(4)
-                for (a in artists) {
-                    if (batch.size >= minAdd + 20) break
                     runCatching {
-                        registry.get(MusicSourceType.BILIBILI)?.search(a, limit = 8).orEmpty()
-                    }.getOrDefault(emptyList()).forEach { putNew(it) }
-                }
-
-                // 探索补量：全站热门 + 多分区（含但不限于音乐）
-                if (batch.size < minAdd) {
-                    runCatching { biliApi.popularTracks(24) }.getOrDefault(emptyList())
+                        biliApi.relatedTracks(bv, if (thrift) 8 else 18)
+                    }.getOrDefault(emptyList())
                         .forEach { putNew(it) }
-                    // 动画 / 游戏 / 知识 / 生活 / 娱乐 / 舞蹈 / 音乐（末位）
-                    for (rid in intArrayOf(1, 4, 36, 160, 5, 129, 3)) {
-                        runCatching { biliApi.rankingTracks(rid = rid, limit = 12) }
-                            .getOrDefault(emptyList())
-                            .forEach { putNew(it) }
-                    }
                 }
 
-                // 再链一层 related（从本批随机取种子）
-                if (batch.size < minAdd + 8) {
-                    for (seed in batch.values.shuffled().take(5)) {
-                        val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
-                        if (bv.isBlank()) continue
-                        runCatching { biliApi.relatedTracks(bv, 12) }.getOrDefault(emptyList())
+                // 后台省网：related 够了就停，不再扫首页/搜索/热门分区
+                if (!thrift) {
+                    // B 站首页 rcmd 续页
+                    runCatching {
+                        biliApi.homepageRcmd(
+                            limit = 20,
+                            freshIdx = (pendingIndex / 8 + 2).coerceAtLeast(2),
+                        )
+                    }.getOrDefault(emptyList()).forEach { putNew(it) }
+
+                    // 兴趣作者再搜一波
+                    val artists = (liked + recent + localSample)
+                        .map { it.artist.trim() }
+                        .filter { it.isNotBlank() && it != "Bilibili" }
+                        .distinct()
+                        .shuffled()
+                        .take(4)
+                    for (a in artists) {
+                        if (batch.size >= minAdd + 20) break
+                        runCatching {
+                            registry.get(MusicSourceType.BILIBILI)?.search(a, limit = 8).orEmpty()
+                        }.getOrDefault(emptyList()).forEach { putNew(it) }
+                    }
+
+                    // 探索补量：全站热门 + 多分区
+                    if (batch.size < minAdd) {
+                        runCatching { biliApi.popularTracks(24) }.getOrDefault(emptyList())
                             .forEach { putNew(it) }
+                        for (rid in intArrayOf(1, 4, 36, 160, 5, 129, 3)) {
+                            runCatching { biliApi.rankingTracks(rid = rid, limit = 12) }
+                                .getOrDefault(emptyList())
+                                .forEach { putNew(it) }
+                        }
+                    }
+
+                    // 再链一层 related
+                    if (batch.size < minAdd + 8) {
+                        for (seed in batch.values.shuffled().take(5)) {
+                            val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
+                            if (bv.isBlank()) continue
+                            runCatching { biliApi.relatedTracks(bv, 12) }.getOrDefault(emptyList())
+                                .forEach { putNew(it) }
+                        }
                     }
                 }
 

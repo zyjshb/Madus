@@ -25,13 +25,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.madus.mobile.data.NetworkIntensity
 import com.madus.mobile.data.PlayerSettings
 import com.madus.mobile.data.SoundFx
 import com.madus.mobile.ui.components.SectionTitle
 import com.madus.mobile.ui.theme.appearanceTokens
 
 /**
- * 播放设置：音效、边听缓存开关等。
+ * 播放设置：音效、网络档位、边听缓存等。
  * 音质/定时在播放器界面快捷切换，这里也可从「我的」进入。
  */
 @Composable
@@ -43,6 +44,7 @@ fun PlaybackPrefsScreen(
     onAutoCache: (Boolean) -> Unit,
     onGameMixAudio: (Boolean) -> Unit = {},
     onGameLiteMode: (Boolean) -> Unit = {},
+    onNetworkIntensity: (NetworkIntensity) -> Unit = {},
     onOpenCacheManager: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -71,10 +73,30 @@ fun PlaybackPrefsScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item {
+                SectionTitle(text = "网络使用")
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "只调预取和后台续刷，不关点播/切歌/歌单。打游戏卡网选「最省」。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                NetworkIntensity.entries.forEach { level ->
+                    SelectRow(
+                        title = level.label,
+                        subtitle = level.subtitle,
+                        selected = playerSettings.networkIntensity == level,
+                        onClick = { onNetworkIntensity(level) },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+
+            item {
                 SectionTitle(text = "边听缓存")
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "关闭后纯在线播放，不写磁盘（更轻量）。手动「缓存」此曲仍可用。",
+                    text = "关闭后纯在线播放，不写磁盘。「最省」档即使开启也不会后台写盘。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -106,7 +128,7 @@ fun PlaybackPrefsScreen(
                 SectionTitle(text = "打游戏时听歌")
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "游戏按钮音效常会短暂抢音频焦点。开启后 Madus 不因此自动暂停，可边打游戏边听。",
+                    text = "游戏音效常会抢焦点；开启后不因此暂停。抢网请到上方选「最省」。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -134,32 +156,6 @@ fun PlaybackPrefsScreen(
                     Switch(
                         checked = playerSettings.gameMixAudio,
                         onCheckedChange = onGameMixAudio,
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(tokens.cornerMd))
-                        .border(tokens.borderWidth, MaterialTheme.colorScheme.outline, RoundedCornerShape(tokens.cornerMd))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("游戏轻量", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            if (playerSettings.gameLiteMode) {
-                                "已开启 · 更小缓冲、后台更省（功能全保留）"
-                            } else {
-                                "已关闭 · 正常缓冲与预取"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = playerSettings.gameLiteMode,
-                        onCheckedChange = onGameLiteMode,
                     )
                 }
             }
