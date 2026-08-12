@@ -2,8 +2,8 @@
 
 **日期：** 2026-08-12  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.41` / versionCode `261`  
-**正式包：** `and/apk/Madus-1.14.41.apk`  
+**当前版本：** `1.14.42` / versionCode `262`  
+**正式包：** `and/apk/Madus-1.14.42.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
 **最新 commit（示意）：** recommend hourly like affinity + diversify
@@ -151,6 +151,7 @@ scripts/publish-gitee-release.ps1
 | **1.14.39** | 推荐：喜欢写入 `likedAtMs`；近 1 小时点赞强化种子/无限流；小时级抖动 + UP/题材打散 | **已传** 双仓 |
 | **1.14.40** | 短视频推荐方案：统一事件、内容画像、四层打分、实时软插入、独立重排器、快速跳过冷却、Debug 推荐行 | **已传** 双仓 |
 | **1.14.41** | 修复推荐起播按钮二次闪现/卡加载；应用内可更新 | **已传** 双仓 |
+| **1.14.42** | 真修「播放 为你推荐」：一次起播、复用 feed、等流就绪再收按钮 | **已传** 双仓 |
 
 ### 更早（仍有效，勿回退）
 
@@ -164,8 +165,9 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-12）
 
-- 双仓最新：**1.14.41**（Release 均已上传）
-- 包：`apk/Madus-1.14.41.apk`
+- 双仓最新：**1.14.42**（Release 均已上传）
+- 包：`apk/Madus-1.14.42.apk`
+- 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
 
 ### 推荐机制（1.14.40，勿回退）
 

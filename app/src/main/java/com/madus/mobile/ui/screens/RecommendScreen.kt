@@ -337,7 +337,10 @@ private fun RadioPanel(
             Spacer(Modifier.height(14.dp))
             Text(
                 text = track?.title
-                    ?: if (state.isLoading) "加载中…" else "未在播放",
+                    ?: when {
+                        state.isLoading || state.isStartingPlayback -> "加载中…"
+                        else -> "未在播放"
+                    },
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -383,8 +386,12 @@ private fun RadioPanel(
                 )
             }
 
-            // 有推荐队列时：轻量「播放」；无登录大按钮
-            if (track == null && !state.isLoading && !state.isStartingPlayback && state.feed.isNotEmpty()) {
+            // 有推荐队列时：轻量「播放」；起播中绝不展示（避免二次闪现还要点第二次）
+            if (track == null &&
+                !state.isLoading &&
+                !state.isStartingPlayback &&
+                state.feed.isNotEmpty()
+            ) {
                 Spacer(Modifier.height(18.dp))
                 Box(
                     modifier = Modifier
@@ -450,6 +457,7 @@ private fun RadioPanel(
                     .clip(CircleShape)
                     .border(1.5.dp, MaterialTheme.colorScheme.onBackground, CircleShape)
                     .clickable(
+                        enabled = !state.isStartingPlayback && !state.isLoading,
                         onClick = {
                             when {
                                 track != null -> onToggle()

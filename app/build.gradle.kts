@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.41：修复推荐起播按钮二次闪现/卡加载，供应用内更新
-        versionCode = 261
-        versionName = "1.14.41"
+        // 1.14.42：推荐「播放为你推荐」一次起播，不再二次闪按钮
+        versionCode = 262
+        versionName = "1.14.42"
         vectorDrawables.useSupportLibrary = true
     }
 

@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.42",
+            date = "2026-08-12",
+            fixed = listOf(
+                "点「播放 为你推荐」一次即可起播，不再二次弹出按钮或要点两次才出画面",
+            ),
+        ),
+        Entry(
             version = "1.14.41",
             date = "2026-08-12",
             fixed = listOf(

@@ -454,6 +454,9 @@ class AppViewModel(
     private val watchFired90 = linkedSetOf<String>()
     @Volatile private var expandingFeed: Boolean = false
     private var expandJob: Job? = null
+    /** 「为你推荐」起播单飞：避免连点重建 feed、按钮二次闪现 */
+    private var recommendStartJob: Job? = null
+    private var recommendClearLoadingJob: Job? = null
 
     init {
         // 曲终 → 下一首
@@ -4521,6 +4524,10 @@ class AppViewModel(
                 )
             }
             if (shouldAutoStart) {
+                player.prepareTrack(
+                    feed.first(),
+                    asVideo = MadusApp.instance.videoModeEnabled,
+                )
                 startRecommendQueue(feed)
                 clearRecommendLoadingAfterStart()
             }
@@ -4858,8 +4865,8 @@ class AppViewModel(
     }
 
     /**
-     * 推荐台「推荐」按钮 / 冷启动开播。
-     * **始终重新拉为你推荐**（不要误用当前歌单 feed 当推荐）。
+     * 推荐台「播放 为你推荐」/ 冷启动开播。
+     * 已有推荐 feed 时直接起播，避免每次连点都重建列表导致二次闪按钮。
      */
     fun startRecommendIfReady() {
         startForYouRecommend(silent = false)
@@ -4869,69 +4876,105 @@ class AppViewModel(
      * 强制切入「为你推荐」无限流并开播（可从歌单/清空列表无缝接上）。
      */
     fun startForYouRecommend(silent: Boolean = false) {
-        viewModelScope.launch {
-            if (!silent) {
-                // 轻提示即可，不刷屏
-            }
-            _recommend.update {
-                it.copy(isLoading = true, segment = RecommendSegment.Feed)
-            }
-            val built = runCatching {
-                kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    val liked = runCatching { likedStore.tracks() }.getOrDefault(emptyList())
-                    val recent = sessionRecent.asReversed().distinctBy { it.id }
-                    val localSample = runCatching {
-                        localPl.listNonEmpty().flatMap { it.tracks }.shuffled().take(12)
-                    }.getOrDefault(emptyList())
-                    buildSmartFeed(
-                        liked = liked,
-                        recent = recent,
-                        localSample = localSample,
-                        limit = 40,
-                        excludeExtra = sessionSeenIds,
-                    )
-                }
-            }.getOrDefault(emptyList())
+        // 已在起播中：忽略连点（不要再闪「播放」或重拉 feed）
+        if (recommendStartJob?.isActive == true) return
+        val alreadyPlayingForYou = isForYouQueue() &&
+            playback.value.current != null &&
+            (playback.value.isPlaying || playback.value.isLoading)
+        if (alreadyPlayingForYou) return
 
-            val bili = registry.get(MusicSourceType.BILIBILI)
-            val loggedIn = runCatching { bili?.getAuthSession()?.isLoggedIn }.getOrNull() == true
-
-            if (built.isEmpty()) {
+        recommendStartJob?.cancel()
+        recommendClearLoadingJob?.cancel()
+        recommendStartJob = viewModelScope.launch {
+            try {
                 _recommend.update {
                     it.copy(
-                        feed = emptyList(),
-                        isLoading = false,
-                        sourceLabel = if (!loggedIn) "请先登录" else "推荐电台",
-                        sourceId = if (!loggedIn) "need_login" else "recommend",
+                        isLoading = true,
+                        isStartingPlayback = true,
+                        segment = RecommendSegment.Feed,
                     )
                 }
-                if (!silent) {
-                    _toast.value = if (!loggedIn) {
-                        "请先登录 B 站，再听推荐电台"
-                    } else {
-                        "暂无推荐内容，去搜索点赞一些你想看的视频吧"
-                    }
-                }
-                return@launch
-            }
 
-            built.forEach { sessionSeenIds.add(it.id) }
-            _recommend.update {
-                it.copy(
-                    feed = built,
-                    isLoading = false,
-                    isStartingPlayback = true,
-                    sourceLabel = "为你推荐",
-                    sourceId = "recommend",
-                    segment = RecommendSegment.Feed,
+                // 优先复用已刷好的推荐列表；仅在空列表或非推荐源时重拉
+                val reuse = _recommend.value.feed.takeIf {
+                    it.isNotEmpty() && _recommend.value.sourceId == "recommend"
+                }
+                val built = if (reuse != null) {
+                    reuse
+                } else {
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            val liked = runCatching { likedStore.tracks() }.getOrDefault(emptyList())
+                            val recent = sessionRecent.asReversed().distinctBy { it.id }
+                            val localSample = runCatching {
+                                localPl.listNonEmpty().flatMap { it.tracks }.shuffled().take(12)
+                            }.getOrDefault(emptyList())
+                            buildSmartFeed(
+                                liked = liked,
+                                recent = recent,
+                                localSample = localSample,
+                                limit = 40,
+                                excludeExtra = sessionSeenIds,
+                            )
+                        }
+                    }.getOrDefault(emptyList())
+                }
+
+                val bili = registry.get(MusicSourceType.BILIBILI)
+                val loggedIn = runCatching { bili?.getAuthSession()?.isLoggedIn }.getOrNull() == true
+
+                if (built.isEmpty()) {
+                    _recommend.update {
+                        it.copy(
+                            feed = emptyList(),
+                            isLoading = false,
+                            isStartingPlayback = false,
+                            sourceLabel = if (!loggedIn) "请先登录" else "推荐电台",
+                            sourceId = if (!loggedIn) "need_login" else "recommend",
+                        )
+                    }
+                    if (!silent) {
+                        _toast.value = if (!loggedIn) {
+                            "请先登录 B 站，再听推荐电台"
+                        } else {
+                            "暂无推荐内容，去搜索点赞一些你想看的视频吧"
+                        }
+                    }
+                    return@launch
+                }
+
+                built.forEach { sessionSeenIds.add(it.id) }
+                _recommend.update {
+                    it.copy(
+                        feed = built,
+                        isLoading = false,
+                        isStartingPlayback = true,
+                        sourceLabel = "为你推荐",
+                        sourceId = "recommend",
+                        segment = RecommendSegment.Feed,
+                    )
+                }
+                // 立刻占位当前曲，避免 UI 仍显示「未在播放」+ 播放按钮回弹
+                // （取流完成前 isStartingPlayback 仍保持 true）
+                player.prepareTrack(
+                    built.first(),
+                    asVideo = MadusApp.instance.videoModeEnabled,
                 )
+                startRecommendQueue(built)
+                // 在本 Job 内等到真正可播，期间 isActive=true 可挡住连点
+                awaitRecommendPlaybackSettled()
+            } catch (e: CancellationException) {
+                _recommend.update {
+                    it.copy(isLoading = false, isStartingPlayback = false)
+                }
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("AppViewModel", "startForYouRecommend: ${e.message}")
+                _recommend.update {
+                    it.copy(isLoading = false, isStartingPlayback = false)
+                }
+                if (!silent) _toast.value = "起播失败，请再试一次"
             }
-            // 短视频模式：保持视频流
-            if (MadusApp.instance.videoModeEnabled) {
-                player.prepareTrack(built.first(), asVideo = true)
-            }
-            startRecommendQueue(built)
-            clearRecommendLoadingAfterStart()
         }
     }
 
@@ -4952,20 +4995,37 @@ class AppViewModel(
         scheduleInfinitePrefetch()
     }
 
-    /** 推荐流真正挂上当前曲（或超时兜底）后再收起 loading，避免“播放”按钮二次闪现。 */
+    /**
+     * 真正可播（或明确失败）后再收起 isStartingPlayback。
+     * 不能只看 current!=null：prepareTrack 占位会立刻满足，导致按钮二次闪现、画面未出。
+     */
     private fun clearRecommendLoadingAfterStart() {
-        viewModelScope.launch {
-            val deadline = System.currentTimeMillis() + 5_000L
-            while (isActive &&
-                playback.value.current == null &&
-                System.currentTimeMillis() < deadline
-            ) {
-                delay(150L)
-            }
-            _recommend.update {
-                it.copy(isLoading = false, isStartingPlayback = false)
-            }
+        recommendClearLoadingJob?.cancel()
+        recommendClearLoadingJob = viewModelScope.launch {
+            awaitRecommendPlaybackSettled()
         }
+    }
+
+    private suspend fun awaitRecommendPlaybackSettled() {
+        val deadline = System.currentTimeMillis() + 20_000L
+        while (System.currentTimeMillis() < deadline) {
+            if (isRecommendPlaybackSettled()) break
+            delay(120L) // 取消时会抛 CancellationException
+        }
+        _recommend.update {
+            it.copy(isLoading = false, isStartingPlayback = false)
+        }
+    }
+
+    /** 起播完成：在播 / 缓冲中带真实流 / 有明确错误 */
+    private fun isRecommendPlaybackSettled(): Boolean {
+        val pb = playback.value
+        val cur = pb.current ?: return false
+        if (pb.isPlaying) return true
+        if (!pb.errorMessage.isNullOrBlank()) return true
+        // prepareTrack 占位：isLoading=true 且无 streamUrl → 未完成
+        if (!cur.streamUrl.isNullOrBlank()) return true
+        return false
     }
 
     private fun pushRecent(track: Track, positionMs: Long = 0L) {
