@@ -6,7 +6,7 @@
 **正式包：** `and/apk/Madus-1.14.37.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit（示意）：** launcher icon smaller padding 
+**最新 commit（示意）：** `791264a` fix: shrink launcher logo with more padding 
  
 
 ---
