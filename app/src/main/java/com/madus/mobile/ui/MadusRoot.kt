@@ -437,6 +437,7 @@ fun MadusRoot(
                         onQueryChange = vm::onSearchQueryChange,
                         onSubmit = vm::submitSearch,
                         onSuggestionClick = vm::applySearchSuggestion,
+                        onLoadMore = vm::loadMoreSearch,
                         onPlayTrack = { track ->
                             if (trackReplace.active) {
                                 vm.applyReplaceTrack(track)
@@ -1002,6 +1003,7 @@ fun MadusRoot(
                                         onQueryChange = vm::onSearchQueryChange,
                                         onSubmit = vm::submitSearch,
                                         onSuggestionClick = vm::applySearchSuggestion,
+                                        onLoadMore = vm::loadMoreSearch,
                                         onPlayTrack = { track ->
                                             vm.playSearchTrackFromImmersiveVideo(track)
                                             immersiveSearchOpen = false

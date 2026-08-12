@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.37：桌面图标缩小留白
-        versionCode = 257
-        versionName = "1.14.37"
+        // 1.14.38：搜索对齐 B 站分页
+        versionCode = 258
+        versionName = "1.14.38"
         vectorDrawables.useSupportLibrary = true
     }
 

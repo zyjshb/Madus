@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -21,6 +22,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -31,6 +34,8 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.SearchUiState
 import com.madus.mobile.ui.components.LineButton
 import com.madus.mobile.ui.components.TrackRow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 @Composable
 fun SearchScreen(
@@ -42,12 +47,28 @@ fun SearchScreen(
     onPlayTrack: (Track) -> Unit,
     onCollectTrack: (Track) -> Unit = {},
     onOpenAiSearch: (() -> Unit)? = null,
+    onLoadMore: () -> Unit = {},
     /** 换歌模式：顶部提示 + 点结果即替换 */
     replaceHintTitle: String? = null,
     onCancelReplace: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val focus = LocalFocusManager.current
+    val listState = rememberLazyListState()
+
+    // 接近底部时拉下一页（对齐 B 站无限滚动）
+    LaunchedEffect(listState, state.hasMore, state.loadingMore, state.results.size) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            total > 0 && last >= total - 4
+        }
+            .distinctUntilChanged()
+            .filter { nearEnd -> nearEnd && state.hasMore && !state.loadingMore && !state.isSearching }
+            .collect { onLoadMore() }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -203,8 +224,21 @@ fun SearchScreen(
                 )
                 Spacer(Modifier.height(8.dp))
             }
+            if (state.results.isNotEmpty() && state.total > 0) {
+                Text(
+                    text = if (state.hasMore || state.results.size < state.total) {
+                        "已显示 ${state.results.size} / ${state.total.coerceAtLeast(state.results.size)}"
+                    } else {
+                        "共 ${state.results.size} 条"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+            }
 
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -214,6 +248,29 @@ fun SearchScreen(
                         onClick = { onPlayTrack(track) },
                         onCollect = { onCollectTrack(track) },
                     )
+                }
+                if (state.loadingMore) {
+                    item(key = "search-loading-more") {
+                        Text(
+                            text = "加载更多…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                        )
+                    }
+                } else if (state.results.isNotEmpty() && !state.hasMore) {
+                    item(key = "search-end") {
+                        Text(
+                            text = "没有更多了",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                        )
+                    }
                 }
             }
         }

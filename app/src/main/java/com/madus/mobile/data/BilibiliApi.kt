@@ -157,89 +157,202 @@ class BilibiliApi(
         out.toList()
     }
 
-    suspend fun search(keyword: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
+    data class SearchPage(
+        val tracks: List<Track>,
+        val hasMore: Boolean,
+        val page: Int,
+        val total: Int = 0,
+        /** 实际命中关键词（纠错后可能与输入不同） */
+        val keywordUsed: String = "",
+    )
+
+    /**
+     * 全站视频搜索一页，尽量对齐 B 站网页：
+     * - 默认 order=totalrank（综合）
+     * - 每页 42 条（与 search.bilibili.com 一致）
+     * - 优先 WBI 签名接口；失败再走经典接口
+     * - 支持 page 翻页（加载更多）
+     */
+    suspend fun searchPage(
+        keyword: String,
+        page: Int = 1,
+        pageSize: Int = 42,
+        order: String = "totalrank",
+        /** 首页空结果时是否走联想/软化纠错（翻页勿开） */
+        allowCorrect: Boolean = page <= 1,
+    ): SearchPage = withContext(Dispatchers.IO) {
         val kw = keyword.trim()
-        if (kw.isEmpty()) return@withContext emptyList()
-        val cookie = mergedCookie()
+        if (kw.isEmpty()) return@withContext SearchPage(emptyList(), false, page)
+        val cookie = mergedCookieWithSystem().ifBlank { mergedCookie() }
+        val pn = page.coerceAtLeast(1)
+        val ps = pageSize.coerceIn(1, 50)
 
         parseBvid(kw)?.let { bvid ->
-            return@withContext viewTracks(bvid, cookie)
+            val tracks = viewTracks(bvid, cookie)
+            return@withContext SearchPage(
+                tracks = tracks,
+                hasMore = false,
+                page = 1,
+                total = tracks.size,
+                keywordUsed = bvid,
+            )
         }
 
-        fun parseSearchResult(result: JSONArray): List<Track> = buildList {
-            for (i in 0 until result.length()) {
-                val item = result.optJSONObject(i) ?: continue
-                // 综合搜索 result 可能混 bilibili_user 等
-                val type = item.optString("type", item.optString("result_type", "video"))
-                if (type.isNotBlank() && type != "video" && item.optString("bvid").isBlank()) continue
-                val bvid = item.optString("bvid", "")
-                if (bvid.isBlank()) continue
-                val title = stripHtml(item.optString("title", bvid))
-                val author = item.optString("author", "Bilibili")
-                val mid = item.opt("mid")?.toString()?.takeIf { it != "null" }.orEmpty()
-                val cover = normalizeUrl(item.optString("pic", ""))
-                val durationMs = parseDurationToMs(item.optString("duration", "0"))
-                val pageCount = item.optInt("videos", 1).coerceAtLeast(1)
-                val album = if (pageCount > 1) "合集·${pageCount}P" else "Bilibili"
-                val displayTitle = if (pageCount > 1) "$title · ${pageCount}P" else title
-                add(
-                    Track(
-                        id = bvid,
-                        title = displayTitle,
-                        artist = author,
-                        album = album,
-                        coverUrl = cover,
-                        durationMs = durationMs,
-                        source = MusicSourceType.BILIBILI,
-                        bvid = bvid,
-                        aid = item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
-                        ownerMid = mid,
-                        pageCount = pageCount,
-                    ),
+        suspend fun fetchOnce(q: String, pageNo: Int, ord: String): SearchPage? {
+            val referer =
+                "https://search.bilibili.com/all?keyword=${URLEncoder.encode(q, "UTF-8")}"
+            // 1) WBI（与网页一致，翻页不易 412）
+            val wbi = runCatching {
+                val params = linkedMapOf(
+                    "category_id" to "",
+                    "search_type" to "video",
+                    "ad_resource" to "5654",
+                    "__refresh__" to "true",
+                    "_extra" to "",
+                    "context" to "",
+                    "page" to pageNo.toString(),
+                    "page_size" to ps.toString(),
+                    "order" to ord,
+                    "duration" to "",
+                    "from_source" to "",
+                    "from_spmid" to "333.337",
+                    "platform" to "pc",
+                    "highlight" to "1",
+                    "single_column" to "0",
+                    "keyword" to q,
+                    "qv_id" to "",
+                    "source_tag" to "3",
+                    "gaia_vtoken" to "",
+                    "dynamic_offset" to "0",
+                    "web_location" to "1430654",
                 )
-            }
-        }
+                val signed = signWbiQuery(params, cookie)
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
+                    cookie,
+                    referer = referer,
+                )
+            }.getOrNull()
+            parseSearchJson(wbi, pageNo, ps, q)?.let { return it }
 
-        fun searchOnce(q: String): List<Track> {
+            // 2) 经典无签名
             val encoded = URLEncoder.encode(q, "UTF-8")
-            val pageSize = limit.coerceIn(4, 40)
-            // 多 order 尝试：综合 / 最多播放（错字时 totalrank 有时空，click 更宽）
-            for (order in listOf("totalrank", "click", "pubdate")) {
-                val url =
+            val classic = runCatching {
+                getJson(
                     "https://api.bilibili.com/x/web-interface/search/type" +
-                        "?search_type=video&keyword=$encoded&page=1&page_size=$pageSize&order=$order"
-                val json = runCatching {
-                    getJson(
-                        url,
-                        cookie,
-                        referer = "https://search.bilibili.com/all?keyword=$encoded",
-                    )
-                }.getOrNull() ?: continue
-                if (json.optInt("code", -1) != 0) continue
-                val result = json.optJSONObject("data")?.optJSONArray("result") ?: JSONArray()
-                val list = parseSearchResult(result)
-                if (list.isNotEmpty()) return list
-            }
-            return emptyList()
+                        "?search_type=video&keyword=$encoded&page=$pageNo&page_size=$ps&order=$ord",
+                    cookie,
+                    referer = referer,
+                )
+            }.getOrNull()
+            return parseSearchJson(classic, pageNo, ps, q)
         }
 
-        // 1) 原词
-        var hits = searchOnce(kw)
-        // 2) 空结果 → 联想纠错（B 站搜错字常靠 suggest）
-        if (hits.isEmpty()) {
+        // 1) 原词 + 综合排序
+        var pageResult = fetchOnce(kw, pn, order)
+        // 2) 首页仍空：换 order 再试（仅首页）
+        if (allowCorrect && (pageResult == null || pageResult.tracks.isEmpty())) {
+            for (ord in listOf("click", "pubdate")) {
+                if (ord == order) continue
+                pageResult = fetchOnce(kw, pn, ord)
+                if (pageResult != null && pageResult.tracks.isNotEmpty()) break
+            }
+        }
+        // 3) 首页空 → 联想纠错
+        if (allowCorrect && (pageResult == null || pageResult.tracks.isEmpty())) {
             val tips = runCatching { searchSuggest(kw, limit = 6) }.getOrDefault(emptyList())
             for (tip in tips) {
                 if (tip.equals(kw, ignoreCase = true)) continue
-                hits = searchOnce(tip)
-                if (hits.isNotEmpty()) break
+                pageResult = fetchOnce(tip, pn, order)
+                if (pageResult != null && pageResult.tracks.isNotEmpty()) break
             }
         }
-        // 3) 仍空：去掉标点/空格再试
-        if (hits.isEmpty()) {
+        // 4) 仍空：去掉标点/空格
+        if (allowCorrect && (pageResult == null || pageResult.tracks.isEmpty())) {
             val soft = kw.replace(Regex("[\\s\\p{Punct}，。！？、·…]+"), "")
-            if (soft.length >= 2 && soft != kw) hits = searchOnce(soft)
+            if (soft.length >= 2 && soft != kw) {
+                pageResult = fetchOnce(soft, pn, order)
+            }
         }
-        hits.take(limit)
+        pageResult ?: SearchPage(emptyList(), false, pn, keywordUsed = kw)
+    }
+
+    private fun parseSearchJson(
+        json: JSONObject?,
+        pageNo: Int,
+        pageSize: Int,
+        keywordUsed: String,
+    ): SearchPage? {
+        if (json == null) return null
+        val code = json.optInt("code", -1)
+        if (code != 0) {
+            Log.w(TAG, "search code=$code ${json.optString("message")}")
+            return null
+        }
+        val data = json.optJSONObject("data") ?: return null
+        val result = data.optJSONArray("result") ?: JSONArray()
+        val tracks = parseSearchResultArray(result)
+        val total = data.optInt("numResults", 0)
+            .coerceAtLeast(data.optInt("numresults", 0))
+        val numPages = data.optInt("numPages", 0)
+            .coerceAtLeast(data.optInt("numpages", 0))
+        val hasMore = when {
+            numPages > 0 -> pageNo < numPages
+            total > 0 -> pageNo * pageSize < total
+            else -> tracks.size >= pageSize
+        }
+        return SearchPage(
+            tracks = tracks,
+            hasMore = hasMore && tracks.isNotEmpty(),
+            page = pageNo,
+            total = total,
+            keywordUsed = keywordUsed,
+        )
+    }
+
+    private fun parseSearchResultArray(result: JSONArray): List<Track> = buildList {
+        for (i in 0 until result.length()) {
+            val item = result.optJSONObject(i) ?: continue
+            // 综合搜索 result 可能混 bilibili_user 等
+            val type = item.optString("type", item.optString("result_type", "video"))
+            if (type.isNotBlank() && type != "video" && item.optString("bvid").isBlank()) continue
+            val bvid = item.optString("bvid", "")
+            if (bvid.isBlank()) continue
+            val title = stripHtml(item.optString("title", bvid))
+            val author = item.optString("author", "Bilibili")
+            val mid = item.opt("mid")?.toString()?.takeIf { it != "null" }.orEmpty()
+            val cover = normalizeUrl(item.optString("pic", ""))
+            val durationMs = parseDurationToMs(item.optString("duration", "0"))
+            val pageCount = item.optInt("videos", 1).coerceAtLeast(1)
+            val album = if (pageCount > 1) "合集·${pageCount}P" else "Bilibili"
+            val displayTitle = if (pageCount > 1) "$title · ${pageCount}P" else title
+            add(
+                Track(
+                    id = bvid,
+                    title = displayTitle,
+                    artist = author,
+                    album = album,
+                    coverUrl = cover,
+                    durationMs = durationMs,
+                    source = MusicSourceType.BILIBILI,
+                    bvid = bvid,
+                    aid = item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
+                    ownerMid = mid,
+                    pageCount = pageCount,
+                ),
+            )
+        }
+    }
+
+    /** 兼容旧调用：取首页若干条 */
+    suspend fun search(keyword: String, limit: Int = 20): List<Track> {
+        val page = searchPage(
+            keyword = keyword,
+            page = 1,
+            pageSize = limit.coerceIn(4, 50),
+            allowCorrect = true,
+        )
+        return page.tracks.take(limit)
     }
 
     /**

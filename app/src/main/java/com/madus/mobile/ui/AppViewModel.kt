@@ -75,6 +75,13 @@ data class SearchUiState(
     val suggestions: List<String> = emptyList(),
     val isSearching: Boolean = false,
     val message: String? = null,
+    /** 当前已加载到第几页（B 站搜索） */
+    val page: Int = 0,
+    val hasMore: Boolean = false,
+    val loadingMore: Boolean = false,
+    val total: Int = 0,
+    /** 实际请求用的关键词（纠错后可能与输入框不同） */
+    val keywordUsed: String = "",
 )
 
 /** 队列页内搜索（插播，不顶掉原歌单） */
@@ -1185,18 +1192,52 @@ class AppViewModel(
         if (q.isEmpty()) return
         suggestJob?.cancel()
         viewModelScope.launch {
-            _search.update { it.copy(isSearching = true, message = null, suggestions = emptyList()) }
-            // 主搜索以全站视频为主，音乐区只做补充，避免把普通搜索变成音乐区搜索
-            val results = runCatching { plainBiliSearch(q, limit = 30) }.getOrDefault(emptyList())
-            // 错字兜底：仍空时再走一遍 suggest → 首条联想搜索（API 内已做，这里补文案）
+            _search.update {
+                it.copy(
+                    isSearching = true,
+                    message = null,
+                    suggestions = emptyList(),
+                    loadingMore = false,
+                    hasMore = false,
+                    page = 0,
+                    total = 0,
+                    keywordUsed = q,
+                )
+            }
+            runCatching { biliApi.ensureGuestCookies() }
+            // 对齐 B 站网页：综合排序 + 每页 42 条
+            val page = runCatching {
+                biliApi.searchPage(
+                    keyword = q,
+                    page = 1,
+                    pageSize = 42,
+                    order = "totalrank",
+                    allowCorrect = true,
+                )
+            }.getOrElse {
+                _search.value = SearchUiState(
+                    query = q,
+                    isSearching = false,
+                    message = it.message ?: "搜索失败",
+                )
+                return@launch
+            }
+            val results = page.tracks.distinctBy { it.id }
             val tips = if (results.isEmpty()) {
                 runCatching { biliApi.searchSuggest(q) }.getOrDefault(emptyList())
-            } else emptyList()
+            } else {
+                emptyList()
+            }
             _search.value = SearchUiState(
                 query = q,
                 results = results,
                 suggestions = tips,
                 isSearching = false,
+                page = page.page,
+                hasMore = page.hasMore,
+                loadingMore = false,
+                total = page.total,
+                keywordUsed = page.keywordUsed.ifBlank { q },
                 message = if (results.isEmpty()) {
                     if (tips.isNotEmpty()) {
                         "没有精确结果。试试联想：${tips.take(3).joinToString(" / ")}"
@@ -1210,6 +1251,51 @@ class AppViewModel(
         }
     }
 
+    /** 搜索结果滚到底：继续拉 B 站下一页 */
+    fun loadMoreSearch() {
+        val st = _search.value
+        if (st.isSearching || st.loadingMore || !st.hasMore) return
+        val kw = st.keywordUsed.ifBlank { st.query }.trim()
+        if (kw.isBlank()) return
+        val next = st.page + 1
+        viewModelScope.launch {
+            _search.update { it.copy(loadingMore = true) }
+            val page = runCatching {
+                biliApi.searchPage(
+                    keyword = kw,
+                    page = next,
+                    pageSize = 42,
+                    order = "totalrank",
+                    allowCorrect = false,
+                )
+            }.getOrElse { e ->
+                _search.update {
+                    it.copy(loadingMore = false, hasMore = false, message = e.message ?: "加载更多失败")
+                }
+                return@launch
+            }
+            // 用户已换词/重新搜，丢弃旧页
+            if (_search.value.keywordUsed != kw && _search.value.query.trim() != st.query.trim()) {
+                return@launch
+            }
+            if (page.tracks.isEmpty()) {
+                _search.update { it.copy(loadingMore = false, hasMore = false) }
+                return@launch
+            }
+            val merged = (st.results + page.tracks).distinctBy { it.id }
+            _search.update {
+                it.copy(
+                    results = merged,
+                    page = page.page,
+                    hasMore = page.hasMore && page.tracks.isNotEmpty(),
+                    loadingMore = false,
+                    total = page.total.coerceAtLeast(it.total),
+                    message = null,
+                )
+            }
+        }
+    }
+
     /**
      * 普通搜索：直接返回 B 站全站视频，不做歌名相关度过滤。
      * 识曲相关过滤只留在 AI 搜/哼唱链路里。
@@ -1217,8 +1303,14 @@ class AppViewModel(
     private suspend fun plainBiliSearch(query: String, limit: Int): List<Track> {
         val q = query.trim()
         if (q.isEmpty()) return emptyList()
-        val source = registry.get(MusicSourceType.BILIBILI) ?: return emptyList()
-        return source.search(q, limit).distinctBy { it.id }.take(limit)
+        return runCatching {
+            biliApi.searchPage(
+                keyword = q,
+                page = 1,
+                pageSize = limit.coerceIn(4, 50),
+                allowCorrect = true,
+            ).tracks.distinctBy { it.id }.take(limit)
+        }.getOrDefault(emptyList())
     }
 
     /**

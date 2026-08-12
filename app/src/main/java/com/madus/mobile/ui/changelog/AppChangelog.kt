@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.38",
+            date = "2026-08-12",
+            changed = listOf(
+                "普通搜索对齐 B 站：综合排序、每页 42 条，可下拉加载更多",
+            ),
+        ),
+        Entry(
             version = "1.14.37",
             date = "2026-08-12",
             changed = listOf(

@@ -2,11 +2,11 @@
 
 **日期：** 2026-08-12  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.37` / versionCode `257`  
-**正式包：** `and/apk/Madus-1.14.37.apk`  
+**当前版本：** `1.14.38` / versionCode `258`  
+**正式包：** `and/apk/Madus-1.14.38.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit（示意）：** `791264a` fix: shrink launcher logo with more padding 
+**最新 commit（示意）：** search pagination sync bilibili 
  
 
 ---
