@@ -6,7 +6,7 @@
 **正式包：** `and/apk/Madus-1.14.36.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit（示意）：** brand logo h_logo + splash refresh  
+**最新 commit（示意）：** `976b6c2` feat: refresh brand logo and splash with h_logo 
  
 
 ---
