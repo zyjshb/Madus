@@ -7,21 +7,32 @@ import com.madus.mobile.MadusApp
 import com.madus.mobile.ai.SongCandidate
 import com.madus.mobile.data.AudioQuality
 import com.madus.mobile.data.BilibiliApi
+import com.madus.mobile.data.ContentProfileStore
 import com.madus.mobile.data.ExternalPlaylistImporter
 import com.madus.mobile.data.LikedStore
 import com.madus.mobile.data.LocalPlaylistStore
 import com.madus.mobile.data.PlayerPrefs
 import com.madus.mobile.data.PlayerSettings
 import com.madus.mobile.data.PlaylistCoverStore
+import com.madus.mobile.data.RecommendationEventStore
 import com.madus.mobile.data.RecentStore
 import com.madus.mobile.data.SoundFx
 import com.madus.mobile.data.TrackCacheStore
 import com.madus.mobile.domain.AuthSession
+import com.madus.mobile.domain.ContentProfile
+import com.madus.mobile.domain.ContentProfileParser
+import com.madus.mobile.domain.FeedContext
 import com.madus.mobile.domain.MusicSourceType
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.PlayerCommand
 import com.madus.mobile.domain.Playlist
+import com.madus.mobile.domain.RecommendationEngine
+import com.madus.mobile.domain.RecommendationEvent
+import com.madus.mobile.domain.RecommendationEventType
+import com.madus.mobile.domain.RecommendationReRanker
+import com.madus.mobile.domain.RecommendationTuning
 import com.madus.mobile.domain.RepeatMode
+import com.madus.mobile.domain.ScoredTrack
 import com.madus.mobile.domain.Track
 import com.madus.mobile.domain.TrackFilters
 import com.madus.mobile.player.PlayerController
@@ -116,6 +127,8 @@ data class RecommendUiState(
     /** Label of current play context (推荐 / 歌单名). */
     val sourceLabel: String = "推荐电台",
     val sourceId: String = "recommend",
+    val debugRows: List<String> = emptyList(),
+    val debugVisible: Boolean = false,
 )
 
 data class PlaySourceUiState(
@@ -299,7 +312,14 @@ class AppViewModel(
     private val playerPrefs: PlayerPrefs = MadusApp.instance.playerPrefs,
     private val trackCache: TrackCacheStore = MadusApp.instance.trackCacheStore,
     private val biliApi: BilibiliApi = MadusApp.instance.biliApi,
+    private val recommendationEventStore: RecommendationEventStore =
+        MadusApp.instance.recommendationEventStore,
+    private val contentProfileStore: ContentProfileStore =
+        MadusApp.instance.contentProfileStore,
 ) : ViewModel() {
+
+    private val recommendationEngine = RecommendationEngine()
+    private val recommendationReRanker = RecommendationReRanker()
 
     val playback: StateFlow<PlaybackState> = player.state
         .stateIn(viewModelScope, SharingStarted.Eagerly, PlaybackState())
@@ -421,6 +441,15 @@ class AppViewModel(
 
     /** 本会话已曝光过的 id，用于无限流去重（抖音式不回看） */
     private val sessionSeenIds = linkedSetOf<String>()
+    /** 本会话真正起播过的 id，用于快速跳过判定（重复播放不算负反馈） */
+    private val sessionStartedIds = linkedSetOf<String>()
+    /** 本会话重播过的 id：首次播放切走可记 SKIP_FAST，重播后不记 */
+    private val sessionReplayedIds = linkedSetOf<String>()
+    /** 主题 -> 最近 10 分钟实时插入时间戳，用于同主题插入配额 */
+    private val realtimeInsertedTopics = mutableMapOf<String, MutableList<Long>>()
+    /** 已触发过半/九成观看事件的 id，避免重复写 */
+    private val watchFired50 = linkedSetOf<String>()
+    private val watchFired90 = linkedSetOf<String>()
     @Volatile private var expandingFeed: Boolean = false
     private var expandJob: Job? = null
 
@@ -454,6 +483,8 @@ class AppViewModel(
         viewModelScope.launch {
             runCatching { localPl.purgeEmptyJunk(aggressive = true) }
             loadRecentFromStore()
+            runCatching { recommendationEventStore.clearExpired() }
+            runCatching { contentProfileStore.removeExpired() }
             runCatching {
                 val ids = likedStore.ids()
                 _recommend.update { it.copy(likedIds = ids) }
@@ -463,6 +494,7 @@ class AppViewModel(
             refreshCacheStats()
         }
         startPositionPersistLoop()
+        startRecommendationSignalLoop()
     }
 
     fun clearToast() {
@@ -1074,6 +1106,215 @@ class AppViewModel(
         return raw
     }
 
+    /** 播放进度信号：WATCH_50 / WATCH_90，每曲每种只记一次。 */
+    private fun startRecommendationSignalLoop() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(2_000L)
+                val pb = playback.value
+                val t = pb.current ?: continue
+                if (!isForYouQueue()) continue
+                val pos = pb.positionMs
+                val dur = pb.durationMs
+                if (pos < 1_000L) continue
+                val threshold50 = if (dur > 0L) {
+                    minOf(dur / 2L, RecommendationTuning.WATCH_50_MIN_MS)
+                } else {
+                    RecommendationTuning.WATCH_50_MIN_MS
+                }
+                if (pos >= threshold50 && watchFired50.add(t.id)) {
+                    recordEvent(t, RecommendationEventType.WATCH_50)
+                }
+                if (dur > 0L && pos >= dur * 9 / 10 && watchFired90.add(t.id)) {
+                    recordEvent(t, RecommendationEventType.WATCH_90)
+                }
+            }
+        }
+    }
+
+    /** 快速跳过判定：只对 recommend 无限流、主动切走、播放过短、本会话未重播的曲目记录。 */
+    private fun maybeRecordSkipFast() {
+        val pb = playback.value
+        val t = pb.current ?: return
+        if (!isForYouQueue()) return
+        if (t.id in sessionReplayedIds) return
+        val dur = pb.durationMs
+        val threshold = if (dur > 0L) {
+            maxOf(RecommendationTuning.SKIP_FAST_MIN_MS, dur / 100 * 15)
+        } else {
+            RecommendationTuning.SKIP_FAST_MIN_MS
+        }
+        if (pb.positionMs >= threshold) return
+        recordEvent(t, RecommendationEventType.SKIP_FAST)
+    }
+
+    private fun profileKey(track: Track): String = track.bvid.ifBlank { track.id }
+
+    private suspend fun profileOf(track: Track, fetchRemote: Boolean = false): ContentProfile {
+        val cached = runCatching { contentProfileStore.get(profileKey(track)) }.getOrNull()
+        if (cached != null) return cached
+        val fallback = ContentProfileParser.profileFromTrack(track)
+        if (!fetchRemote || track.source != MusicSourceType.BILIBILI || track.bvid.isBlank()) {
+            return fallback
+        }
+        return runCatching {
+            val meta = biliApi.videoMeta(track.bvid) ?: return@runCatching fallback
+            val profile = ContentProfile(
+                trackId = track.id,
+                bvid = track.bvid,
+                authorId = meta.ownerMid.takeIf { it.isNotBlank() },
+                authorName = meta.ownerName.takeIf { it.isNotBlank() },
+                categoryId = meta.tid.takeIf { it > 0 },
+                categoryName = meta.tname.takeIf { it.isNotBlank() },
+                tags = meta.tags.toSet(),
+                topicKeys = ContentProfileParser.parseTopicKeys(
+                    categoryId = meta.tid.takeIf { it > 0 },
+                    categoryName = meta.tname,
+                    tags = meta.tags,
+                    text = "${track.title} ${track.album} ${meta.tname}",
+                ),
+                fetchedAtMs = System.currentTimeMillis(),
+            )
+            runCatching { contentProfileStore.put(profile) }
+            profile
+        }.getOrDefault(fallback)
+    }
+
+    private fun recordEvent(
+        track: Track,
+        type: RecommendationEventType,
+        sourceId: String = _recommend.value.sourceId,
+    ) {
+        viewModelScope.launch {
+            val p = profileOf(track, fetchRemote = type in REALTIME_FEEDBACK_TYPES)
+            val event = RecommendationEvent(
+                trackId = track.id,
+                bvid = track.bvid,
+                type = type,
+                occurredAtMs = System.currentTimeMillis(),
+                sourceId = sourceId,
+                topicKeys = p.topicKeys,
+                authorKey = p.authorKey,
+            )
+            runCatching { recommendationEventStore.record(event) }
+            if (type in REALTIME_FEEDBACK_TYPES) {
+                runCatching { maybeInsertRealtime(track, event) }
+            }
+        }
+    }
+
+    private suspend fun maybeInsertRealtime(seed: Track, event: RecommendationEvent) {
+        if (!isForYouQueue()) return
+        val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
+        if (bv.isBlank()) return
+        val now = System.currentTimeMillis()
+        val related = runCatching { biliApi.relatedTracks(bv, 18) }.getOrDefault(emptyList())
+        if (related.isEmpty()) return
+        if (!isForYouQueue()) return
+
+        val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
+        val state = recommendationEngine.buildInterestState(events, now)
+        val queueIds = pendingQueue.mapTo(hashSetOf()) { it.id }
+        val existing = hashSetOf<String>().apply {
+            addAll(sessionSeenIds)
+            addAll(queueIds)
+        }
+        val context = FeedContext(
+            nowMs = now,
+            limit = 2,
+            sessionSeenIds = existing,
+            queueIds = queueIds,
+            recentQueue = pendingQueue.drop((pendingIndex - 2).coerceAtLeast(0)).take(6),
+            sourceId = "recommend",
+            realtimeTopicQuota = realtimeQuota(event, now),
+        )
+        val scored = related
+            .filter { it.id !in existing && (it.bvid.isNotBlank() || it.id.startsWith("BV")) }
+            .map { recommendationEngine.scoreCandidate(it, profileOf(it), state, "realtime-related", context) }
+            .filter { it.score > 0.2 }
+        if (scored.isEmpty()) return
+
+        val (_, picked) = recommendationReRanker.rerankWithReasons(scored, context)
+        if (picked.isEmpty()) return
+        val inserted = softInsertRealtime(picked.map { it.track }, pendingIndex)
+        if (inserted.isNotEmpty()) {
+            val rows = picked.filter { it.track.id in inserted }
+                .map { "插:${it.track.title.take(14)} ${it.reason}" }
+            _recommend.update {
+                it.copy(debugRows = (listOf("实时:${seed.title.take(14)}") + rows).takeLast(12))
+            }
+        }
+    }
+
+    private fun realtimeQuota(
+        event: RecommendationEvent,
+        nowMs: Long,
+    ): Map<String, Int> {
+        val quota = linkedMapOf<String, Int>()
+        val cutoff = nowMs - RecommendationTuning.REALTIME_STRONG_TTL_MS
+        for (topic in event.topicKeys.filter { it != "unknown" }) {
+            val times = realtimeInsertedTopics.getOrPut(topic) { mutableListOf() }
+            times.removeAll { it < cutoff }
+            quota[topic] = (2 - times.size).coerceAtLeast(0)
+        }
+        return quota
+    }
+
+    /** 软插入到当前播放之后的第 2～4 位，不替换当前曲与下一条。 */
+    private fun softInsertRealtime(newTracks: List<Track>, currentIndex: Int): List<String> {
+        val queue = pendingQueue.toMutableList()
+        val insertedIds = mutableListOf<String>()
+        for (track in newTracks.take(2)) {
+            if (queue.any { it.id == track.id }) continue
+            var placed = false
+            for (offset in 2..4) {
+                val idx = currentIndex + offset
+                if (idx > queue.size) break
+                if (idx >= queue.size) {
+                    queue.add(track)
+                    placed = true
+                    break
+                }
+                val prev = queue.getOrNull(idx - 1)
+                val next = queue.getOrNull(idx)
+                val topicOk = !topicsOverlap(prev, track) && !topicsOverlap(next, track)
+                val authorOk = !sameAuthor(prev, track) && !sameAuthor(next, track)
+                if (topicOk && authorOk) {
+                    queue.add(idx, track)
+                    placed = true
+                    break
+                }
+            }
+            if (placed) {
+                insertedIds.add(track.id)
+                sessionSeenIds.add(track.id)
+                val ts = System.currentTimeMillis()
+                ContentProfileParser.profileFromTrack(track)
+                    .topicKeys.filter { it != "unknown" }
+                    .forEach { realtimeInsertedTopics.getOrPut(it) { mutableListOf() }.add(ts) }
+            }
+        }
+        if (insertedIds.isEmpty()) return emptyList()
+        pendingQueue = queue
+        _queueTracks.value = queue
+        _recommend.update { it.copy(feed = queue) }
+        return insertedIds
+    }
+
+    private fun topicsOverlap(a: Track?, b: Track): Boolean {
+        if (a == null) return false
+        val ta = ContentProfileParser.profileFromTrack(a).topicKeys.filter { it != "unknown" }
+        val tb = ContentProfileParser.profileFromTrack(b).topicKeys.filter { it != "unknown" }
+        return ta.any { it in tb }
+    }
+
+    private fun sameAuthor(a: Track?, b: Track): Boolean {
+        if (a == null) return false
+        val an = a.artist.trim()
+        val bn = b.artist.trim()
+        return an.isNotBlank() && an.equals(bn, ignoreCase = true)
+    }
+
     fun refreshHome() {
         viewModelScope.launch {
             _home.update { it.copy(isLoading = true, message = null) }
@@ -1582,7 +1823,8 @@ class AppViewModel(
         viewModelScope.launch {
             val seed = track ?: _collect.value.track ?: playback.value.current ?: return@launch
             val series = expandIfSeries(seed)
-            series.forEach { localPl.addTrack(playlistId, it) }
+            val added = series.count { localPl.addTrack(playlistId, it) }
+            if (added > 0) recordEvent(seed, RecommendationEventType.COLLECT_LOCAL)
             val name = localPl.list().firstOrNull { it.id == playlistId }?.title ?: "歌单"
             _collect.update { it.copy(visible = false) }
             _toast.value = "已将合集 ${series.size} 集加入本地「$name」"
@@ -1617,7 +1859,12 @@ class AppViewModel(
             for ((_, parts) in byAid) {
                 val one = parts.first()
                 val err = biliApi.addToFavFolder(one, folderId)
-                if (err == null) ok++ else lastErr = err
+                if (err == null) {
+                    ok++
+                    recordEvent(one, RecommendationEventType.COLLECT_BILIBILI)
+                } else {
+                    lastErr = err
+                }
             }
             _collect.update { it.copy(biliSyncing = false, visible = false) }
             _toast.value = if (ok > 0) {
@@ -1757,6 +2004,14 @@ class AppViewModel(
         rememberPosition(playTrack.id, resolvedStart)
         pushRecent(playTrack, resolvedStart)
         sessionSeenIds.add(playTrack.id)
+        if (isForYouQueue()) {
+            if (!sessionStartedIds.add(playTrack.id)) {
+                sessionReplayedIds.add(playTrack.id)
+                recordEvent(playTrack, RecommendationEventType.REPLAY)
+            } else {
+                recordEvent(playTrack, RecommendationEventType.PLAY_START)
+            }
+        }
         // 推荐流播放中后台预取
         if (isForYouQueue()) scheduleInfinitePrefetch()
         // 始终预解析下一首，熄屏切歌少踩 CDN 空窗
@@ -1856,11 +2111,16 @@ class AppViewModel(
 
     /**
      * @param userInitiated 用户点下一首 / 通知栏；false = 曲终自动。
+     * @param recordSkipFast 播放器报错跳歌时必须显式关掉，避免误记快速跳过。
      */
-    private suspend fun advanceToNext(userInitiated: Boolean) {
+    private suspend fun advanceToNext(
+        userInitiated: Boolean,
+        recordSkipFast: Boolean = userInitiated,
+    ) {
         ensureService()
         // 曲终/用户切歌都先记进度，滑回来才能续播
         persistCurrentPosition()
+        if (userInitiated && recordSkipFast) maybeRecordSkipFast()
 
         if (pendingQueue.isEmpty()) {
             // 切勿再 dispatch Next：空队列 + Ended 回调会与这里形成死循环导致卡死
@@ -2648,6 +2908,7 @@ class AppViewModel(
                 _toast.value = "夹已创建，但加曲失败：$addErr"
                 return@launch
             }
+            recordEvent(t, RecommendationEventType.COLLECT_BILIBILI)
             val folders = runCatching {
                 biliApi.favFolders().map { BiliFavOption(id = it.id, title = it.title, count = it.count) }
             }.getOrDefault(emptyList())
@@ -2665,7 +2926,8 @@ class AppViewModel(
         viewModelScope.launch {
             val state = _collect.value
             val t = state.track ?: return@launch
-            localPl.addTrack(playlistId, t)
+            val added = localPl.addTrack(playlistId, t)
+            if (added) recordEvent(t, RecommendationEventType.COLLECT_LOCAL)
             val name = localPl.list().firstOrNull { it.id == playlistId }?.title ?: "歌单"
             _collect.value = CollectUiState(
                 visible = false,
@@ -2684,7 +2946,8 @@ class AppViewModel(
             val t = state.track ?: return@launch
             val name = title.trim().ifBlank { defaultPlaylistName() }
             val pl = localPl.create(name)
-            localPl.addTrack(pl.id, t)
+            val added = localPl.addTrack(pl.id, t)
+            if (added) recordEvent(t, RecommendationEventType.COLLECT_LOCAL)
             _collect.value = CollectUiState(
                 visible = false,
                 toast = "已加入本地「${pl.title}」",
@@ -2714,6 +2977,7 @@ class AppViewModel(
                 e.message ?: "同步失败"
             }
             if (err == null) {
+                recordEvent(t, RecommendationEventType.COLLECT_BILIBILI)
                 _collect.value = CollectUiState(
                     visible = false,
                     toast = "已收藏到 B 站「$folderName」",
@@ -3007,14 +3271,16 @@ class AppViewModel(
     fun addCurrentToLocalPlaylist(playlistId: String) {
         viewModelScope.launch {
             val t = playback.value.current ?: return@launch
-            localPl.addTrack(playlistId, t)
+            val added = localPl.addTrack(playlistId, t)
+            if (added) recordEvent(t, RecommendationEventType.COLLECT_LOCAL)
             refreshHome()
         }
     }
 
     fun addTrackToLocalPlaylist(playlistId: String, track: Track) {
         viewModelScope.launch {
-            localPl.addTrack(playlistId, track)
+            val added = localPl.addTrack(playlistId, track)
+            if (added) recordEvent(track, RecommendationEventType.COLLECT_LOCAL)
             refreshHome()
         }
     }
@@ -3107,7 +3373,7 @@ class AppViewModel(
         lastErrorTrackId = null
         _toast.value = "「${cur.title}」无法播放，已跳过"
         if (pendingQueue.size > 1) {
-            advanceToNext(userInitiated = true)
+            advanceToNext(userInitiated = true, recordSkipFast = false)
         }
     }
 
@@ -3145,6 +3411,7 @@ class AppViewModel(
         val track = playback.value.current ?: return
         viewModelScope.launch {
             val nowLiked = likedStore.toggle(track)
+            if (nowLiked) recordEvent(track, RecommendationEventType.LIKE)
             _recommend.update { s ->
                 val next = s.likedIds.toMutableSet()
                 if (nowLiked) next.add(track.id) else next.remove(track.id)
@@ -3159,6 +3426,7 @@ class AppViewModel(
     fun toggleLikeTrack(track: Track) {
         viewModelScope.launch {
             val nowLiked = likedStore.toggle(track)
+            if (nowLiked) recordEvent(track, RecommendationEventType.LIKE)
             _recommend.update { s ->
                 val next = s.likedIds.toMutableSet()
                 if (nowLiked) next.add(track.id) else next.remove(track.id)
@@ -4227,6 +4495,11 @@ class AppViewModel(
             }
             val (feed, recent, loggedIn) = pack
             feed.forEach { sessionSeenIds.add(it.id) }
+            val shouldAutoStart = autoStart &&
+                !suppressRecommendAutoPlay &&
+                feed.isNotEmpty() &&
+                playback.value.current == null &&
+                pendingQueue.isEmpty()
             val label = when {
                 !loggedIn && feed.isEmpty() -> "请先登录"
                 feed.isNotEmpty() -> "为你推荐"
@@ -4235,7 +4508,7 @@ class AppViewModel(
             _recommend.update {
                 it.copy(
                     feed = feed,
-                    isLoading = false,
+                    isLoading = !shouldAutoStart,
                     recent = recent,
                     sourceLabel = label,
                     sourceId = when (label) {
@@ -4244,13 +4517,9 @@ class AppViewModel(
                     },
                 )
             }
-            if (autoStart &&
-                !suppressRecommendAutoPlay &&
-                feed.isNotEmpty() &&
-                playback.value.current == null &&
-                pendingQueue.isEmpty()
-            ) {
+            if (shouldAutoStart) {
                 startRecommendQueue(feed)
+                clearRecommendLoadingAfterStart()
             }
         }
     }
@@ -4337,68 +4606,29 @@ class AppViewModel(
             .sortedBy { (it.id.hashCode() xor daySalt).toUInt() }
             .take(22)
 
-        val scores = hashMapOf<String, Double>()
-        val pool = linkedMapOf<String, Track>()
+        val now = System.currentTimeMillis()
+        val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
+        val state = recommendationEngine.buildInterestState(events, now)
+        val profiles = runCatching { contentProfileStore.all() }.getOrDefault(emptyList())
+            .associateBy { it.key }
+        val context = FeedContext(
+            nowMs = now,
+            limit = limit.coerceAtLeast(24),
+            sessionSeenIds = exclude,
+            queueIds = emptySet(),
+            recentQueue = recent.take(8),
+            sourceId = "recommend",
+        )
+        val scoredPool = linkedMapOf<String, ScoredTrack>()
 
-        fun offer(t: Track, base: Double) {
+        fun offer(t: Track, source: String) {
             if (t.id in exclude) return
-            val prev = scores[t.id] ?: 0.0
-            val artistBoost = if (interestArtists.any { a ->
-                    t.artist.contains(a, ignoreCase = true) || a.contains(t.artist, ignoreCase = true)
-                }
-            ) {
-                2.8
-            } else {
-                0.0
-            }
-            val titleBoost = when {
-                liked.any { l ->
-                    l.title.isNotBlank() && t.title.contains(l.title.take(4), ignoreCase = true)
-                } -> 1.4
-                interestKeywords.any { kw -> t.title.contains(kw, ignoreCase = true) } -> 1.0
-                else -> 0.0
-            }
-            val freshAffinityBoost = when {
-                freshLikeSeeds.any { it.id == t.id } || freshFavSeeds.any { it.id == t.id } -> 3.6
-                freshLikeSeeds.any { it.artist.isNotBlank() && it.artist.equals(t.artist, ignoreCase = true) } ||
-                    freshFavSeeds.any { it.artist.isNotBlank() && it.artist.equals(t.artist, ignoreCase = true) } -> 2.2
-                freshLikeSeeds.any { seed -> seed.title.take(4).length >= 2 && t.title.contains(seed.title.take(4), ignoreCase = true) } ||
-                    freshFavSeeds.any { seed -> seed.title.take(4).length >= 2 && t.title.contains(seed.title.take(4), ignoreCase = true) } -> 1.5
-                else -> 0.0
-            }
-            // Madus 是听歌 App：用户喜欢/本地歌单偏音乐时，给「像歌」稿件加分；
-            // 只有兴趣明显偏杂谈/整活时才略降权纯音乐合集。
-            val sample = liked.take(16) + recent.take(16) + localSample.take(8)
-            val musicN = sample.count {
-                TrackFilters.hasMusicSignal(it.title) ||
-                    it.album.contains("音乐") || it.album.contains("翻唱") ||
-                    it.album.contains("收藏") || it.album.startsWith("导入")
-            }
-            val musicHeavyInterest = sample.isNotEmpty() && musicN * 2 >= sample.size
-            val looksMusic = TrackFilters.hasMusicSignal(t.title) ||
-                t.album.contains("音乐") || t.album.contains("翻唱") ||
-                t.album.contains("VOCALOID") || t.album.contains("MV") ||
-                t.album.contains("原创音乐") || t.album.startsWith("导入")
-            val musicScore = when {
-                musicHeavyInterest && looksMusic -> 2.6
-                musicHeavyInterest && !looksMusic -> -0.6
-                looksMusic -> 1.1
-                else -> 0.0
-            }
-            // 本地/喜欢回流
-            val likedBoost = when {
-                liked.any { it.id == t.id } -> 2.2
-                liked.any { l ->
-                    l.artist.isNotBlank() && l.artist.equals(t.artist, ignoreCase = true)
-                } -> 1.3
-                else -> 0.0
-            }
+            val p = profiles[profileKey(t)] ?: ContentProfileParser.profileFromTrack(t, now)
+            val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
             val hourlyJitter = ((t.id.hashCode() xor hourSalt).toUInt() % 80u).toDouble() / 100.0
-            val s = base + artistBoost + titleBoost + freshAffinityBoost + musicScore + likedBoost + hourlyJitter
-            if (s >= prev) {
-                scores[t.id] = s
-                pool[t.id] = t
-            }
+            val withJitter = sc.copy(score = sc.score + hourlyJitter)
+            val prev = scoredPool[t.id]
+            if (prev == null || withJitter.score > prev.score) scoredPool[t.id] = withJitter
         }
 
         // 0) B 站首页 rcmd
@@ -4406,118 +4636,75 @@ class AppViewModel(
             addAll(runCatching { biliApi.homepageRcmd(limit = 24, freshIdx = 1) }.getOrDefault(emptyList()))
             addAll(runCatching { biliApi.homepageRcmd(limit = 24, freshIdx = 2 + (daySalt % 3)) }.getOrDefault(emptyList()))
         }.distinctBy { it.id }
-        for (t in rcmd) offer(t, 7.5)
+        for (t in rcmd) offer(t, "homepage")
 
         // 1) related：跟着喜欢/收藏/最近走（抖音式「看过同类再推」）
         for ((i, seed) in seeds.withIndex()) {
-            if (pool.size >= limit * 5) break
+            if (scoredPool.size >= limit * 5) break
             val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
             if (bv.isBlank()) continue
             val related = runCatching { biliApi.relatedTracks(bv, 18) }.getOrDefault(emptyList())
             val seedW = if (seed.id in freshSeedIds) 9.2 - i * 0.12 else 7.4 - i * 0.1
-            for (t in related) offer(t, seedW)
+            for (t in related) offer(t, "related")
         }
 
         // 2) 作者向搜索（常听的 UP）
         for (artist in interestArtists.take(8)) {
-            if (pool.size >= limit * 5) break
+            if (scoredPool.size >= limit * 5) break
             val hits = runCatching {
                 registry.get(MusicSourceType.BILIBILI)?.search(artist, limit = 12).orEmpty()
             }.getOrDefault(emptyList())
-            for (t in hits) offer(t, 5.4)
+            for (t in hits) offer(t, "search")
         }
 
         // 3) 标题关键词
         for (kw in interestKeywords.take(6)) {
-            if (pool.size >= limit * 5) break
+            if (scoredPool.size >= limit * 5) break
             val hits = runCatching {
                 registry.get(MusicSourceType.BILIBILI)?.search(kw, limit = 10).orEmpty()
             }.getOrDefault(emptyList())
-            for (t in hits) offer(t, 4.6)
+            for (t in hits) offer(t, "search")
         }
 
         // 4) 轻量探索防茧房
-        val popular = runCatching { biliApi.popularTracks(20) }.getOrDefault(emptyList())
-        for (t in popular) offer(t, 1.6)
+        val popular = runCatching {
+            biliApi.popularTracks(
+                ((limit * RecommendationTuning.MIN_EXPLORE_RATIO * 2).toInt()).coerceAtLeast(16),
+            )
+        }.getOrDefault(emptyList())
+        for (t in popular) offer(t, "popular")
 
         // 5) 喜欢/本地歌单回访（每天轮换）
-        for (t in liked.shuffled().take(6)) offer(t, 4.0)
-        for (t in localSample.shuffled().take(5)) offer(t, 3.6)
-        for (t in favSeeds.shuffled().take(5)) offer(t, 3.8)
+        for (t in liked.shuffled().take(6)) offer(t, "liked")
+        for (t in localSample.shuffled().take(5)) offer(t, "local")
+        for (t in favSeeds.shuffled().take(5)) offer(t, "liked")
 
-        val ranked = pool.values.sortedWith(
-            compareByDescending<Track> { scores[it.id] ?: 0.0 }
-                .thenBy { (it.id.hashCode() xor hourSalt).toUInt() },
+        // 每日基线切片：作为 dailyBaseline 候选交给重排器穿插，保留日更稳定输入。
+        val daily = scoredPool.values
+            .sortedBy { (it.track.id.hashCode() xor daySalt).toUInt() }
+            .take(((limit * RecommendationTuning.MIN_DAILY_BASELINE_RATIO).toInt()).coerceAtLeast(6))
+            .map { it.copy(dailyBaseline = true) }
+        val candidates = (scoredPool.values + daily)
+            .associateBy { it.track.id }
+            .values
+            .toList()
+        val (feed, picked) = recommendationReRanker.rerankWithReasons(
+            candidates,
+            context.copy(limit = limit.coerceAtLeast(24)),
         )
-        val diversified = diversifyRecommendationTracks(ranked)
-
-        val explore = popular.shuffled()
-            .filter { it.id !in exclude && it.id !in diversified.map { x -> x.id }.toSet() }
-            .take((limit * 0.18).toInt().coerceAtLeast(3))
-        val core = diversified.take((limit * 0.75).toInt().coerceAtLeast(limit - explore.size))
-        // Preserve a daily, broader slice in every hourly refresh. It is deliberately
-        // interleaved instead of appended, so an hourly preference burst cannot create
-        // an endless single-topic run.
-        val coreIds = core.mapTo(hashSetOf<String>()) { it.id }
-        val dailySlice = diversified
-            .sortedBy { (it.id.hashCode() xor daySalt).toUInt() }
-            .filter { it.id !in coreIds }
-            .take((limit * 0.25).toInt().coerceAtLeast(6))
-        val mixed = ArrayList<Track>(core.size + dailySlice.size + explore.size)
-        val hourly = core.iterator()
-        val daily = dailySlice.iterator()
-        while (hourly.hasNext() || daily.hasNext()) {
-            repeat(3) { if (hourly.hasNext()) mixed.add(hourly.next()) }
-            if (daily.hasNext()) mixed.add(daily.next())
+        _recommend.update {
+            it.copy(
+                debugRows = picked.take(limit.coerceAtLeast(24))
+                    .map { row ->
+                        val topics = ContentProfileParser.profileFromTrack(row.track)
+                            .topicKeys.joinToString(",")
+                        val score = java.lang.String.format(java.util.Locale.US, "%.2f", row.score)
+                        "${row.track.title.take(14)} | $score | $topics | ${row.reason}"
+                    }
+                    .takeLast(12),
+            )
         }
-        mixed.addAll(explore)
-
-        return diversifyRecommendationTracks(mixed.distinctBy { it.id }).take(limit.coerceAtLeast(24))
-    }
-
-    /**
-     * A lightweight fatigue guard.  Metadata has no reliable Bilibili category on all
-     * sources, so it uses conservative title/album signals and falls back gracefully
-     * when the candidate pool is too narrow.
-     */
-    private fun diversifyRecommendationTracks(candidates: List<Track>): List<Track> {
-        fun topicOf(track: Track): String {
-            val text = "${track.title} ${track.album}".lowercase()
-            return when {
-                Regex("音乐|翻唱|mv|bgm|vocaloid|演唱|歌曲|live").containsMatchIn(text) -> "music"
-                Regex("动漫|番剧|动画|二次元|mad|amv|鬼畜").containsMatchIn(text) -> "anime"
-                Regex("游戏|原神|崩坏|王者|我的世界|steam|电竞|实况").containsMatchIn(text) -> "gaming"
-                Regex("舞蹈|舞见").containsMatchIn(text) -> "dance"
-                Regex("教程|科普|讲解|课程|学习|测评|开箱").containsMatchIn(text) -> "knowledge"
-                Regex("vlog|日常|美食|旅行|生活").containsMatchIn(text) -> "life"
-                else -> ""
-            }
-        }
-
-        val result = ArrayList<Track>(candidates.size)
-        val waiting = candidates.toMutableList()
-        val recentArtists = ArrayDeque<String>()
-        val recentTopics = ArrayDeque<String>()
-        while (waiting.isNotEmpty()) {
-            val index = waiting.indexOfFirst { track ->
-                val artist = track.artist.trim()
-                val topic = topicOf(track)
-                val artistOk = artist.isBlank() || recentArtists.none { it.equals(artist, ignoreCase = true) }
-                val topicOk = topic.isBlank() || recentTopics.none { it == topic }
-                artistOk && topicOk
-            }.let { if (it < 0) 0 else it }
-            val pick = waiting.removeAt(index)
-            result.add(pick)
-            pick.artist.trim().takeIf { it.isNotBlank() }?.let {
-                recentArtists.addLast(it)
-                while (recentArtists.size > 2) recentArtists.removeFirst()
-            }
-            topicOf(pick).takeIf { it.isNotBlank() }?.let {
-                recentTopics.addLast(it)
-                while (recentTopics.size > 2) recentTopics.removeFirst()
-            }
-        }
-        return result
+        return feed
     }
 
     /**
@@ -4560,10 +4747,26 @@ class AppViewModel(
                     .take(if (thrift) 2 else 6)
                     .reversed()
 
-                val batch = linkedMapOf<String, Track>()
-                fun putNew(t: Track) {
+                val now = System.currentTimeMillis()
+                val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
+                val state = recommendationEngine.buildInterestState(events, now)
+                val profiles = runCatching { contentProfileStore.all() }.getOrDefault(emptyList())
+                    .associateBy { it.key }
+                val context = FeedContext(
+                    nowMs = now,
+                    limit = 28,
+                    sessionSeenIds = existing,
+                    queueIds = existing,
+                    recentQueue = tailSeeds,
+                    sourceId = "recommend",
+                )
+                val batch = linkedMapOf<String, ScoredTrack>()
+                fun putNew(t: Track, source: String) {
                     if (t.id in existing) return
-                    batch.putIfAbsent(t.id, t)
+                    val p = profiles[profileKey(t)] ?: ContentProfileParser.profileFromTrack(t, now)
+                    val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
+                    val prev = batch[t.id]
+                    if (prev == null || sc.score > prev.score) batch[t.id] = sc
                 }
 
                 for (seed in freshLikeSeeds) {
@@ -4572,7 +4775,7 @@ class AppViewModel(
                     if (bv.isBlank()) continue
                     runCatching {
                         biliApi.relatedTracks(bv, if (thrift) 8 else 18)
-                    }.getOrDefault(emptyList()).forEach { putNew(it) }
+                    }.getOrDefault(emptyList()).forEach { putNew(it, "related") }
                 }
 
                 for (seed in tailSeeds) {
@@ -4582,7 +4785,7 @@ class AppViewModel(
                     runCatching {
                         biliApi.relatedTracks(bv, if (thrift) 8 else 18)
                     }.getOrDefault(emptyList())
-                        .forEach { putNew(it) }
+                        .forEach { putNew(it, "related") }
                 }
 
                 // 后台省网：related 够了就停，不再扫首页/搜索/热门分区
@@ -4593,7 +4796,7 @@ class AppViewModel(
                             limit = 20,
                             freshIdx = (pendingIndex / 8 + 2).coerceAtLeast(2),
                         )
-                    }.getOrDefault(emptyList()).forEach { putNew(it) }
+                    }.getOrDefault(emptyList()).forEach { putNew(it, "homepage") }
 
                     // 兴趣作者再搜一波
                     val artists = (liked + recent + localSample)
@@ -4606,59 +4809,45 @@ class AppViewModel(
                         if (batch.size >= minAdd + 20) break
                         runCatching {
                             registry.get(MusicSourceType.BILIBILI)?.search(a, limit = 8).orEmpty()
-                        }.getOrDefault(emptyList()).forEach { putNew(it) }
+                        }.getOrDefault(emptyList()).forEach { putNew(it, "search") }
                     }
 
                     // 探索补量：全站热门 + 多分区
                     if (batch.size < minAdd) {
                         runCatching { biliApi.popularTracks(24) }.getOrDefault(emptyList())
-                            .forEach { putNew(it) }
+                            .forEach { putNew(it, "popular") }
                         for (rid in intArrayOf(1, 4, 36, 160, 5, 129, 3)) {
                             runCatching { biliApi.rankingTracks(rid = rid, limit = 12) }
                                 .getOrDefault(emptyList())
-                                .forEach { putNew(it) }
+                                .forEach { putNew(it, "explore") }
                         }
                     }
 
                     // 再链一层 related
                     if (batch.size < minAdd + 8) {
                         for (seed in batch.values.shuffled().take(5)) {
-                            val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
+                            val seedTrack = seed.track
+                            val bv = seedTrack.bvid.ifBlank { BilibiliApi.parseBvid(seedTrack.id).orEmpty() }
                             if (bv.isBlank()) continue
                             runCatching { biliApi.relatedTracks(bv, 12) }.getOrDefault(emptyList())
-                                .forEach { putNew(it) }
+                                .forEach { putNew(it, "related") }
                         }
                     }
                 }
 
-                // 续刷也打散同 UP（与上一段尾部作者隔开）
-                val tailArtists = pendingQueue.takeLast(3).map { it.artist.trim() }.filter { it.isNotBlank() }
-                val ordered = batch.values.shuffled().toMutableList()
-                val add = ArrayList<Track>(28)
-                val recentA = ArrayDeque<String>().also { d -> tailArtists.forEach { d.addLast(it) } }
-                while (ordered.isNotEmpty() && add.size < 28) {
-                    val idx = ordered.indexOfFirst { t ->
-                        val a = t.artist.trim()
-                        a.isBlank() || recentA.none { it.equals(a, ignoreCase = true) }
-                    }.let { if (it < 0) 0 else it }
-                    val pick = ordered.removeAt(idx)
-                    add.add(pick)
-                    val a = pick.artist.trim()
-                    if (a.isNotBlank()) {
-                        recentA.addLast(a)
-                        while (recentA.size > 2) recentA.removeFirst()
-                    }
-                }
+                val (add, _) = recommendationReRanker.rerankWithReasons(batch.values.toList(), context)
                 if (add.isEmpty()) return@withContext
-                add.forEach { sessionSeenIds.add(it.id) }
-                // 控制会话 seen 膨胀
-                while (sessionSeenIds.size > 800) {
-                    val first = sessionSeenIds.firstOrNull() ?: break
-                    sessionSeenIds.remove(first)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    add.forEach { sessionSeenIds.add(it.id) }
+                    // 控制会话 seen 膨胀
+                    while (sessionSeenIds.size > 800) {
+                        val first = sessionSeenIds.firstOrNull() ?: break
+                        sessionSeenIds.remove(first)
+                    }
+                    pendingQueue = pendingQueue + add
+                    _queueTracks.value = pendingQueue
+                    _recommend.update { it.copy(feed = pendingQueue) }
                 }
-                pendingQueue = pendingQueue + add
-                _queueTracks.value = pendingQueue
-                _recommend.update { it.copy(feed = pendingQueue) }
             }
         } finally {
             expandingFeed = false
@@ -4727,7 +4916,7 @@ class AppViewModel(
             _recommend.update {
                 it.copy(
                     feed = built,
-                    isLoading = false,
+                    isLoading = true,
                     sourceLabel = "为你推荐",
                     sourceId = "recommend",
                     segment = RecommendSegment.Feed,
@@ -4738,6 +4927,7 @@ class AppViewModel(
                 player.prepareTrack(built.first(), asVideo = true)
             }
             startRecommendQueue(built)
+            clearRecommendLoadingAfterStart()
         }
     }
 
@@ -4756,6 +4946,20 @@ class AppViewModel(
         _playMode.value = PlayModeLabel.LOOP
         applyPlayModeToPlayer()
         scheduleInfinitePrefetch()
+    }
+
+    /** 推荐流真正挂上当前曲（或超时兜底）后再收起 loading，避免“播放”按钮二次闪现。 */
+    private fun clearRecommendLoadingAfterStart() {
+        viewModelScope.launch {
+            val deadline = System.currentTimeMillis() + 10_000L
+            while (isActive &&
+                playback.value.current == null &&
+                System.currentTimeMillis() < deadline
+            ) {
+                delay(150L)
+            }
+            _recommend.update { it.copy(isLoading = false) }
+        }
     }
 
     private fun pushRecent(track: Track, positionMs: Long = 0L) {
@@ -4798,6 +5002,12 @@ class AppViewModel(
 
     companion object {
         private const val HOUR_MS = 60L * 60L * 1000L
+        private val REALTIME_FEEDBACK_TYPES = setOf(
+            RecommendationEventType.LIKE,
+            RecommendationEventType.COLLECT_LOCAL,
+            RecommendationEventType.COLLECT_BILIBILI,
+            RecommendationEventType.REPLAY,
+        )
         /** UP 投稿分页，与收藏夹一致 */
         private const val UP_PAGE_SIZE = 40
 

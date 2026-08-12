@@ -339,6 +339,9 @@ class BilibiliApi(
                     aid = item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
                     ownerMid = mid,
                     pageCount = pageCount,
+                    categoryId = item.optInt("typeid", item.optInt("tid", 0)),
+                    categoryName = stripHtml(item.optString("typename", item.optString("tname", ""))),
+                    tags = parseTags(item),
                 ),
             )
         }
@@ -1018,6 +1021,15 @@ class BilibiliApi(
         val archiveCount: Int = 0,
         /** 是否已关注（需登录） */
         val isFollowing: Boolean = false,
+    )
+
+    data class VideoMeta(
+        val bvid: String,
+        val tid: Int,
+        val tname: String,
+        val ownerMid: String,
+        val ownerName: String,
+        val tags: List<String>,
     )
 
     data class UpSeason(
@@ -2163,6 +2175,11 @@ class BilibiliApi(
                             ?: item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
                         ownerMid = item.optJSONObject("owner")?.opt("mid")?.toString()
                             ?.takeIf { it != "null" }.orEmpty(),
+                        categoryId = item.optInt("tid", item.optInt("typeid", 0)),
+                        categoryName = stripHtml(
+                            item.optString("tname", item.optString("typename", "")),
+                        ),
+                        tags = parseTags(item),
                     ),
                 )
             }
@@ -2210,6 +2227,11 @@ class BilibiliApi(
                         source = MusicSourceType.BILIBILI,
                         bvid = bv,
                         aid = history.opt("oid")?.toString()?.filter { it.isDigit() }.orEmpty(),
+                        categoryId = item.optInt("tid", item.optInt("typeid", 0)),
+                        categoryName = stripHtml(
+                            item.optString("tname", item.optString("typename", "")),
+                        ),
+                        tags = parseTags(item),
                     ),
                 )
             }
@@ -2413,10 +2435,35 @@ class BilibiliApi(
                         source = MusicSourceType.BILIBILI,
                         bvid = bv,
                         aid = item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
+                        categoryId = item.optInt("tid", item.optInt("typeid", 0)),
+                        categoryName = stripHtml(
+                            item.optString("tname", item.optString("typename", "")),
+                        ),
+                        tags = parseTags(item),
                     ),
                 )
             }
         }
+
+    private fun parseTags(item: JSONObject): List<String> {
+        val out = linkedSetOf<String>()
+        val direct = item.optString("tag", "").trim()
+        if (direct.isNotBlank()) {
+            direct.split(',', '，', ' ', '/', '|').map { it.trim() }
+                .filter { it.isNotBlank() }
+                .forEach { out.add(it) }
+        }
+        item.optJSONArray("tags")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i)
+                val name = stripHtml(
+                    o?.optString("tag_name", o?.optString("name", "").orEmpty()).orEmpty(),
+                ).trim()
+                if (name.isNotBlank()) out.add(name)
+            }
+        }
+        return out.toList()
+    }
 
     /** 相关推荐（B 站官方 related），用作轻量「电台/相似」。 */
     suspend fun relatedTracks(bvid: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
@@ -2448,10 +2495,59 @@ class BilibiliApi(
                         bvid = bv,
                         aid = item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
                         ownerMid = mid,
+                        categoryId = item.optInt("tid", item.optInt("typeid", 0)),
+                        categoryName = stripHtml(
+                            item.optString("tname", item.optString("typename", "")),
+                        ),
+                        tags = parseTags(item),
                     ),
                 )
             }
         }
+    }
+
+    /**
+     * 拉单稿详情元数据（分区 + 标签 + 作者），供内容画像缓存使用。
+     * 失败返回 null，不抛异常。
+     */
+    suspend fun videoMeta(bvid: String): VideoMeta? = withContext(Dispatchers.IO) {
+        val bv = parseBvid(bvid) ?: return@withContext null
+        val cookie = mergedCookie()
+        val view = runCatching {
+            getJson(
+                "https://api.bilibili.com/x/web-interface/view?bvid=${URLEncoder.encode(bv, "UTF-8")}",
+                cookie,
+                referer = "https://www.bilibili.com/video/$bv",
+            )
+        }.getOrNull()
+        val data = view?.optJSONObject("data") ?: return@withContext null
+        val ownerObj = data.optJSONObject("owner")
+        val tags = runCatching {
+            val tagJson = getJson(
+                "https://api.bilibili.com/x/web-interface/view/detail/tag?bvid=${URLEncoder.encode(bv, "UTF-8")}",
+                cookie,
+                referer = "https://www.bilibili.com/video/$bv",
+            )
+            val tagData = tagJson.optJSONObject("data")
+            val arr = when (tagData) {
+                is JSONArray -> tagData
+                else -> tagData?.optJSONArray("tags") ?: JSONArray()
+            }
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val name = stripHtml(arr.optJSONObject(i)?.optString("tag_name", "").orEmpty()).trim()
+                    if (name.isNotBlank()) add(name)
+                }
+            }
+        }.getOrDefault(emptyList())
+        VideoMeta(
+            bvid = bv,
+            tid = data.optInt("tid", data.optInt("typeid", 0)),
+            tname = stripHtml(data.optString("tname", data.optString("typename", ""))).trim(),
+            ownerMid = ownerObj?.opt("mid")?.toString()?.takeIf { it != "null" }.orEmpty(),
+            ownerName = ownerObj?.optString("name", "Bilibili").orEmpty(),
+            tags = tags,
+        )
     }
 
     /** 公开：按 bvid 拉多分 P 列表 */
@@ -2492,6 +2588,10 @@ class BilibiliApi(
                     ownerMid = ownerMid,
                     ownerFace = ownerFace,
                     pageCount = 1,
+                    categoryId = view.optInt("tid", view.optInt("typeid", 0)),
+                    categoryName = stripHtml(
+                        view.optString("tname", view.optString("typename", "")),
+                    ),
                 ),
             )
         }
@@ -2520,6 +2620,10 @@ class BilibiliApi(
                         cid = cid,
                         ownerMid = ownerMid,
                         ownerFace = ownerFace,
+                        categoryId = view.optInt("tid", view.optInt("typeid", 0)),
+                        categoryName = stripHtml(
+                            view.optString("tname", view.optString("typename", "")),
+                        ),
                     ),
                 )
             }

@@ -29,6 +29,19 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.40",
+            date = "2026-08-12",
+            added = listOf(
+                "推荐：本地统一行为事件 + B 站分区/标签内容画像",
+                "点赞/收藏后异步软插入第 2~4 位，不打断当前播放",
+                "四层兴趣打分：实时 / 小时 / 长期 / 负反馈，带主题冷却",
+            ),
+            changed = listOf(
+                "推荐流重排器升级：同 UP、同主题窗口 + 探索/每日基线配额",
+                "快速跳过会被记录并临时降低同类推荐权重",
+            ),
+        ),
+        Entry(
             version = "1.14.39",
             date = "2026-08-12",
             changed = listOf(

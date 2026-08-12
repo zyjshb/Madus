@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.39：推荐随近 1 小时点赞刷新 + 题材打散
-        versionCode = 259
-        versionName = "1.14.39"
+        // 1.14.40：短视频推荐方案：统一事件 + 内容画像 + 四层打分 + 实时软插入 + 重排器
+        versionCode = 260
+        versionName = "1.14.40"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -61,6 +61,7 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
+    testImplementation("junit:junit:4.13.2")
 
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.core:core-splashscreen:1.0.1")

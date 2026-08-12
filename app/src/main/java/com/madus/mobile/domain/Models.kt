@@ -32,6 +32,12 @@ data class Track(
      * 0/1 = 单集；>1 表示可展开整部合集。
      */
     val pageCount: Int = 1,
+    /** B 站分区 id（tids），用于推荐内容画像 */
+    val categoryId: Int = 0,
+    /** B 站分区名（tname），用于推荐内容画像 */
+    val categoryName: String = "",
+    /** B 站标签/搜索标签，用于推荐主题归一化 */
+    val tags: List<String> = emptyList(),
 )
 
 data class Playlist(

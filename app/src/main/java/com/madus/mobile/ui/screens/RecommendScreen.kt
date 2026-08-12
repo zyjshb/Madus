@@ -273,6 +273,26 @@ private fun RadioPanel(
                 .padding(bottom = 4.dp),
         )
 
+        if (com.madus.mobile.BuildConfig.DEBUG && state.debugRows.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 76.dp)
+                    .padding(bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                state.debugRows.take(8).forEach { row ->
+                    Text(
+                        text = row,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
         // 竖滑只挂在封面/信息区：避免抢走底部菜单的左右滑
         Column(
             modifier = Modifier

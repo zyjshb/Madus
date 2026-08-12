@@ -10,11 +10,13 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.madus.mobile.data.AudioQuality
 import com.madus.mobile.data.BilibiliApi
+import com.madus.mobile.data.ContentProfileStore
 import com.madus.mobile.data.LegalPrefs
 import com.madus.mobile.data.LikedStore
 import com.madus.mobile.data.LocalPlaylistStore
 import com.madus.mobile.data.PlayerPrefs
 import com.madus.mobile.data.PlaylistCoverStore
+import com.madus.mobile.data.RecommendationEventStore
 import com.madus.mobile.data.RecentStore
 import com.madus.mobile.data.SessionStore
 import com.madus.mobile.data.ThemePrefs
@@ -58,6 +60,10 @@ class MadusApp : Application() {
     lateinit var legalPrefs: LegalPrefs
         private set
     lateinit var trackCacheStore: TrackCacheStore
+        private set
+    lateinit var recommendationEventStore: RecommendationEventStore
+        private set
+    lateinit var contentProfileStore: ContentProfileStore
         private set
     lateinit var biliApi: BilibiliApi
         private set
@@ -126,6 +132,8 @@ class MadusApp : Application() {
         playerPrefs = PlayerPrefs(this)
         legalPrefs = LegalPrefs(this)
         trackCacheStore = TrackCacheStore(this)
+        recommendationEventStore = RecommendationEventStore(this)
+        contentProfileStore = ContentProfileStore(this)
         llmConfigStore = LlmConfigStore(this)
         hummingConfigStore = HummingConfigStore(this)
         aiChatHistoryStore = AiChatHistoryStore(this)
