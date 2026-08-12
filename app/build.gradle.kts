@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.35：网络使用 4 档，默认均衡
-        versionCode = 255
-        versionName = "1.14.35"
+        // 1.14.36：新品牌 logo + 开屏
+        versionCode = 256
+        versionName = "1.14.36"
         vectorDrawables.useSupportLibrary = true
     }
 

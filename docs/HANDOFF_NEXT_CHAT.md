@@ -1,11 +1,13 @@
-# Madus 手机版 · 核心记忆（下机交接）
+﻿# Madus 手机版 · 核心记忆（下机交接）
 
-**日期：** 2026-08-10  
+**日期：** 2026-08-12  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.35` / versionCode `255`  
-**正式包：** `and/apk/Madus-1.14.35.apk`  
+**当前版本：** `1.14.36` / versionCode `256`  
+**正式包：** `and/apk/Madus-1.14.36.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
+**最新 commit（示意）：** brand logo h_logo + splash refresh  
+ 
 
 ---
 
@@ -30,7 +32,7 @@
 | 拷贝 | `apk\Madus-x.y.z.apk` |
 | GitHub 上传 | `gh release create vX.Y.Z apk\Madus-X.Y.Z.apk --repo zyjshb/Madus --notes-file scripts\release-notes-X.Y.Z.md` |
 | Gitee 上传 | 本机用户环境变量 `GITEE_TOKEN`；`.\scripts\publish-gitee-release.ps1 -Version X.Y.Z` |
-| 合并脚本 | `scripts\publish-release.ps1`（有 token 时顺带 Gitee） |
+| 合并脚本 | `scripts\publish-release.ps1`（有 token 时顺带 Gitee；脚本若编码炸了就手动 gh + publish-gitee） |
 | 禁止 | Release 说明里写「正式版 / 无 debug」 |
 
 **JDK：** `C:\Users\djnio\Desktop\audio\tools\jdk17`  
@@ -43,7 +45,7 @@
 - 探测：Gitee + GitHub 合并，取更高版本  
 - 下载：Gitee 优先，失败换 GitHub  
 - 校验：ZIP / AndroidManifest / dex；装在 `files/updates/`  
-- **启动时** `AppUpdate.cleanupDownloadedApks()` 清掉已下的 `.apk`/`.part`（只清应用内 updates 目录）  
+- **启动时** `AppUpdate.cleanupDownloadedApks()` 清掉已下的 `.apk`/`.part`  
 - 更新页：进度条；「Gitee 下载」「GitHub 下载」浏览器入口  
 
 ---
@@ -52,20 +54,17 @@
 
 | 项 | 结论 |
 |----|------|
-| **游戏听歌** | 「打游戏时继续播放」（默认开）；**网络使用**四档默认**均衡**（最省/均衡/流畅/充足）；旧游戏轻量=最省 — **不删功能，只调预取/续刷强度** |
-| **P1 后台降载** | 后台少预取、通知节流、进度落盘变慢、封面内存清 |
-| **换歌** | 队列 🔍 / 歌单 ⋯「搜索换歌」；**搜索框不预填旧歌名**；点结果替换；可写回本地歌单 |
-| **导入** | 输入框**空白**；多行歌名-歌手 / 网易QQ酷狗酷我；**每批 500**，可「继续添加」下一批到同一本地歌单 |
-| **二次进歌单误触** | 详情页等**手指抬起安静**后再解锁「播放全部/点曲」；VM 侧约 0.45s 门闩；只挡播放不挡滑动 |
-| **关于连点** | 与「外观设置」**拆成两块**（防误触）；连点 **7 次** 进彩蛋；提示仅「还差 N 次」「不用再点了」 |
-| **彩蛋（当前）** | **画板**（版本号 + 涂鸦 + 清除）。曾试过恐龙/风扇/掉音符，用户嫌卡或不好玩，**定稿画板** |
-| **B 站收藏封面** | `favFolders` 空 cover 时用夹内第一首补；进夹后回写首页/曲库列表 |
-| **长播提示** | 同一曲 **约 5 分钟** 顶部轻条「已经听了一会儿了，可以换首歌」；「知道了」/点条关闭；不挡操作 |
-| **歌单二次进入** | 打开收藏夹**不要**自动 purge（手动 ⋯ 清失效）；`openPlaylist` 必须可取消；playlist 路由 `launchSingleTop` |
-| **退出歌单** | 只 pop + `cancelPlaylistLoad`，**不要**立刻 `closePlaylist`（否则退出动画闪 0 首） |
-| **二次进歌单** | 歌单**禁止叠在 recommend 上**；离开若落到 recommend 则回首页；详情内播放**不** `openRecommendPlayer`，只迷你条；点迷你条才进推荐台 |
-| **改完即发** | 用户约定：修完 bug **自动**升版、打正式包、推 GitHub+Gitee Release（勿等再喊上传） |
-| **上一首** | 队首+循环直接到队尾；非队首才 3s 重头；引擎/通知栏勿再单独 3s 拦截 |
+| **网络使用四档** | 播放设置：**最省 / 均衡 / 流畅 / 充足**，默认 **均衡**；只调预取/推荐续刷/边听写盘，**不删功能** |
+| **最省** | 预取 0；后台不主动续推荐；永不写边听缓存；打游戏优先 |
+| **均衡** | 前/后台预取 1；后台剩 ≤1 才轻量补；后台不写盘 |
+| **流畅** | 前台预取 2；后台预取 1；补歌更勤；可写盘 |
+| **充足** | 前台 3 / 后台 2；推荐全量接口；最吃网 |
+| **游戏听歌** | 「打游戏时继续播放」默认开；旧「游戏轻量」与 **最省** 同步 |
+| **缓冲** | 官方 `DefaultLoadControl` 约 **12–20s**（勿自封装 LoadControl——曾导致启动即崩） |
+| **导入** | 每批 **500**，可「继续添加」下一批到同一本地歌单；解析上限 PARSE_CAP≈5000 |
+| **二次进歌单误触** | 手指抬起安静 + 约 0.45s 门闩才允许播放全部/点曲 |
+| **彩蛋** | 画板定稿；关于连点 7 次；与外观设置拆开 |
+| **改完即发** | 修完 bug 自动升版打正式包推双仓（用户说「先别传」时暂停） |
 
 ---
 
@@ -76,12 +75,11 @@
 | 音源 | 仅 B 站 + 演示 |
 | UI | 线稿 / 主题可切换 |
 | 普通搜索 | 全站视频；不做过严阉割 |
-| AI 搜 | 文字/图/上传；**无「B站识曲」入口**（推荐页悬浮球识曲） |
-| 哼唱 | ACR humming 优先 + 讯飞；无硬编码歌名 |
-| 短视频 | 右侧圆头像进 UP 主页 |
-| 外站导入 | 高召回匹配 |
+| AI 搜 | 文字/图/上传；无「B站识曲」入口（推荐页悬浮球） |
+| 哼唱 | ACR + 讯飞；无硬编码歌名 |
+| 外站导入 | 高召回；分批 500 |
 | 队列 | 整表 + 拖拽 |
-| 协议 | 首次启动；`LegalPrefs.CURRENT_VERSION` |
+| 协议 | `LegalPrefs.CURRENT_VERSION` |
 
 ---
 
@@ -89,16 +87,13 @@
 
 ```
 app/src/main/java/com/madus/mobile/
-  data/AppUpdate.kt          # 双源更新 + 清包
-  data/BilibiliApi.kt        # favFolders 补封面
-  data/PlayerPrefs.kt        # gameMixAudio / gameLiteMode
-  player/PlayerEngine.kt     # 音频焦点 / 后台 ticker
-  ui/AppViewModel.kt         # 换歌、长播提示、导入
-  ui/screens/AboutEasterEggScreen.kt  # 画板彩蛋
-  ui/screens/MeScreen.kt     # 关于连点 / 外观拆开
-  ui/screens/UpdateScreen.kt
-  ui/MadusRoot.kt            # 长播提示条、导航
-scripts/publish-release.ps1
+  data/PlayerPrefs.kt          # NetworkIntensity 四档 + gameMix/Lite
+  data/ExternalPlaylistImporter.kt  # BATCH_SIZE=500, parseForImport + matchSongsBatch
+  player/PlayerEngine.kt       # DefaultLoadControl 12–20s；写盘看网络档
+  ui/AppViewModel.kt           # 分批导入、预取/续刷按 networkIntensity
+  ui/screens/PlaybackPrefsScreen.kt  # 网络使用 UI
+  ui/screens/PlaylistDetailScreen.kt # 进页播放门闩
+  ui/components/ImportPlaylistSheet.kt
 scripts/publish-gitee-release.ps1
 ```
 
@@ -108,26 +103,51 @@ scripts/publish-gitee-release.ps1
 
 1. 改 `versionCode` / `versionName`  
 2. 更新 `AppChangelog` + `CHANGELOG.md` + `scripts/release-notes-x.y.z.md`  
-3. `assembleRelease` → 拷到 `apk/`  
+3. `assembleRelease` → `apk/Madus-x.y.z.apk`  
 4. `git push origin main` + `git push gitee main:main`  
 5. `gh release create` + `publish-gitee-release.ps1`  
-6. 更新**本文档**版本号  
+6. 更新**本文档**  
 
 ---
 
-## 7. 已知注意
+## 7. 已知注意 / 坑
 
-- Gitee 默认分支网页上可能仍是 `master`，代码主推 `main`  
-- 不要把 `GITEE_TOKEN` 发到聊天  
-- Release 附件名保持 `Madus-x.y.z.apk`，与应用内约定路径一致  
-- 问题截图目录已 gitignore，勿再提交 `问题截图/`  
+- **禁止自封装 LoadControl**（Media3 漏接口 → 启动即崩）；1.14.34 已改回官方  
+- `publish-release.ps1` 偶发中文编码解析失败 → 手动 push + gh + gitee 脚本  
+- Gitee 网页默认分支可能仍是 `master`，代码主推 `main`  
+- 勿提交 `GITEE_TOKEN`、勿传 `*-debug.apk`  
+- 根目录乱码文件名：`别人的提示词.md` 等可能显示为 ``  
 
 ---
 
-## 8. 关机前状态（2026-08-10）
+## 8. 本会话已完成（2026-08-10～11）
 
-- 已发 **1.14.35**：网络使用四档，默认均衡  
-- 正式包：`apk/Madus-1.14.35.apk`  
+| 版本/项 | 内容 | 是否上传 |
+|---------|------|----------|
+| **1.14.32** | 导入曾提到 2000；退出再进误触播放（后被 33 策略替代） | 已传 |
+| **1.14.33** | 导入改回 **每批 500 + 继续添加** | 已传 |
+| **1.14.34** | 后台省网；**修启动崩**（拆 AdaptiveLoadControl） | 本地→并入 35 |
+| **1.14.35** | **网络四档默认均衡** + 分批导入等 | **已传** 双仓 |
+| 歌单误触 | 指针落定 + 0.45s 门闩 | 在 32/后续里 |
+| 功能阉割 | 用户确认要求：**只调强度，不关点播/歌单/搜索/导入** | 遵守中 |
 
-**下次可做（用户未点名则别擅自大改）：**  
-按用户一句话继续小改/发版即可；彩蛋保持画板。  
+---
+
+## 9. 关机前状态（2026-08-11 续）
+
+- 线上最新：**1.14.35**（网络均衡默认；分批导入 500；歌单误触修复链）  
+- 包：`apk/Madus-1.14.35.apk`  
+
+
+## 10. 动漫宣传片《早班车的一只耳机》（进行中）
+
+- 目录：`and/动漫宣传片-早班车的一只耳机/`（与 Codex outputs 同步）
+- 故事：纯爱校园，早班车借耳机，歌单 43 首，纸条“第44首，你来选”，多年后重逢
+- 音乐：全部由 Suno 原创生成，避免版权
+- 素材：角色/物品/场景/产品界面四类提示词已完成；角色只出三视图，不生成表情差分
+- 已废弃：最后频率、明天见、冬天的那首歌
+- 未完成：16 段镜头提示词、剪辑配乐时间轴、参考图实际生成
+
+**下次可做（未点名别擅自大改）：**  
+1. 用户一句话小改 App / 发版
+2. 继续动漫宣传片：从 `and/动漫宣传片-早班车的一只耳机/12-项目记忆.md` 开始

@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 // 开屏固定品牌底；协议/主界面跟当前主题背景，避免黑屏协议切线稿纸色跳戏
                 val shellBg = when {
-                    !brandSplashDone || legalAccepted == null -> Color(0xFF1C1C1C)
+                    !brandSplashDone || legalAccepted == null -> Color(0xFF1F2121)
                     else -> MaterialTheme.colorScheme.background
                 }
                 Box(

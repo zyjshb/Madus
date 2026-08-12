@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="logo/logo.jpg" width="128" height="128" alt="Madus logo" />
+<img src="logo/h_logo.webp" width="128" height="128" alt="Madus logo" />
 
 # Madus
 

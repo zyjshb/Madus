@@ -6,7 +6,7 @@
     -->
     <style name="Theme.Madus.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_bg</item>
-        <!-- 透明占位：关掉系统默认巨大圆形图标；蛇标由 windowBackground 画 -->
+        <!-- 透明占位：关掉系统默认巨大圆形图标；品牌标由 windowBackground 画 -->
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_empty</item>
         <item name="windowSplashScreenAnimationDuration">0</item>
         <item name="postSplashScreenTheme">@style/Theme.MadusMobile</item>

@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.36",
+            date = "2026-08-12",
+            changed = listOf(
+                "应用图标与开屏换新品牌蛇标（含播放键）",
+                "开屏：轻放大渐入 → 定格 → 渐出，底色对齐新 logo",
+            ),
+        ),
+        Entry(
             version = "1.14.35",
             date = "2026-08-10",
             added = listOf(
