@@ -2,11 +2,11 @@
 
 **日期：** 2026-08-12  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.36` / versionCode `256`  
-**正式包：** `and/apk/Madus-1.14.36.apk`  
+**当前版本：** `1.14.37` / versionCode `257`  
+**正式包：** `and/apk/Madus-1.14.37.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit（示意）：** `976b6c2` feat: refresh brand logo and splash with h_logo 
+**最新 commit（示意）：** launcher icon smaller padding 
  
 
 ---

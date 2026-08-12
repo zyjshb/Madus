@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.37",
+            date = "2026-08-12",
+            changed = listOf(
+                "桌面图标蛇标略缩小，周围多留白，不那么顶边",
+            ),
+        ),
+        Entry(
             version = "1.14.36",
             date = "2026-08-12",
             changed = listOf(
