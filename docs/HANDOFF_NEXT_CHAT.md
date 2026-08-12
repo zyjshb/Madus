@@ -174,6 +174,7 @@ scripts/publish-gitee-release.ps1
 - 打分重排：`RecommendationEngine.scoreCandidate` + `RecommendationReRanker`（同 UP/主题窗口、探索每 6 条、每日基线每 5 条）
 - 实时软插入：点赞/收藏成功后异步拉 related，只插当前播放后第 2~4 位，最多 2 条；播放器报错跳歌不记 SKIP_FAST
 - 网络：新增请求只有点赞/收藏后一次 related（失败静默）；续刷仍走网络四档与后台省流
+- 起播按钮：`RecommendUiState.isStartingPlayback` 短暂隐藏“播放”按钮，5 秒兜底恢复，避免二次闪现/卡加载
 - Codex 改推荐（点赞时间戳 + 小时亲和 + 打散）；本侧修编译（`UInt % 80u`）并打包上传  
 - 未入库：`别人的提示词.md`、`动漫宣传片-早班车的一只耳机/` 
 

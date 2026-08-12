@@ -124,6 +124,8 @@ data class RecommendUiState(
     /** 默认关：避免一进推荐就播演示/陌生曲 */
     val autoPlayOnEnter: Boolean = false,
     val isLoading: Boolean = false,
+    /** 已生成推荐但播放器尚未挂上当前曲；短暂隐藏“播放”按钮，超时自动恢复 */
+    val isStartingPlayback: Boolean = false,
     /** Label of current play context (推荐 / 歌单名). */
     val sourceLabel: String = "推荐电台",
     val sourceId: String = "recommend",
@@ -4508,7 +4510,8 @@ class AppViewModel(
             _recommend.update {
                 it.copy(
                     feed = feed,
-                    isLoading = !shouldAutoStart,
+                    isLoading = false,
+                    isStartingPlayback = shouldAutoStart,
                     recent = recent,
                     sourceLabel = label,
                     sourceId = when (label) {
@@ -4916,7 +4919,8 @@ class AppViewModel(
             _recommend.update {
                 it.copy(
                     feed = built,
-                    isLoading = true,
+                    isLoading = false,
+                    isStartingPlayback = true,
                     sourceLabel = "为你推荐",
                     sourceId = "recommend",
                     segment = RecommendSegment.Feed,
@@ -4951,14 +4955,16 @@ class AppViewModel(
     /** 推荐流真正挂上当前曲（或超时兜底）后再收起 loading，避免“播放”按钮二次闪现。 */
     private fun clearRecommendLoadingAfterStart() {
         viewModelScope.launch {
-            val deadline = System.currentTimeMillis() + 10_000L
+            val deadline = System.currentTimeMillis() + 5_000L
             while (isActive &&
                 playback.value.current == null &&
                 System.currentTimeMillis() < deadline
             ) {
                 delay(150L)
             }
-            _recommend.update { it.copy(isLoading = false) }
+            _recommend.update {
+                it.copy(isLoading = false, isStartingPlayback = false)
+            }
         }
     }
 

@@ -384,7 +384,7 @@ private fun RadioPanel(
             }
 
             // 有推荐队列时：轻量「播放」；无登录大按钮
-            if (track == null && !state.isLoading && state.feed.isNotEmpty()) {
+            if (track == null && !state.isLoading && !state.isStartingPlayback && state.feed.isNotEmpty()) {
                 Spacer(Modifier.height(18.dp))
                 Box(
                     modifier = Modifier
