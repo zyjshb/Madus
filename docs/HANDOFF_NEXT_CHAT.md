@@ -2,11 +2,11 @@
 
 **日期：** 2026-08-12  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.38` / versionCode `258`  
-**正式包：** `and/apk/Madus-1.14.38.apk`  
+**当前版本：** `1.14.39` / versionCode `259`  
+**正式包：** `and/apk/Madus-1.14.39.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit（示意）：** `e2e5b82` feat: paginate search to match Bilibili results（handoff 补记 `d7288ad`）
+**最新 commit（示意）：** recommend hourly like affinity + diversify
 
 ---
 
@@ -67,6 +67,7 @@
 | **桌面图标大小** | 自适应图标内容约 **70%** 画布（居中留白）；用户嫌大后再调，别回满铺 100% |
 | **开屏** | 系统 Splash 透明占位 + `windowBackground=splash_logo`；Compose `BrandSplash`：轻放大渐入 → 定格 → 渐出；底色 `#1F2121` |
 | **普通搜索** | **对齐 B 站网页**：`order=totalrank`、每页 **42**、优先 **WBI** `/x/web-interface/wbi/search/type`；滚到底 **loadMore**；全站视频不过度阉割 |
+| **推荐刷新** | 喜欢存 `likedAtMs`；**近 1 小时**点赞作强种子，影响首页推荐与无限续刷；小时盐抖动 + 日更切片穿插；UP/题材（标题关键词）打散 |
 | **改完即发** | 修完 bug 自动升版打正式包推双仓（用户说「先别传」时暂停） |
 
 ---
@@ -142,6 +143,7 @@ scripts/publish-gitee-release.ps1
 | **1.14.36** | 新品牌蛇标 `h_logo`：桌面图标 + 开屏资源 + `BrandSplash` 轻放大渐入；底色 `#1F2121`；README 预览换新图 | **已传** 双仓 |
 | **1.14.37** | 桌面图标嫌大 → 内容缩至约 **70%** 画布，四周留白（只改 mipmap，开屏图不动） | **已传** 双仓 |
 | **1.14.38** | 搜索对齐 B 站：WBI + totalrank + 每页 42 + 滚到底 `loadMoreSearch`；列表显示「已显示 x / y」 | **已传** 双仓 |
+| **1.14.39** | 推荐：喜欢写入 `likedAtMs`；近 1 小时点赞强化种子/无限流；小时级抖动 + UP/题材打散 | **已传** 双仓 |
 
 ### 更早（仍有效，勿回退）
 
@@ -155,10 +157,10 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-12）
 
-- 线上最新：**1.14.38**  
-- 包：`apk/Madus-1.14.38.apk`  
-- 本会话焦点：品牌 logo / 开屏、桌面图标大小、搜索分页对齐 B 站  
-- 未入库：`别人的提示词.md`、`动漫宣传片-早班车的一只耳机/`  
+- 线上最新：**1.14.39**  
+- 包：`apk/Madus-1.14.39.apk`  
+- Codex 改推荐（点赞时间戳 + 小时亲和 + 打散）；本侧修编译（`UInt % 80u`）并打包上传  
+- 未入库：`别人的提示词.md`、`动漫宣传片-早班车的一只耳机/` 
 
 ---
 

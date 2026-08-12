@@ -21,12 +21,18 @@ class LikedStore(private val context: Context) {
     private val keyJson = stringPreferencesKey("liked_tracks_v1")
     private val keyCover = stringPreferencesKey("liked_cover_path")
 
+    /** A local like is also a strong, time-sensitive recommendation signal. */
+    data class Interaction(
+        val track: Track,
+        val likedAtMs: Long,
+    )
+
     companion object {
         const val LIKED_ID = "local-liked"
         const val LIKED_TITLE = "我的喜欢"
     }
 
-    suspend fun tracks(): List<Track> {
+    suspend fun interactions(): List<Interaction> {
         val raw = context.likedStore.data.first()[keyJson].orEmpty()
         if (raw.isBlank()) return emptyList()
         return runCatching {
@@ -34,11 +40,16 @@ class LikedStore(private val context: Context) {
             buildList {
                 for (i in 0 until arr.length()) {
                     val t = arr.optJSONObject(i) ?: continue
-                    add(t.toTrack())
+                    // Old installs have no timestamp. Keep their existing order, but do not
+                    // mistake every historic like for a brand-new hourly interaction.
+                    val likedAtMs = t.optLong("likedAtMs", Long.MIN_VALUE + i)
+                    add(Interaction(t.toTrack(), likedAtMs))
                 }
             }
         }.getOrDefault(emptyList())
     }
+
+    suspend fun tracks(): List<Track> = interactions().map { it.track }
 
     suspend fun ids(): Set<String> = tracks().map { it.id }.toSet()
 
@@ -46,28 +57,28 @@ class LikedStore(private val context: Context) {
 
     /** Toggle like; returns true if now liked. */
     suspend fun toggle(track: Track): Boolean {
-        val all = tracks().toMutableList()
-        val idx = all.indexOfFirst { it.id == track.id }
+        val all = interactions().toMutableList()
+        val idx = all.indexOfFirst { it.track.id == track.id }
         return if (idx >= 0) {
             all.removeAt(idx)
             save(all)
             false
         } else {
-            all.add(0, track)
+            all.add(0, Interaction(track, System.currentTimeMillis()))
             save(all)
             true
         }
     }
 
     suspend fun add(track: Track) {
-        val all = tracks().toMutableList()
-        if (all.any { it.id == track.id }) return
-        all.add(0, track)
+        val all = interactions().toMutableList()
+        if (all.any { it.track.id == track.id }) return
+        all.add(0, Interaction(track, System.currentTimeMillis()))
         save(all)
     }
 
     suspend fun remove(trackId: String) {
-        save(tracks().filterNot { it.id == trackId })
+        save(interactions().filterNot { it.track.id == trackId })
     }
 
     suspend fun coverPath(): String? =
@@ -92,9 +103,10 @@ class LikedStore(private val context: Context) {
         )
     }
 
-    private suspend fun save(list: List<Track>) {
+    private suspend fun save(list: List<Interaction>) {
         val arr = JSONArray()
-        list.forEach { t ->
+        list.forEach { interaction ->
+            val t = interaction.track
             arr.put(
                 JSONObject()
                     .put("id", t.id)
@@ -112,7 +124,8 @@ class LikedStore(private val context: Context) {
                     )
                     .put("bvid", t.bvid)
                     .put("aid", t.aid)
-                    .put("cid", t.cid),
+                    .put("cid", t.cid)
+                    .put("likedAtMs", interaction.likedAtMs),
             )
         }
         context.likedStore.edit { it[keyJson] = arr.toString() }

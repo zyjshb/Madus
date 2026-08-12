@@ -4200,7 +4200,8 @@ class AppViewModel(
             _recommend.update { it.copy(isLoading = true) }
             val pack = runCatching {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val liked = runCatching { likedStore.tracks() }.getOrDefault(emptyList())
+                    val likedInteractions = runCatching { likedStore.interactions() }.getOrDefault(emptyList())
+                    val liked = likedInteractions.map { it.track }
                     val recent = sessionRecent.asReversed().distinctBy { it.id }
                     val localSample = runCatching {
                         localPl.listNonEmpty().flatMap { it.tracks }.shuffled().take(12)
@@ -4214,6 +4215,9 @@ class AppViewModel(
                         localSample = localSample,
                         limit = 40,
                         excludeExtra = sessionSeenIds,
+                        recentLikeIds = likedInteractions
+                            .filter { it.likedAtMs >= System.currentTimeMillis() - HOUR_MS }
+                            .mapTo(linkedSetOf<String>()) { it.track.id },
                     )
                     Triple(feed, recent, loggedIn)
                 }
@@ -4265,6 +4269,7 @@ class AppViewModel(
         localSample: List<Track>,
         limit: Int,
         excludeExtra: Set<String> = emptySet(),
+        recentLikeIds: Set<String> = emptySet(),
     ): List<Track> {
         val exclude = linkedSetOf<String>().apply {
             addAll(excludeExtra)
@@ -4309,14 +4314,22 @@ class AppViewModel(
                 biliApi.favTracksPage(f.id, page = 1, pageSize = 12).tracks
             }
         }.getOrDefault(emptyList())
-        // 日更种子：用日期做轻量轮换，同一天多刷方向稳定
-        val daySalt = java.util.Calendar.getInstance().let {
-            it.get(java.util.Calendar.DAY_OF_YEAR)
-        }
+        // Daily candidates remain a stable baseline; hourly candidates respond to
+        // new likes immediately. This keeps the feed fresh without locking the
+        // user into the latest single interest.
+        val calendar = java.util.Calendar.getInstance()
+        val daySalt = calendar.get(java.util.Calendar.YEAR) * 400 +
+            calendar.get(java.util.Calendar.DAY_OF_YEAR)
+        val hourSalt = daySalt * 24 + calendar.get(java.util.Calendar.HOUR_OF_DAY)
+        val freshLikeSeeds = liked.filter { it.id in recentLikeIds }.take(8)
+        val freshFavSeeds = favSeeds.take(8)
+        val freshSeedIds = (freshLikeSeeds + freshFavSeeds).mapTo(hashSetOf<String>()) { it.id }
         val seeds = buildList {
-            addAll(liked.take(24))
+            addAll(freshLikeSeeds.sortedBy { (it.id.hashCode() xor hourSalt).toUInt() })
+            addAll(freshFavSeeds.sortedBy { (it.id.hashCode() xor hourSalt).toUInt() })
+            addAll(liked.filterNot { it.id in freshSeedIds }.take(24))
             addAll(localSample)
-            addAll(favSeeds)
+            addAll(favSeeds.filterNot { it.id in freshSeedIds })
             addAll(recent.take(24))
             addAll(history.take(16))
         }.distinctBy { it.id }
@@ -4343,6 +4356,14 @@ class AppViewModel(
                     l.title.isNotBlank() && t.title.contains(l.title.take(4), ignoreCase = true)
                 } -> 1.4
                 interestKeywords.any { kw -> t.title.contains(kw, ignoreCase = true) } -> 1.0
+                else -> 0.0
+            }
+            val freshAffinityBoost = when {
+                freshLikeSeeds.any { it.id == t.id } || freshFavSeeds.any { it.id == t.id } -> 3.6
+                freshLikeSeeds.any { it.artist.isNotBlank() && it.artist.equals(t.artist, ignoreCase = true) } ||
+                    freshFavSeeds.any { it.artist.isNotBlank() && it.artist.equals(t.artist, ignoreCase = true) } -> 2.2
+                freshLikeSeeds.any { seed -> seed.title.take(4).length >= 2 && t.title.contains(seed.title.take(4), ignoreCase = true) } ||
+                    freshFavSeeds.any { seed -> seed.title.take(4).length >= 2 && t.title.contains(seed.title.take(4), ignoreCase = true) } -> 1.5
                 else -> 0.0
             }
             // Madus 是听歌 App：用户喜欢/本地歌单偏音乐时，给「像歌」稿件加分；
@@ -4372,8 +4393,8 @@ class AppViewModel(
                 } -> 1.3
                 else -> 0.0
             }
-            val s = base + artistBoost + titleBoost + musicScore + likedBoost +
-                kotlin.random.Random.nextDouble(0.0, 0.8)
+            val hourlyJitter = ((t.id.hashCode() xor hourSalt).toUInt() % 80u).toDouble() / 100.0
+            val s = base + artistBoost + titleBoost + freshAffinityBoost + musicScore + likedBoost + hourlyJitter
             if (s >= prev) {
                 scores[t.id] = s
                 pool[t.id] = t
@@ -4393,7 +4414,7 @@ class AppViewModel(
             val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
             if (bv.isBlank()) continue
             val related = runCatching { biliApi.relatedTracks(bv, 18) }.getOrDefault(emptyList())
-            val seedW = 7.4 - i * 0.1
+            val seedW = if (seed.id in freshSeedIds) 9.2 - i * 0.12 else 7.4 - i * 0.1
             for (t in related) offer(t, seedW)
         }
 
@@ -4424,36 +4445,79 @@ class AppViewModel(
         for (t in localSample.shuffled().take(5)) offer(t, 3.6)
         for (t in favSeeds.shuffled().take(5)) offer(t, 3.8)
 
-        // 排序 + 强打散同 UP：相邻至少隔 2 个不同作者，避免连刷同一 UP
-        val ranked = pool.values.sortedByDescending { scores[it.id] ?: 0.0 }
-        val diversified = ArrayList<Track>(ranked.size)
-        val waiting = ranked.toMutableList()
-        val recentArtists = ArrayDeque<String>()
-        while (waiting.isNotEmpty()) {
-            val idx = waiting.indexOfFirst { t ->
-                val a = t.artist.trim()
-                a.isBlank() || recentArtists.count { it.equals(a, ignoreCase = true) } == 0
-            }.let { if (it < 0) 0 else it }
-            val pick = waiting.removeAt(idx)
-            diversified.add(pick)
-            val a = pick.artist.trim()
-            if (a.isNotBlank()) {
-                recentArtists.addLast(a)
-                while (recentArtists.size > 2) recentArtists.removeFirst()
-            }
-        }
+        val ranked = pool.values.sortedWith(
+            compareByDescending<Track> { scores[it.id] ?: 0.0 }
+                .thenBy { (it.id.hashCode() xor hourSalt).toUInt() },
+        )
+        val diversified = diversifyRecommendationTracks(ranked)
 
         val explore = popular.shuffled()
             .filter { it.id !in exclude && it.id !in diversified.map { x -> x.id }.toSet() }
             .take((limit * 0.18).toInt().coerceAtLeast(3))
-        val core = diversified.take((limit * 0.85).toInt().coerceAtLeast(limit - explore.size))
-        val mixed = (core + explore).distinctBy { it.id }.let { list ->
-            val head = list.sortedByDescending { scores[it.id] ?: 0.0 }.take(10)
-            val tail = list.filter { it.id !in head.map { h -> h.id }.toSet() }.shuffled()
-            head + tail
+        val core = diversified.take((limit * 0.75).toInt().coerceAtLeast(limit - explore.size))
+        // Preserve a daily, broader slice in every hourly refresh. It is deliberately
+        // interleaved instead of appended, so an hourly preference burst cannot create
+        // an endless single-topic run.
+        val coreIds = core.mapTo(hashSetOf<String>()) { it.id }
+        val dailySlice = diversified
+            .sortedBy { (it.id.hashCode() xor daySalt).toUInt() }
+            .filter { it.id !in coreIds }
+            .take((limit * 0.25).toInt().coerceAtLeast(6))
+        val mixed = ArrayList<Track>(core.size + dailySlice.size + explore.size)
+        val hourly = core.iterator()
+        val daily = dailySlice.iterator()
+        while (hourly.hasNext() || daily.hasNext()) {
+            repeat(3) { if (hourly.hasNext()) mixed.add(hourly.next()) }
+            if (daily.hasNext()) mixed.add(daily.next())
+        }
+        mixed.addAll(explore)
+
+        return diversifyRecommendationTracks(mixed.distinctBy { it.id }).take(limit.coerceAtLeast(24))
+    }
+
+    /**
+     * A lightweight fatigue guard.  Metadata has no reliable Bilibili category on all
+     * sources, so it uses conservative title/album signals and falls back gracefully
+     * when the candidate pool is too narrow.
+     */
+    private fun diversifyRecommendationTracks(candidates: List<Track>): List<Track> {
+        fun topicOf(track: Track): String {
+            val text = "${track.title} ${track.album}".lowercase()
+            return when {
+                Regex("音乐|翻唱|mv|bgm|vocaloid|演唱|歌曲|live").containsMatchIn(text) -> "music"
+                Regex("动漫|番剧|动画|二次元|mad|amv|鬼畜").containsMatchIn(text) -> "anime"
+                Regex("游戏|原神|崩坏|王者|我的世界|steam|电竞|实况").containsMatchIn(text) -> "gaming"
+                Regex("舞蹈|舞见").containsMatchIn(text) -> "dance"
+                Regex("教程|科普|讲解|课程|学习|测评|开箱").containsMatchIn(text) -> "knowledge"
+                Regex("vlog|日常|美食|旅行|生活").containsMatchIn(text) -> "life"
+                else -> ""
+            }
         }
 
-        return mixed.take(limit.coerceAtLeast(24))
+        val result = ArrayList<Track>(candidates.size)
+        val waiting = candidates.toMutableList()
+        val recentArtists = ArrayDeque<String>()
+        val recentTopics = ArrayDeque<String>()
+        while (waiting.isNotEmpty()) {
+            val index = waiting.indexOfFirst { track ->
+                val artist = track.artist.trim()
+                val topic = topicOf(track)
+                val artistOk = artist.isBlank() || recentArtists.none { it.equals(artist, ignoreCase = true) }
+                val topicOk = topic.isBlank() || recentTopics.none { it == topic }
+                artistOk && topicOk
+            }.let { if (it < 0) 0 else it }
+            val pick = waiting.removeAt(index)
+            result.add(pick)
+            pick.artist.trim().takeIf { it.isNotBlank() }?.let {
+                recentArtists.addLast(it)
+                while (recentArtists.size > 2) recentArtists.removeFirst()
+            }
+            topicOf(pick).takeIf { it.isNotBlank() }?.let {
+                recentTopics.addLast(it)
+                while (recentTopics.size > 2) recentTopics.removeFirst()
+            }
+        }
+        return result
     }
 
     /**
@@ -4476,11 +4540,19 @@ class AppViewModel(
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val existing = pendingQueue.map { it.id }.toHashSet()
                 existing.addAll(sessionSeenIds)
-                val liked = runCatching { likedStore.tracks() }.getOrDefault(emptyList())
+                val likedInteractions = runCatching { likedStore.interactions() }.getOrDefault(emptyList())
+                val liked = likedInteractions.map { it.track }
                 val recent = sessionRecent.asReversed().distinctBy { it.id }
                 val localSample = runCatching {
                     localPl.listNonEmpty().flatMap { it.tracks }.shuffled().take(8)
                 }.getOrDefault(emptyList())
+
+                // A newly liked item should affect the currently running infinite feed
+                // within the hour, not only after the user re-enters the recommend tab.
+                val freshLikeSeeds = likedInteractions
+                    .filter { it.likedAtMs >= System.currentTimeMillis() - HOUR_MS }
+                    .map { it.track }
+                    .take(4)
 
                 // 用当前尾部多首当种子，链式 related（越刷越远）
                 val tailSeeds = pendingQueue
@@ -4492,6 +4564,15 @@ class AppViewModel(
                 fun putNew(t: Track) {
                     if (t.id in existing) return
                     batch.putIfAbsent(t.id, t)
+                }
+
+                for (seed in freshLikeSeeds) {
+                    if (batch.size >= minAdd + if (thrift) 2 else 10) break
+                    val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
+                    if (bv.isBlank()) continue
+                    runCatching {
+                        biliApi.relatedTracks(bv, if (thrift) 8 else 18)
+                    }.getOrDefault(emptyList()).forEach { putNew(it) }
                 }
 
                 for (seed in tailSeeds) {
@@ -4716,6 +4797,7 @@ class AppViewModel(
     }
 
     companion object {
+        private const val HOUR_MS = 60L * 60L * 1000L
         /** UP 投稿分页，与收藏夹一致 */
         private const val UP_PAGE_SIZE = 40
 
