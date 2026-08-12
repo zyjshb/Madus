@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.40：短视频推荐方案：统一事件 + 内容画像 + 四层打分 + 实时软插入 + 重排器
-        versionCode = 260
-        versionName = "1.14.40"
+        // 1.14.41：修复推荐起播按钮二次闪现/卡加载，供应用内更新
+        versionCode = 261
+        versionName = "1.14.41"
         vectorDrawables.useSupportLibrary = true
     }
 

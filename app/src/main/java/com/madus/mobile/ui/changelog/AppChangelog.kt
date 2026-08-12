@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.41",
+            date = "2026-08-12",
+            fixed = listOf(
+                "修复推荐页起播按钮二次闪现或卡在加载中",
+            ),
+        ),
+        Entry(
             version = "1.14.40",
             date = "2026-08-12",
             added = listOf(
