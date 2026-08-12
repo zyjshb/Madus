@@ -6,7 +6,7 @@
 **正式包：** `and/apk/Madus-1.14.38.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit（示意）：** search pagination sync bilibili 
+**最新 commit（示意）：** `e2e5b82` feat: paginate search to match Bilibili results 
  
 
 ---
