@@ -1,12 +1,12 @@
 # Madus 手机版 · 核心记忆（下机交接）
 
-**日期：** 2026-08-12  
+**日期：** 2026-08-13  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
 **当前版本：** `1.14.43` / versionCode `263`  
 **正式包：** `and/apk/Madus-1.14.43.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit（示意）：** recommend hourly like affinity + diversify
+**最新 commit：** `70763cc` — fix: detect highest release instead of Gitee list first item (1.14.43)
 
 ---
 
@@ -41,13 +41,17 @@
 
 ## 2. 应用内更新（AppUpdate）
 
-- 探测：Gitee `/latest` + **列表分页扫全量**，再与 GitHub 合并，按语义化版本取最高  
-- **禁止** `releases?per_page=5` 取第一条：Gitee 按 tag 字符串排，第一条常是 `v1.14.1`，1.14.40 会被误判「已是最新」  
+- 探测：Gitee `/latest` + **列表分页扫全量**（最多 4 页 × 100），再与 GitHub `/latest` + list 合并，`pickHighestRelease` 按语义化版本取最高  
+- **禁止** `releases?per_page=5` 取 `arr[0]`：Gitee 列表按 tag **字符串**排（或 id 升序），第一条常是 `v1.14.1`，不是最新  
+- **Gitee `/releases/latest` 不可靠**：不是按版本号取最高，会滞后。刚传完 1.14.43 时该接口还停在 `v1.14.42`。只能当候选，不能当唯一真相  
+- 1.14.40 旧逻辑：`/latest` 失败 → 拿列表第一条 `v1.14.1` → `1.14.1 < 1.14.40` → 「已是最新」。国内 GitHub API 再被墙，彻底没备份  
+- **1.14.40 应用内升不上去**（bug 在旧包里）。用户须网页手装 ≥1.14.43  
 - 下载：Gitee 优先，失败换 GitHub  
 - 校验：ZIP / AndroidManifest / dex；装在 `files/updates/`  
 - **启动时** `AppUpdate.cleanupDownloadedApks()` 清掉已下的 `.apk`/`.part`  
-- 更新页：进度条；**Gitee / GitHub 下载入口始终显示**（检测失败也能去网页）  
-- 「我的」进页静默探测，有新版写「有新版本 vX.Y.Z」  
+- 更新页：进度条；**Gitee / GitHub 下载入口始终显示**（检测失败 / 已是最新也能去网页）  
+- 「我的」进页静默探测，有新版写「有新版本 vX.Y.Z」；远端比本机还旧时提示「可到网页确认」  
+- 单测：`app/src/test/java/com/madus/mobile/data/AppUpdateTest.kt`  
 
 ---
 
@@ -100,11 +104,14 @@ app/src/main/java/com/madus/mobile/
   data/ContentProfileStore.kt      # BVID 分区/标签/主题缓存
   data/BilibiliApi.kt          # searchPage / WBI 搜索分页；ensureGuestCookies
   data/PlayerPrefs.kt          # NetworkIntensity 四档 + gameMix/Lite
+  data/AppUpdate.kt            # probeLatest / pickHighestRelease；禁止 list[0]
   data/ExternalPlaylistImporter.kt  # BATCH_SIZE=500
   player/PlayerEngine.kt       # DefaultLoadControl 12–20s
   ui/AppViewModel.kt           # submitSearch / loadMoreSearch；预取按 networkIntensity
   ui/splash/BrandSplash.kt     # 开屏动画 + logo_madus
   ui/screens/SearchScreen.kt   # 滚到底加载更多；显示已加载条数
+  ui/screens/MeScreen.kt       # 进页静默探测更新
+  ui/screens/UpdateScreen.kt   # 网页下载入口始终显示
   ui/screens/PlaybackPrefsScreen.kt
   ui/screens/PlaylistDetailScreen.kt # 进页播放门闩
   MainActivity.kt              # 系统 Splash + shellBg #1F2121
@@ -140,10 +147,12 @@ scripts/publish-gitee-release.ps1
 - **搜索翻页**无 WBI / 无 cookie 时 B 站易 **412**；必须走 `signWbiQuery` + `mergedCookieWithSystem`  
 - **桌面图标**原图本身有大留白，再缩比例时别裁掉边再放大（会显大）；当前是**整图 70%** 贴画布  
 - 换图标后部分启动器会缓存旧图 → 用户侧卸载重装或清启动器缓存  
+- **Gitee `/releases/latest` 会滞后**，PATCH `make_latest` 会 406；新版必须扫列表取最高版本，勿再信 `/latest` 单独结果  
+- **1.14.40 及更早**若「检测不出新版本」：让用户打开 Gitee Releases 手装，不要在旧包上死磕检查更新  
 
 ---
 
-## 8. 本会话已完成（2026-08-12）
+## 8. 本会话已完成（2026-08-13）
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
@@ -154,7 +163,7 @@ scripts/publish-gitee-release.ps1
 | **1.14.40** | 短视频推荐方案：统一事件、内容画像、四层打分、实时软插入、独立重排器、快速跳过冷却、Debug 推荐行 | **已传** 双仓 |
 | **1.14.41** | 修复推荐起播按钮二次闪现/卡加载；应用内可更新 | **已传** 双仓 |
 | **1.14.42** | 真修「播放 为你推荐」：一次起播、复用 feed、等流就绪再收按钮 | **已传** 双仓 |
-| **1.14.43** | 修检查更新误判旧版；我的页提示新版本；更新页常驻网页下载 | **已传** 双仓 |
+| **1.14.43** | 修检查更新：扫全量取最高版本；我的页提示新版本；更新页常驻网页下载。双仓 Release 已传 | **已传** 双仓 |
 
 ### 更早（仍有效，勿回退）
 
@@ -166,12 +175,15 @@ scripts/publish-gitee-release.ps1
 
 ---
 
-## 9. 关机前状态（2026-08-12）
+## 9. 关机前状态（2026-08-13）
 
-- 双仓最新：**1.14.43**（Release 均已上传）
-- 包：`apk/Madus-1.14.43.apk`
+- 双仓最新：**1.14.43**（`70763cc`，Release 均已上传）
+- 包：`apk/Madus-1.14.43.apk`（约 17.4 MB）
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.43  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.43
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
-- 更新：扫 Gitee 全量取最高版本；1.14.40 旧包仍可能检测不到 → 让用户网页装 1.14.43
+- 更新：扫 Gitee 全量取最高版本。用户手里的 **1.14.40 检测不到新版** → 必须网页手装 1.14.43，装上之后以后才能应用内更新
+- 本轮只改了更新探测/更新页体感，推荐/搜索/图标未动
 
 ### 推荐机制（1.14.40，勿回退）
 
@@ -201,3 +213,4 @@ scripts/publish-gitee-release.ps1
 2. 若搜索结果仍与 B 站网页对不齐：对同一关键词对比 `searchPage` 与网页（WBI 参数 / 登录态）  
 3. 桌面图标再微调比例（当前 70%）  
 4. 继续动漫宣传片：从 `and/动漫宣传片-早班车的一只耳机/12-项目记忆.md` 开始  
+5. 1.14.40 用户若还没手装：再提醒一次 Gitee 链，不要在旧包上继续查更新  
