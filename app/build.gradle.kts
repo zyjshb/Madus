@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.42：推荐「播放为你推荐」一次起播，不再二次闪按钮
-        versionCode = 262
-        versionName = "1.14.42"
+        // 1.14.43：修检查更新误判旧版为最新；我的页提示有新版本
+        versionCode = 263
+        versionName = "1.14.43"
         vectorDrawables.useSupportLibrary = true
     }
 

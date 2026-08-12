@@ -36,6 +36,8 @@ object AppUpdate {
         "https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
     private const val GITHUB_API_LATEST =
         "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
+    private const val GITHUB_API_LIST =
+        "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases?per_page=30"
 
     // —— Gitee（国内镜像）——
     const val GITEE_OWNER = "dikoklhf"
@@ -45,7 +47,9 @@ object AppUpdate {
     private const val GITEE_API_LATEST =
         "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases/latest"
     private const val GITEE_API_LIST =
-        "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases?page=1&per_page=5"
+        "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases"
+    private const val GITEE_LIST_PAGES = 4
+    private const val GITEE_LIST_PER_PAGE = 100
 
     private const val MAX_REDIRECTS = 8
     private const val MIN_APK_BYTES = 3_000_000L
@@ -76,7 +80,12 @@ object AppUpdate {
     )
 
     sealed class ProbeResult {
-        data class AlreadyLatest(val current: String, val remote: String) : ProbeResult()
+        data class AlreadyLatest(
+            val current: String,
+            val remote: String,
+            /** 远端返回的版本比本机还旧，多半是列表排序/接口回退错了 */
+            val remoteLooksOld: Boolean = false,
+        ) : ProbeResult()
         data class UpdateAvailable(val current: String, val release: LatestRelease) : ProbeResult()
         data class Failed(val message: String) : ProbeResult()
     }
@@ -99,10 +108,12 @@ object AppUpdate {
                 )
             val current = normalizeVersion(currentVersionName)
             val remote = normalizeVersion(latest.versionName)
-            if (compareVersion(remote, current) <= 0) {
+            val cmp = compareVersion(remote, current)
+            if (cmp <= 0) {
                 ProbeResult.AlreadyLatest(
                     current = currentVersionName.removeSuffix("-debug"),
                     remote = latest.versionName,
+                    remoteLooksOld = cmp < 0,
                 )
             } else {
                 ProbeResult.UpdateAvailable(
@@ -389,49 +400,73 @@ object AppUpdate {
     }
 
     private fun fetchGithubLatest(): LatestRelease {
-        val text = httpGetText(GITHUB_API_LATEST) {
-            setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+        val candidates = mutableListOf<LatestRelease>()
+        runCatching {
+            val text = httpGetText(GITHUB_API_LATEST) {
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            }
+            parseReleaseObject(JSONObject(text), source = "GitHub")
+        }.getOrNull()?.let { candidates += it }
+        runCatching {
+            val text = httpGetText(GITHUB_API_LIST) {
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            }
+            candidates += parseReleaseArray(JSONArray(text), source = "GitHub")
         }
-        val json = JSONObject(text)
-        val tag = json.optString("tag_name", "").trim()
-        val versionName = tag.removePrefix("v").removePrefix("V").trim()
-        val body = json.optString("body", "")
-        val (name, url, size) = pickApkAsset(json.optJSONArray("assets"))
+        val best = pickHighestRelease(candidates)
             ?: error("GitHub 最新 Release 没有正式 APK")
-        val giteeMirror = giteeDownloadUrl(
-            tag = if (tag.startsWith("v")) tag else "v$versionName",
-            apkName = name,
-        )
-        return LatestRelease(
-            tag = tag,
-            versionName = versionName.ifBlank { tag },
+        val tag = if (best.tag.startsWith("v")) best.tag else "v${best.versionName}"
+        val giteeMirror = giteeDownloadUrl(tag, best.apkName)
+        return best.copy(
             apkUrl = giteeMirror,
-            apkName = name,
-            body = body,
-            apkSize = size,
-            mirrorUrls = listOf(url),
+            mirrorUrls = (listOf(best.apkUrl) + best.mirrorUrls)
+                .distinct()
+                .filter { it != giteeMirror },
             sourceLabel = "GitHub",
         )
     }
 
     private fun fetchGiteeLatest(): LatestRelease {
-        // 先 latest，失败再 list 取第一条
-        val text = runCatching {
-            httpGetText(GITEE_API_LATEST)
-        }.getOrElse {
-            val listText = httpGetText(GITEE_API_LIST)
-            val arr = JSONArray(listText)
-            if (arr.length() == 0) error("Gitee 尚无 Release")
-            arr.getJSONObject(0).toString()
+        // Gitee /latest 偶发 404；列表又按 tag 字符串排，第一条经常是 v1.14.1。
+        // 两个都问，再按语义化版本取最高。
+        val candidates = mutableListOf<LatestRelease>()
+        runCatching {
+            parseReleaseObject(JSONObject(httpGetText(GITEE_API_LATEST)), source = "Gitee")
+        }.getOrNull()?.let { candidates += it }
+        for (page in 1..GITEE_LIST_PAGES) {
+            val arr = runCatching {
+                JSONArray(
+                    httpGetText(
+                        "$GITEE_API_LIST?page=$page&per_page=$GITEE_LIST_PER_PAGE",
+                    ),
+                )
+            }.getOrNull() ?: break
+            if (arr.length() == 0) break
+            candidates += parseReleaseArray(arr, source = "Gitee")
+            if (arr.length() < GITEE_LIST_PER_PAGE) break
         }
-        val json = JSONObject(text)
+        return pickHighestRelease(candidates) ?: error("Gitee 尚无可用 Release")
+    }
+
+    private fun parseReleaseArray(arr: JSONArray, source: String): List<LatestRelease> {
+        val out = ArrayList<LatestRelease>(arr.length())
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            parseReleaseObject(obj, source)?.let { out += it }
+        }
+        return out
+    }
+
+    private fun parseReleaseObject(json: JSONObject, source: String): LatestRelease? {
+        if (json.optBoolean("draft", false) || json.optBoolean("prerelease", false)) return null
         val tag = json.optString("tag_name", "").trim()
+        if (tag.isBlank()) return null
         val versionName = tag.removePrefix("v").removePrefix("V").trim()
+        if (normalizeVersion(versionName).isBlank()) return null
         val body = json.optString("body", "").ifBlank { json.optString("description", "") }
-        // Gitee 附件字段：assets 或 attach_files
-        val assets = json.optJSONArray("assets")
-            ?: json.optJSONArray("attach_files")
+        val assets = json.optJSONArray("assets") ?: json.optJSONArray("attach_files")
         val picked = pickApkAsset(assets)
         val name: String
         val url: String
@@ -440,16 +475,17 @@ object AppUpdate {
             name = picked.first
             url = picked.second
             size = picked.third
-        } else {
-            // 无附件元数据时按约定文件名拼下载链
+        } else if (source == "Gitee") {
             name = "Madus-$versionName.apk"
             url = giteeDownloadUrl(
                 tag = if (tag.startsWith("v")) tag else "v$versionName",
                 apkName = name,
             )
             size = -1L
+        } else {
+            return null
         }
-        if (url.isBlank()) error("Gitee 最新 Release 没有 APK")
+        if (url.isBlank()) return null
         return LatestRelease(
             tag = tag,
             versionName = versionName.ifBlank { tag },
@@ -457,9 +493,17 @@ object AppUpdate {
             apkName = name,
             body = body,
             apkSize = size,
-            mirrorUrls = emptyList(),
-            sourceLabel = "Gitee",
+            sourceLabel = source,
         )
+    }
+
+    fun pickHighestRelease(releases: List<LatestRelease>): LatestRelease? {
+        return releases.maxWithOrNull { a, b ->
+            compareVersion(
+                normalizeVersion(a.versionName),
+                normalizeVersion(b.versionName),
+            )
+        }
     }
 
     private fun giteeDownloadUrl(tag: String, apkName: String): String =

@@ -29,6 +29,17 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.43",
+            date = "2026-08-12",
+            changed = listOf(
+                "「我的」检查更新会直接写出有没有新版本",
+                "更新页始终可打开 Gitee / GitHub 下载，不依赖检测结果",
+            ),
+            fixed = listOf(
+                "检查更新不再把 Gitee 列表里的旧版当成最新",
+            ),
+        ),
+        Entry(
             version = "1.14.42",
             date = "2026-08-12",
             fixed = listOf(

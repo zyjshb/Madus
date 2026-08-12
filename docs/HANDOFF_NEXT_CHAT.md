@@ -2,8 +2,8 @@
 
 **日期：** 2026-08-12  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.42` / versionCode `262`  
-**正式包：** `and/apk/Madus-1.14.42.apk`  
+**当前版本：** `1.14.43` / versionCode `263`  
+**正式包：** `and/apk/Madus-1.14.43.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
 **最新 commit（示意）：** recommend hourly like affinity + diversify
@@ -41,11 +41,13 @@
 
 ## 2. 应用内更新（AppUpdate）
 
-- 探测：Gitee + GitHub 合并，取更高版本  
+- 探测：Gitee `/latest` + **列表分页扫全量**，再与 GitHub 合并，按语义化版本取最高  
+- **禁止** `releases?per_page=5` 取第一条：Gitee 按 tag 字符串排，第一条常是 `v1.14.1`，1.14.40 会被误判「已是最新」  
 - 下载：Gitee 优先，失败换 GitHub  
 - 校验：ZIP / AndroidManifest / dex；装在 `files/updates/`  
 - **启动时** `AppUpdate.cleanupDownloadedApks()` 清掉已下的 `.apk`/`.part`  
-- 更新页：进度条；「Gitee 下载」「GitHub 下载」浏览器入口  
+- 更新页：进度条；**Gitee / GitHub 下载入口始终显示**（检测失败也能去网页）  
+- 「我的」进页静默探测，有新版写「有新版本 vX.Y.Z」  
 
 ---
 
@@ -152,6 +154,7 @@ scripts/publish-gitee-release.ps1
 | **1.14.40** | 短视频推荐方案：统一事件、内容画像、四层打分、实时软插入、独立重排器、快速跳过冷却、Debug 推荐行 | **已传** 双仓 |
 | **1.14.41** | 修复推荐起播按钮二次闪现/卡加载；应用内可更新 | **已传** 双仓 |
 | **1.14.42** | 真修「播放 为你推荐」：一次起播、复用 feed、等流就绪再收按钮 | **已传** 双仓 |
+| **1.14.43** | 修检查更新误判旧版；我的页提示新版本；更新页常驻网页下载 | **已传** 双仓 |
 
 ### 更早（仍有效，勿回退）
 
@@ -165,9 +168,10 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-12）
 
-- 双仓最新：**1.14.42**（Release 均已上传）
-- 包：`apk/Madus-1.14.42.apk`
+- 双仓最新：**1.14.43**（Release 均已上传）
+- 包：`apk/Madus-1.14.43.apk`
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
+- 更新：扫 Gitee 全量取最高版本；1.14.40 旧包仍可能检测不到 → 让用户网页装 1.14.43
 
 ### 推荐机制（1.14.40，勿回退）
 

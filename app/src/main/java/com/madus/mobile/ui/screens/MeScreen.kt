@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.madus.mobile.data.AppUpdate
 import com.madus.mobile.domain.MusicSourceType
 import com.madus.mobile.ui.MeUiState
 import com.madus.mobile.ui.components.LineButton
@@ -76,6 +78,30 @@ fun MeScreen(
     var lastAboutTapAt by remember { mutableLongStateOf(0L) }
     var lastUpdateTapAt by remember { mutableLongStateOf(0L) }
     var lastAboutToastAt by remember { mutableLongStateOf(0L) }
+    var updateSubtitle by remember { mutableStateOf("v${state.appVersion} · 点此检查") }
+    var updateAvailable by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.appVersion) {
+        val current = state.appVersion.substringBefore("-")
+        when (val r = AppUpdate.probeLatest(current)) {
+            is AppUpdate.ProbeResult.UpdateAvailable -> {
+                updateAvailable = true
+                updateSubtitle = "有新版本 v${r.release.versionName}"
+            }
+            is AppUpdate.ProbeResult.AlreadyLatest -> {
+                updateAvailable = false
+                updateSubtitle = if (r.remoteLooksOld) {
+                    "v${state.appVersion} · 可到网页确认"
+                } else {
+                    "v${state.appVersion} · 已是最新"
+                }
+            }
+            is AppUpdate.ProbeResult.Failed -> {
+                updateAvailable = false
+                updateSubtitle = "v${state.appVersion} · 点此检查"
+            }
+        }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -189,7 +215,8 @@ fun MeScreen(
                     ActionCell(
                         icon = Icons.Outlined.SystemUpdate,
                         title = "检查更新",
-                        subtitle = "v${state.appVersion} · 可选升级",
+                        subtitle = updateSubtitle,
+                        emphasize = updateAvailable,
                         onClick = {
                             val now = System.currentTimeMillis()
                             // 800ms 内重复点击忽略，避免连点狂进页面
@@ -350,7 +377,9 @@ private fun ActionCell(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    emphasize: Boolean = false,
 ) {
+    val colors = MaterialTheme.colorScheme
     LineFrame(
         modifier = modifier.height(84.dp),
         contentPadding = 12.dp,
@@ -364,15 +393,20 @@ private fun ActionCell(
                 imageVector = icon,
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary,
+                tint = colors.primary,
             )
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    color = if (emphasize) colors.primary else colors.onBackground,
+                )
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (emphasize) colors.primary else colors.onSurfaceVariant,
                     maxLines = 1,
                 )
             }

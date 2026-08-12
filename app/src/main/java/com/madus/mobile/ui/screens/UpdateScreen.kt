@@ -129,7 +129,11 @@ fun UpdateScreen(
             checking = false
             when (r) {
                 is AppUpdate.ProbeResult.AlreadyLatest -> {
-                    status = "已是最新版本"
+                    status = if (r.remoteLooksOld) {
+                        "远端返回 v${r.remote}，比当前还旧。可到网页确认是否有更新。"
+                    } else {
+                        "已是最新版本"
+                    }
                     available = null
                     pendingApk = null
                     pendingVersion = null
@@ -307,7 +311,9 @@ fun UpdateScreen(
                             "v${p.release.versionName}"
                         }
                     }
-                    is AppUpdate.ProbeResult.AlreadyLatest -> "v${p.remote}（已是最新）"
+                    is AppUpdate.ProbeResult.AlreadyLatest ->
+                        if (p.remoteLooksOld) "v${p.remote}（偏旧，建议网页确认）"
+                        else "v${p.remote}（已是最新）"
                     is AppUpdate.ProbeResult.Failed -> "—"
                     null -> if (checking) "检查中…" else "—"
                 }
@@ -428,42 +434,39 @@ fun UpdateScreen(
                 )
             }
 
-            // 解析失败 / 坏包 时用
             if (available != null) {
-                Row(
+                TextButton(
+                    onClick = { startUpdate(forceRedownload = true) },
+                    enabled = canUpdate,
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TextButton(
-                        onClick = { startUpdate(forceRedownload = true) },
-                        enabled = canUpdate,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("重新下载")
-                    }
-                    TextButton(
-                        onClick = { AppUpdate.openReleasesInBrowser(context, preferGitee = true) },
-                        enabled = !downloading,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Gitee 下载")
-                    }
+                    Text("重新下载")
                 }
             }
 
-            if (available != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton(
+                    onClick = { AppUpdate.openReleasesInBrowser(context, preferGitee = true) },
+                    enabled = !downloading,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Gitee 下载")
+                }
                 TextButton(
                     onClick = { AppUpdate.openGithubReleasesInBrowser(context) },
                     enabled = !downloading,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Text("GitHub 下载（备用）")
+                    Text("GitHub 下载")
                 }
             }
 
             Text(
-                text = "国内优先从 Gitee 下载，失败自动改试 GitHub。" +
-                    "下载后会校验安装包再打开系统安装。安装时需允许「未知应用」。" +
+                text = "检测不到时，可直接打开网页下最新包。" +
+                    "应用内下载优先 Gitee，失败再试 GitHub；装之前会校验安装包。" +
                     (available?.let { " 当前源：${it.sourceLabel}" } ?: ""),
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
