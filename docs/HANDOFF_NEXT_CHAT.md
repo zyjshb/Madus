@@ -6,7 +6,7 @@
 **正式包：** `and/apk/Madus-1.14.48.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：**（打包后回填）— fix: comment image preview + recommend seen/like reshuffle (1.14.48)
+**最新 commit：** `8303e39` — fix: comment image preview and recommend like reshuffle (1.14.48)
 
 ---
 
@@ -157,7 +157,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
-| **1.14.48** | 评论图放大；推荐未看不算已看 + 点赞重排后续 | 打包上传中 |
+| **1.14.48** | 评论图放大；推荐未看不算已看 + 点赞重排后续 | **已传** 双仓 |
 | **1.14.47** | 推荐：跳过/半播极性、冷却硬挡、点赞搅动后续、续刷加宽 | **已传** 双仓 |
 | **1.14.46** | 听歌默认较高码率 + 精听；迷你条点回推荐电台 | **已传** 双仓 |
 | **1.14.45** | 听歌体感（音质除外）：加载/错误、循环、喜欢、进度、音效、迷你条、切歌先换封面 | **已传** 双仓 |
@@ -183,10 +183,10 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓最新：**1.14.47**（`29f53e4`，Release 均已上传）
-- 包：`apk/Madus-1.14.47.apk`（约 16.6 MB）
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.47  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.47
+- 双仓最新：**1.14.48**（`8303e39`，Release 均已上传）
+- 包：`apk/Madus-1.14.48.apk`（约 16.6 MB）
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.48  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.48
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
 - 更新：新包扫 Gitee 全量取最高版本。1.14.40 旧包靠 `/latest`；**当前 `/latest`=v1.14.44，可以应用内升**
 - 本轮修了视频上下滑进度：`next/previous` 在视频模式用 `startPos=-1` 读 `sessionPositions`；听歌仍从头。记忆本身一直在，是切条时被写死成 0 冲掉的
