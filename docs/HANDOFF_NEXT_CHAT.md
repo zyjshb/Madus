@@ -6,7 +6,7 @@
 **正式包：** `and/apk/Madus-1.14.44.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：**（打包推送后回填）— fix: resume video position when swiping back (1.14.44)
+**最新 commit：** `4d3d65e` — fix: resume video position when swiping back (1.14.44)
 
 ---
 
@@ -156,7 +156,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
-| **1.14.44** | 修视频上下滑进度记忆：上滑再滑回从上次进度续播；听歌切歌仍从头 | 打包后上传 |
+| **1.14.44** | 修视频上下滑进度记忆：上滑再滑回从上次进度续播；听歌切歌仍从头 | **已传** 双仓 |
 | **1.14.36** | 新品牌蛇标 `h_logo`：桌面图标 + 开屏资源 + `BrandSplash` 轻放大渐入；底色 `#1F2121`；README 预览换新图 | **已传** 双仓 |
 | **1.14.37** | 桌面图标嫌大 → 内容缩至约 **70%** 画布，四周留白（只改 mipmap，开屏图不动） | **已传** 双仓 |
 | **1.14.38** | 搜索对齐 B 站：WBI + totalrank + 每页 42 + 滚到底 `loadMoreSearch`；列表显示「已显示 x / y」 | **已传** 双仓 |
@@ -178,8 +178,8 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓最新目标：**1.14.44**（视频上下滑续播）
-- 包：`apk/Madus-1.14.44.apk`
+- 双仓最新：**1.14.44**（`4d3d65e`，Release 上传中）
+- 包：`apk/Madus-1.14.44.apk`（约 16.6 MB）
 - 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.44  
   备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.44
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
