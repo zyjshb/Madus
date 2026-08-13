@@ -1111,6 +1111,17 @@ class AppViewModel(
         return raw
     }
 
+    private fun isVideoPlayback(): Boolean =
+        MadusApp.instance.videoModeEnabled ||
+            playback.value.current?.isVideoStream == true
+
+    /**
+     * 切到相邻一条时的起点。
+     * 视频上下滑：读会话/最近记忆续播。
+     * 听歌切歌：一律从头，避免第一首落在 >3s 后「上一首」被当成重头播当前。
+     */
+    private fun startPosForNeighborSwitch(): Long = if (isVideoPlayback()) -1L else 0L
+
     /** 播放进度信号：WATCH_50 / WATCH_90，每曲每种只记一次。 */
     private fun startRecommendationSignalLoop() {
         viewModelScope.launch {
@@ -2141,24 +2152,24 @@ class AppViewModel(
 
         val mode = _playMode.value
         val atEnd = pendingIndex + 1 >= pendingQueue.size
-        // 切到「另一首」一律从头播：若用历史进度续播，第一首可能直接落在 >3s，
-        // 再点上一首会被当成「重头播当前」而无法回到队尾。
+        // 听歌切歌从头播；视频上下滑读记忆，滑回来接着看。
+        val switchStart = startPosForNeighborSwitch()
         when {
             !atEnd -> {
-                playIndex(pendingIndex + 1, startPos = 0L)
+                playIndex(pendingIndex + 1, startPos = switchStart)
                 if (isForYou) scheduleInfinitePrefetch()
             }
             isForYou -> {
                 // 见底：再强扩一次；绝不回到第一首（除非完全没新内容）
                 runCatching { ensureInfiniteFeed(force = true) }
                 if (pendingIndex + 1 < pendingQueue.size) {
-                    playIndex(pendingIndex + 1, startPos = 0L)
+                    playIndex(pendingIndex + 1, startPos = switchStart)
                     scheduleInfinitePrefetch()
                 } else {
                     _toast.value = "正在加载更多推荐…"
                     runCatching { ensureInfiniteFeed(force = true, minAdd = 12) }
                     if (pendingIndex + 1 < pendingQueue.size) {
-                        playIndex(pendingIndex + 1, startPos = 0L)
+                        playIndex(pendingIndex + 1, startPos = switchStart)
                     } else {
                         // 真没了才停，不循环
                         player.dispatch(PlayerCommand.Pause)
@@ -2167,12 +2178,12 @@ class AppViewModel(
                 }
             }
             mode == PlayModeLabel.LOOP || mode == PlayModeLabel.SHUFFLE -> {
-                playIndex(0, startPos = 0L)
+                playIndex(0, startPos = switchStart)
             }
             mode == PlayModeLabel.SINGLE && userInitiated -> {
                 playIndex(
                     if (pendingQueue.size > 1) (pendingIndex + 1) % pendingQueue.size else 0,
-                    startPos = 0L,
+                    startPos = switchStart,
                 )
             }
             else -> {
@@ -2259,9 +2270,11 @@ class AppViewModel(
 
             // 队首 + 循环：上一首直接到队尾。
             // 不要先走「播过 3s 重头」——否则第一首要点两次才能到最后一首。
+            val video = isVideoPlayback()
+            val switchStart = startPosForNeighborSwitch()
             if (pendingIndex <= 0) {
                 if (canWrap) {
-                    playIndex(pendingQueue.lastIndex, startPos = 0L, skipDelta = -1)
+                    playIndex(pendingQueue.lastIndex, startPos = switchStart, skipDelta = -1)
                 } else {
                     player.dispatch(PlayerCommand.Seek(0))
                 }
@@ -2269,15 +2282,13 @@ class AppViewModel(
             }
 
             // 非队首：纯音乐播过约 3s 再点上一首 = 重头播当前（常见播放器习惯）
-            // 视频模式 / 竖屏上下滑：始终切上一条
-            val video = MadusApp.instance.videoModeEnabled ||
-                pb.current?.isVideoStream == true
+            // 视频模式 / 竖屏上下滑：始终切上一条，并用记忆续播
             if (!video && pb.positionMs > 3_000) {
                 player.dispatch(PlayerCommand.Seek(0))
                 return@launch
             }
             // skipDelta=-1：取流失败也往「更早」找，绝不跳到新歌
-            playIndex(pendingIndex - 1, startPos = 0L, skipDelta = -1)
+            playIndex(pendingIndex - 1, startPos = switchStart, skipDelta = -1)
         }
     }
 

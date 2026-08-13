@@ -2,11 +2,11 @@
 
 **日期：** 2026-08-13  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.43` / versionCode `263`  
-**正式包：** `and/apk/Madus-1.14.43.apk`  
+**当前版本：** `1.14.44` / versionCode `264`  
+**正式包：** `and/apk/Madus-1.14.44.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：** `70763cc` — fix: detect highest release instead of Gitee list first item (1.14.43)
+**最新 commit：**（打包推送后回填）— fix: resume video position when swiping back (1.14.44)
 
 ---
 
@@ -156,6 +156,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
+| **1.14.44** | 修视频上下滑进度记忆：上滑再滑回从上次进度续播；听歌切歌仍从头 | 打包后上传 |
 | **1.14.36** | 新品牌蛇标 `h_logo`：桌面图标 + 开屏资源 + `BrandSplash` 轻放大渐入；底色 `#1F2121`；README 预览换新图 | **已传** 双仓 |
 | **1.14.37** | 桌面图标嫌大 → 内容缩至约 **70%** 画布，四周留白（只改 mipmap，开屏图不动） | **已传** 双仓 |
 | **1.14.38** | 搜索对齐 B 站：WBI + totalrank + 每页 42 + 滚到底 `loadMoreSearch`；列表显示「已显示 x / y」 | **已传** 双仓 |
@@ -177,13 +178,13 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓最新：**1.14.43**（`70763cc`，Release 均已上传）
-- 包：`apk/Madus-1.14.43.apk`（约 17.4 MB）
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.43  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.43
+- 双仓最新目标：**1.14.44**（视频上下滑续播）
+- 包：`apk/Madus-1.14.44.apk`
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.44  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.44
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
-- 更新：扫 Gitee 全量取最高版本。用户手里的 **1.14.40 检测不到新版** → 必须网页手装 1.14.43，装上之后以后才能应用内更新
-- 本轮只改了更新探测/更新页体感，推荐/搜索/图标未动
+- 更新：扫 Gitee 全量取最高版本。用户手里的 **1.14.40 检测不到新版** → 必须网页手装 ≥1.14.43，装上之后以后才能应用内更新
+- 本轮修了视频上下滑进度：`next/previous` 在视频模式用 `startPos=-1` 读 `sessionPositions`；听歌仍从头。记忆本身一直在，是切条时被写死成 0 冲掉的
 
 ### 推荐机制（1.14.40，勿回退）
 

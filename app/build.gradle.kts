@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.43：修检查更新误判旧版为最新；我的页提示有新版本
-        versionCode = 263
-        versionName = "1.14.43"
+        // 1.14.44：视频上下滑回来续播，不再从头开始
+        versionCode = 264
+        versionName = "1.14.44"
         vectorDrawables.useSupportLibrary = true
     }
 
