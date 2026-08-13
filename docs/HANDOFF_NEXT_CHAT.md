@@ -178,7 +178,7 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓最新：**1.14.44**（`4d3d65e`，Release 上传中）
+- 双仓最新：**1.14.44**（`4d3d65e`，Release 均已上传）
 - 包：`apk/Madus-1.14.44.apk`（约 16.6 MB）
 - 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.44  
   备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.44
