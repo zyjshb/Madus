@@ -185,6 +185,7 @@ scripts/publish-gitee-release.ps1
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
 - 更新：扫 Gitee 全量取最高版本。用户手里的 **1.14.40 检测不到新版** → 必须网页手装 ≥1.14.43，装上之后以后才能应用内更新
 - 本轮修了视频上下滑进度：`next/previous` 在视频模式用 `startPos=-1` 读 `sessionPositions`；听歌仍从头。记忆本身一直在，是切条时被写死成 0 冲掉的
+- **下一刀已点名：听歌音质（§11）**。用户同意做，额度刷新后再动手。根因已写清：默认 Standard qn=64 会捡最低码率 dash 音轨
 
 ### 推荐机制（1.14.40，勿回退）
 
@@ -210,8 +211,69 @@ scripts/publish-gitee-release.ps1
 - 未完成：16 段镜头提示词、剪辑配乐时间轴、参考图实际生成  
 
 **下次可做（未点名别擅自大改）：**  
-1. 用户一句话小改 App / 发版  
-2. 若搜索结果仍与 B 站网页对不齐：对同一关键词对比 `searchPage` 与网页（WBI 参数 / 登录态）  
-3. 桌面图标再微调比例（当前 70%）  
-4. 继续动漫宣传片：从 `and/动漫宣传片-早班车的一只耳机/12-项目记忆.md` 开始  
-5. 1.14.40 用户若还没手装：再提醒一次 Gitee 链，不要在旧包上继续查更新  
+1. **已点名：听歌音质** → 见下文 §11，额度刷新后直接做，不要再调研  
+2. 其它一句话小改 App / 发版  
+3. 若搜索结果仍与 B 站网页对不齐：对同一关键词对比 `searchPage` 与网页（WBI 参数 / 登录态）  
+4. 桌面图标再微调比例（当前 70%）  
+5. 继续动漫宣传片：从 `and/动漫宣传片-早班车的一只耳机/12-项目记忆.md` 开始  
+6. 1.14.40 用户若还没手装：再提醒一次 Gitee 链，不要在旧包上继续查更新  
+
+---
+
+## 11. 下次直接做：听歌音质（用户已同意，2026-08-13）
+
+**目标：** 同样一首 B 站歌明显更厚、更亮、人声清楚。  
+**不做：** 无损/杜比厅堂/把糊录音修成母带。视频取流少动。
+
+**已对齐口径：** 听歌默认「高音质」+ 一个「精听」音效档。不强迫所有人开最费流量档。
+
+### 根因（已核实，别再翻）
+
+1. **默认档在捡最差音轨。**  
+   `resolvePlayUrl` → `pickPlayableUrl(preferHigher = qn == 0 || qn >= 80)`  
+   默认 `AudioQuality.Standard` qn=**64** → `preferHigher=false` → 在 dash.audio 里选 **bandwidth 最低** 那条。  
+   用户没手改音质 = 故意听最糊的。这是「音质不好」的主因。
+2. **听歌仍先打 `fnval=1` progressive**（整段视频音轨），dash 是后手。`pickPlayableUrl` 虽优先 dash，但浪费请求，且 dash 失败会落到视频音轨。
+3. **`qn.coerceIn(0, 127)`** 会裁掉 B 站高码音频 id（30216/30232/30250/30280）。不要用这些当 preferredQn 直接塞进去。
+4. **`pickPlayableUrl` 不看 `dash.flac` / `dash.dolby.audio`。** 登录大会员偶发能拿到，现在直接丢了。
+5. **EQ 很粗：** `AudioFxController` 只挂系统 5 段 Equalizer。低音档 +6/+3 dB 容易轰、糊。无响度拉齐、无 Virtualizer。
+
+### 怎么改（按这个做）
+
+**A. 取流（听歌模式 only）**
+
+| 文件 | 改什么 |
+|------|--------|
+| `BilibiliApi.pickPlayableUrl` | 听歌：只从 `dash.audio` + `dash.flac` + `dash.dolby.audio` 里按 bandwidth 选；`preferHigher=true` 取最高，省流才取最低。progressive 仅作最后兜底。 |
+| `BilibiliApi.resolvePlayUrl` 听歌 attempts | 先 `fnval=16` dash，再兜底 progressive。`qn==0` 或「较高/最高」一律 `preferHigher=true`。 |
+| `AudioQuality` | 默认改 **High（较高）**，不是 Highest，省流档仍可选。旧用户 DataStore 已是 Standard 的：启动时若仍是 Standard，升到 High（写一句 changelog）。 |
+| `PlayerPrefs` / `MadusApp.currentQualityQn` / `BilibiliSource` | 默认跟 High。 |
+| 视频模式 | `pickVideoUrl` / 视频 attempts **别动**。 |
+
+**B. 音效（听歌更好听，别做成轰炸低音）**
+
+| 文件 | 改什么 |
+|------|--------|
+| `SoundFx` | 新增 **精听**（id=`studio`）：微抬 2–4kHz 人声、低音收一点不轰、高音薄亮、整体别响过原曲太多。 |
+| `AudioFxController` | 精听/现场 可叠加 `LoudnessEnhancer`（小增益，防破音）+ 系统 `Equalizer`。API 28+ 可试 `DynamicsProcessing` 做轻微压限；失败静默降级（现有风格）。**禁止**自封装 ExoPlayer AudioProcessor 当默认——曾有 LoadControl 翻车先例。 |
+| 现有档 | Bass 降一点增益免轰头；Vocal 保留；Flat 继续关 EQ。 |
+| 默认音效 | 听歌可默认 **精听**；视频保持 Flat 或不动当前值。若怕吵到老用户：默认仍 Flat，设置里精听放第一档并写清 subtitle。**推荐默认精听**（用户要的就是好听）。 |
+
+**C. 文案**
+
+- 音质：标准改成「平衡 · 以前默认，偏糊」；较高改成「推荐 · 高码率音频」；最高「能多高要多高，更费流」。
+- 忌说明书腔。`PlayerOptionSheets` / `PlaybackPrefsScreen` / changelog。
+
+**D. 发版**
+
+- 升 **1.14.45** / versionCode 265  
+- `AppChangelog` + `CHANGELOG.md` + `scripts/release-notes-1.14.45.md`  
+- 真机听同一首歌：旧包 vs 新包，确认不再捡最低码率  
+- 打正式包推双仓（用户没说先别传就传）
+
+**不要做**
+
+- 别接第三方蝰蛇/ViPER so 库  
+- 别改推荐/搜索/更新探测  
+- 别承诺无损  
+- 别自封装 LoadControl / 重写播放器内核
