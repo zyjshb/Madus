@@ -6,7 +6,8 @@
 **正式包：** `and/apk/Madus-1.14.48.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：** `8303e39` — fix: comment image preview and recommend like reshuffle (1.14.48)
+**最新 commit：** `8303e39` — fix: comment image preview and recommend like reshuffle (1.14.48)  
+**文档 commit：** `a337ee1`（随后补本文）
 
 ---
 
@@ -45,7 +46,7 @@
 - **禁止** `releases?per_page=5` 取 `arr[0]`：Gitee 列表按 tag **字符串**排（或 id 升序），第一条常是 `v1.14.1`，不是最新  
 - **Gitee `/releases/latest` 偶发滞后**：不是按版本号取最高。新包（≥1.14.43）已扫全量列表，不靠它当唯一真相  
 - **1.14.40 旧包**只信 `/latest`；失败才拿列表第一条（字符串序常是 `v1.14.1`）才会卡死  
-- **2026-08-13 实测** `GET .../releases/latest` = **v1.14.44**，旧包现在可以应用内升。发版后必须确认 `/latest` 已跟上（`publish-gitee-release.ps1` 会轮询）；没跟上就去网页把该 Release 设为最新  
+- **发版后必须确认** `GET .../releases/latest` 已是新 tag（`publish-gitee-release.ps1` 会轮询）。没跟上就去网页把该 Release 设为最新。1.14.48 发完时 `/latest` 已是 **v1.14.48**  
 - 只有 `/latest` 仍停在旧版、且 GitHub API 不通时，才需要网页手装
 - 下载：Gitee 优先，失败换 GitHub  
 - 校验：ZIP / AndroidManifest / dex；装在 `files/updates/`  
@@ -74,7 +75,11 @@
 | **桌面图标大小** | 自适应图标内容约 **70%** 画布（居中留白）；用户嫌大后再调，别回满铺 100% |
 | **开屏** | 系统 Splash 透明占位 + `windowBackground=splash_logo`；Compose `BrandSplash`：轻放大渐入 → 定格 → 渐出；底色 `#1F2121` |
 | **普通搜索** | **对齐 B 站网页**：`order=totalrank`、每页 **42**、优先 **WBI** `/x/web-interface/wbi/search/type`；滚到底 **loadMore**；全站视频不过度阉割 |
-| **推荐刷新** | 喜欢存 `likedAtMs`；**近 1 小时**点赞作强种子，影响首页推荐与无限续刷；小时盐抖动 + 日更切片穿插；UP/题材（标题关键词）打散 |
+| **推荐刷新** | 见 §12。只有**真正播过**才进 `sessionSeenIds`；点赞重排后续队列 |
+| **听歌默认音质** | **较高**（High / qn=80）+ 音效 **精听**。旧「标准+原声」一次性迁过去。省流仍可选 |
+| **迷你条点击** | **回推荐电台台面**（`openRecommendPlayer`），不要进清屏 `NOW_PLAYING`。用户 1.14.45 试过后者，要求改回 |
+| **视频上下滑** | 滑走再滑回从 `sessionPositions` 续播；听歌切歌仍从头 |
+| **评论图** | 可点全屏放大，多图左右翻（`CommentsSheet`） |
 | **改完即发** | 修完 bug 自动升版打正式包推双仓（用户说「先别传」时暂停） |
 
 ---
@@ -104,11 +109,13 @@ app/src/main/java/com/madus/mobile/
   data/RecommendationEventStore.kt # 本地统一行为事件（上限 1000）
   data/ContentProfileStore.kt      # BVID 分区/标签/主题缓存
   data/BilibiliApi.kt          # searchPage / WBI 搜索分页；ensureGuestCookies
-  data/PlayerPrefs.kt          # NetworkIntensity 四档 + gameMix/Lite
+  data/PlayerPrefs.kt          # NetworkIntensity 四档 + 音质 High + 精听迁移
   data/AppUpdate.kt            # probeLatest / pickHighestRelease；禁止 list[0]
   data/ExternalPlaylistImporter.kt  # BATCH_SIZE=500
   player/PlayerEngine.kt       # DefaultLoadControl 12–20s
-  ui/AppViewModel.kt           # submitSearch / loadMoreSearch；预取按 networkIntensity
+  player/AudioFxController.kt  # 精听 Equalizer + LoudnessEnhancer
+  ui/AppViewModel.kt           # 推荐/续播/取流；sessionSeen 只在 playIndex 写入
+  ui/components/CommentsSheet.kt  # 评论图全屏预览
   ui/splash/BrandSplash.kt     # 开屏动画 + logo_madus
   ui/screens/SearchScreen.kt   # 滚到底加载更多；显示已加载条数
   ui/screens/MeScreen.kt       # 进页静默探测更新
@@ -149,7 +156,9 @@ scripts/publish-gitee-release.ps1
 - **桌面图标**原图本身有大留白，再缩比例时别裁掉边再放大（会显大）；当前是**整图 70%** 贴画布  
 - 换图标后部分启动器会缓存旧图 → 用户侧卸载重装或清启动器缓存  
 - **Gitee `/releases/latest` 偶发滞后**，PATCH `make_latest` 会 406；新包必须扫列表取最高版本  
-- **1.14.40 旧包**：先看 `/latest` 是不是当前最新。现在已是 v1.14.44，一般能应用内升；只有 `/latest` 又滞后时才手装
+- **1.14.40 旧包**：只信 Gitee `/latest`。发版脚本会校验；`/latest` 跟上就能应用内升，滞后才手装  
+- **听歌切歌** `startPos=0`；**视频上下滑** `startPos=-1` 读记忆。别再给视频写死从头  
+- **sessionSeenIds** 只能在 `playIndex` 里加。禁止进 feed / 续刷 / 软插入时整表标记已看（1.14.48 修过，回退推荐又会废）
 
 ---
 
@@ -183,26 +192,16 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓最新：**1.14.48**（`8303e39`，Release 均已上传）
+- 双仓最新：**1.14.48**（`8303e39` / 文档 `a337ee1`，Release 均已上传）
 - 包：`apk/Madus-1.14.48.apk`（约 16.6 MB）
 - 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.48  
   备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.48
-- 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
-- 更新：新包扫 Gitee 全量取最高版本。1.14.40 旧包靠 `/latest`；**当前 `/latest`=v1.14.44，可以应用内升**
-- 本轮修了视频上下滑进度：`next/previous` 在视频模式用 `startPos=-1` 读 `sessionPositions`；听歌仍从头。记忆本身一直在，是切条时被写死成 0 冲掉的
-- **下一刀已点名：听歌音质（§11）**。用户同意做，额度刷新后再动手。根因已写清：默认 Standard qn=64 会捡最低码率 dash 音轨
-
-### 推荐机制（1.14.40，勿回退）
-
-- 统一事件：点赞/两类收藏/播放/50%·90%观看/快速跳过，存 `RecommendationEventStore`（上限 1000，仅本机）
-- 内容画像：`ContentProfileStore` 缓存 B 站分区/标签/主题 7 天；`BilibiliApi.videoMeta` 补详情
-- 四层兴趣：实时 30 分钟 / 小时 24 小时 / 长期 30 天 / 负反馈冷却，集中在 `RecommendationTuning`
-- 打分重排：`RecommendationEngine.scoreCandidate` + `RecommendationReRanker`（同 UP/主题窗口、探索每 6 条、每日基线每 5 条）
-- 实时软插入：点赞/收藏成功后异步拉 related，只插当前播放后第 2~4 位，最多 2 条；播放器报错跳歌不记 SKIP_FAST
-- 网络：新增请求只有点赞/收藏后一次 related（失败静默）；续刷仍走网络四档与后台省流
-- 起播按钮：`RecommendUiState.isStartingPlayback` 短暂隐藏“播放”按钮，5 秒兜底恢复，避免二次闪现/卡加载
-- Codex 改推荐（点赞时间戳 + 小时亲和 + 打散）；本侧修编译（`UInt % 80u`）并打包上传  
-- 未入库：`别人的提示词.md`、`动漫宣传片-早班车的一只耳机/` 
+- 起播：`startForYouRecommend` 单飞；近 15 分钟有新赞则**不复用**旧 feed，重跑 `buildSmartFeed`（带 `recentLikeIds`）
+- 更新：新包扫列表取最高版本。1.14.40 旧包靠 `/latest`；发 1.14.48 时 `/latest` 已跟上
+- 听歌音质 **1.14.46 已做**（§11），勿再当待办
+- 迷你条点击 **回到推荐电台**，不要再改去清屏页
+- 推荐用户说 1.14.47「还是不行」→ 1.14.48 修了「未看当已看」+ 点赞重排后续。真机还要再刷一轮看跟不跟手
+- 未入库：`别人的提示词.md`、`动漫宣传片-早班车的一只耳机/`
 
 ---
 
@@ -216,69 +215,48 @@ scripts/publish-gitee-release.ps1
 - 未完成：16 段镜头提示词、剪辑配乐时间轴、参考图实际生成  
 
 **下次可做（未点名别擅自大改）：**  
-1. 其它一句话小改 App / 发版  
-2. 听歌音质已在 **1.14.46** 落地（§11）；别回退默认较高 / 精听  
-3. 若搜索结果仍与 B 站网页对不齐：对同一关键词对比 `searchPage` 与网页（WBI 参数 / 登录态）  
-4. 桌面图标再微调比例（当前 70%）  
-5. 继续动漫宣传片：从 `and/动漫宣传片-早班车的一只耳机/12-项目记忆.md` 开始  
-6. 1.14.40 用户先让他点「检查更新」；只有 `/latest` 又滞后才给 Gitee 手装链  
+1. 用户一句话小改 App / 发版  
+2. 推荐若 1.14.48 真机仍不跟手：先问「哪里不对」（重复 / 不跟赞 / 冷启动），再改 §12，别盲目加模型  
+3. 若搜索结果仍与 B 站网页对不齐：对比 `searchPage` 与网页  
+4. 桌面图标再微调（当前 70%）  
+5. 动漫宣传片：`and/动漫宣传片-早班车的一只耳机/12-项目记忆.md`  
+6. 1.14.40 用户先「检查更新」；`/latest` 滞后才给 Gitee 手装链  
 
 ---
 
-## 11. 听歌音质（1.14.46 已做，勿回退）
+## 11. 听歌音质（1.14.46 已落地，勿回退）
 
-**目标：** 同样一首 B 站歌明显更厚、更亮、人声清楚。  
-**不做：** 无损/杜比厅堂/把糊录音修成母带。视频取流少动。
+**口径：** 默认「较高」+「精听」。不是无损/母带。视频取流没动。
 
-**已对齐口径：** 听歌默认「高音质」+ 一个「精听」音效档。不强迫所有人开最费流量档。
+**已实现：**
+- `pickPlayableUrl`：dash.audio + flac + dolby，按 bandwidth；省流才捡最低；progressive 兜底  
+- 听歌 attempts 先 `fnval=16` dash  
+- `preferHigher = qn==0 || qn>=64`（标准及以上走高码）  
+- 默认 `AudioQuality.High` / `SoundFx.Studio`；`PlayerPrefs.migrateListenDefaults()` 一次性把旧「标准+原声」升上去  
+- `AudioFxController`：精听 EQ + 轻量 `LoudnessEnhancer`；Bass 增益已收；无自封装 AudioProcessor  
+- 迷你条：用户要求保持点进**推荐电台**，1.14.46 已改回  
 
-### 根因（已核实，别再翻）
+**别做：** 蝰蛇/ViPER so、承诺无损、动视频取流、默认改回 Standard。
 
-1. **默认档在捡最差音轨。**  
-   `resolvePlayUrl` → `pickPlayableUrl(preferHigher = qn == 0 || qn >= 80)`  
-   默认 `AudioQuality.Standard` qn=**64** → `preferHigher=false` → 在 dash.audio 里选 **bandwidth 最低** 那条。  
-   用户没手改音质 = 故意听最糊的。这是「音质不好」的主因。
-2. **听歌仍先打 `fnval=1` progressive**（整段视频音轨），dash 是后手。`pickPlayableUrl` 虽优先 dash，但浪费请求，且 dash 失败会落到视频音轨。
-3. **`qn.coerceIn(0, 127)`** 会裁掉 B 站高码音频 id（30216/30232/30250/30280）。不要用这些当 preferredQn 直接塞进去。
-4. **`pickPlayableUrl` 不看 `dash.flac` / `dash.dolby.audio`。** 登录大会员偶发能拿到，现在直接丢了。
-5. **EQ 很粗：** `AudioFxController` 只挂系统 5 段 Equalizer。低音档 +6/+3 dB 容易轰、糊。无响度拉齐、无 Virtualizer。
+---
 
-### 怎么改（按这个做）
+## 12. 推荐池（1.14.40 骨架 + 47/48 修补，勿回退骨架）
 
-**A. 取流（听歌模式 only）**
+**是什么：** 本机 `sourceId=="recommend"` 无限队列。歌单/搜索/收藏夹绝不被改写。
 
-| 文件 | 改什么 |
-|------|--------|
-| `BilibiliApi.pickPlayableUrl` | 听歌：只从 `dash.audio` + `dash.flac` + `dash.dolby.audio` 里按 bandwidth 选；`preferHigher=true` 取最高，省流才取最低。progressive 仅作最后兜底。 |
-| `BilibiliApi.resolvePlayUrl` 听歌 attempts | 先 `fnval=16` dash，再兜底 progressive。`qn==0` 或「较高/最高」一律 `preferHigher=true`。 |
-| `AudioQuality` | 默认改 **High（较高）**，不是 Highest，省流档仍可选。旧用户 DataStore 已是 Standard 的：启动时若仍是 Standard，升到 High（写一句 changelog）。 |
-| `PlayerPrefs` / `MadusApp.currentQualityQn` / `BilibiliSource` | 默认跟 High。 |
-| 视频模式 | `pickVideoUrl` / 视频 attempts **别动**。 |
+**1.14.47：**
+- `WATCH_50` = 至少一半时长（长视频不再看 30 秒就算喜欢）  
+- `SKIP_FAST` 墙约 15 秒；一次快划就给小时层扣分  
+- mute 填进 `FeedContext`，重排**硬挡**（relaxation 也不放行）  
+- 续刷不再一条 related 就停；新鲜点赞 related 加分  
+- 近 15 分钟有新赞：`startForYouRecommend` 不复用旧 feed  
 
-**B. 音效（听歌更好听，别做成轰炸低音）**
+**1.14.48（用户说 47 还不行之后）：**
+- **根因：** `loadRecommendFeed` / 续刷 / 起播把整表 id 写进 `sessionSeenIds`，点赞 related 常被当成已看进不去  
+- **现规则：** 只有 `playIndex` 写 `sessionSeenIds`  
+- 点赞后 `reshuffleUpcomingAfterLike`：保住当前+下一条，后面用 `related-like` 重排  
+- 来源分：`related-like` / `realtime-related` = 1.0，队尾 `related` 降到 0.5  
 
-| 文件 | 改什么 |
-|------|--------|
-| `SoundFx` | 新增 **精听**（id=`studio`）：微抬 2–4kHz 人声、低音收一点不轰、高音薄亮、整体别响过原曲太多。 |
-| `AudioFxController` | 精听/现场 可叠加 `LoudnessEnhancer`（小增益，防破音）+ 系统 `Equalizer`。API 28+ 可试 `DynamicsProcessing` 做轻微压限；失败静默降级（现有风格）。**禁止**自封装 ExoPlayer AudioProcessor 当默认——曾有 LoadControl 翻车先例。 |
-| 现有档 | Bass 降一点增益免轰头；Vocal 保留；Flat 继续关 EQ。 |
-| 默认音效 | 听歌可默认 **精听**；视频保持 Flat 或不动当前值。若怕吵到老用户：默认仍 Flat，设置里精听放第一档并写清 subtitle。**推荐默认精听**（用户要的就是好听）。 |
+**别动：** 四层兴趣 + 多路召回 + 重排 + 软插入骨架；网络四档只调强度；不上传行为；不接非 B 站推荐后端。
 
-**C. 文案**
-
-- 音质：标准改成「平衡 · 以前默认，偏糊」；较高改成「推荐 · 高码率音频」；最高「能多高要多高，更费流」。
-- 忌说明书腔。`PlayerOptionSheets` / `PlaybackPrefsScreen` / changelog。
-
-**D. 发版**
-
-- 升 **1.14.46** / versionCode 266  
-- `AppChangelog` + `CHANGELOG.md` + `scripts/release-notes-1.14.45.md`  
-- 真机听同一首歌：旧包 vs 新包，确认不再捡最低码率  
-- 打正式包推双仓（用户没说先别传就传）
-
-**不要做**
-
-- 别接第三方蝰蛇/ViPER so 库  
-- 别改推荐/搜索/更新探测  
-- 别承诺无损  
-- 别自封装 LoadControl / 重写播放器内核
+**已知还可能嫌差：** 主题只有十来个粗类；没「不感兴趣」按钮；本机规则不是抖音全站模型。再优化先问体感再改。
