@@ -151,4 +151,31 @@ try {
 }
 
 Write-Host ""
+Write-Host "==> verify /releases/latest is $tag"
+# 1.14.40 旧包只信 /latest（失败才拿列表第一条 v1.14.1）。
+# 刚建完的 Release 偶发滞后，这里轮询确认，避免旧用户又升不上去。
+$latestOk = $false
+for ($i = 1; $i -le 8; $i++) {
+    try {
+        $latest = Invoke-RestMethod -Method Get -Uri (Get-GiteeUri "$apiBase/releases/latest") -TimeoutSec 20
+        $got = [string]$latest.tag_name
+        Write-Host "  try $i : /latest = $got"
+        if ($got -eq $tag) {
+            $latestOk = $true
+            break
+        }
+    } catch {
+        Write-Host "  try $i : $($_.Exception.Message)"
+    }
+    Start-Sleep -Seconds 3
+}
+if (-not $latestOk) {
+    Write-Host "WARN: Gitee /releases/latest 还不是 $tag。"
+    Write-Host "  1.14.40 旧包会升不上去。请到网页打开该 Release，点「设为最新」后再查："
+    Write-Host "  https://gitee.com/api/v5/repos/$Owner/$Repo/releases/latest"
+} else {
+    Write-Host "OK: /latest = $tag （1.14.40 旧包也能应用内更新）"
+}
+
+Write-Host ""
 Write-Host "Done: https://gitee.com/$Owner/$Repo/releases/tag/$tag"

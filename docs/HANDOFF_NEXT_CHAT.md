@@ -43,9 +43,10 @@
 
 - 探测：Gitee `/latest` + **列表分页扫全量**（最多 4 页 × 100），再与 GitHub `/latest` + list 合并，`pickHighestRelease` 按语义化版本取最高  
 - **禁止** `releases?per_page=5` 取 `arr[0]`：Gitee 列表按 tag **字符串**排（或 id 升序），第一条常是 `v1.14.1`，不是最新  
-- **Gitee `/releases/latest` 不可靠**：不是按版本号取最高，会滞后。刚传完 1.14.43 时该接口还停在 `v1.14.42`。只能当候选，不能当唯一真相  
-- 1.14.40 旧逻辑：`/latest` 失败 → 拿列表第一条 `v1.14.1` → `1.14.1 < 1.14.40` → 「已是最新」。国内 GitHub API 再被墙，彻底没备份  
-- **1.14.40 应用内升不上去**（bug 在旧包里）。用户须网页手装 ≥1.14.43  
+- **Gitee `/releases/latest` 偶发滞后**：不是按版本号取最高。新包（≥1.14.43）已扫全量列表，不靠它当唯一真相  
+- **1.14.40 旧包**只信 `/latest`；失败才拿列表第一条（字符串序常是 `v1.14.1`）才会卡死  
+- **2026-08-13 实测** `GET .../releases/latest` = **v1.14.44**，旧包现在可以应用内升。发版后必须确认 `/latest` 已跟上（`publish-gitee-release.ps1` 会轮询）；没跟上就去网页把该 Release 设为最新  
+- 只有 `/latest` 仍停在旧版、且 GitHub API 不通时，才需要网页手装
 - 下载：Gitee 优先，失败换 GitHub  
 - 校验：ZIP / AndroidManifest / dex；装在 `files/updates/`  
 - **启动时** `AppUpdate.cleanupDownloadedApks()` 清掉已下的 `.apk`/`.part`  
@@ -147,8 +148,8 @@ scripts/publish-gitee-release.ps1
 - **搜索翻页**无 WBI / 无 cookie 时 B 站易 **412**；必须走 `signWbiQuery` + `mergedCookieWithSystem`  
 - **桌面图标**原图本身有大留白，再缩比例时别裁掉边再放大（会显大）；当前是**整图 70%** 贴画布  
 - 换图标后部分启动器会缓存旧图 → 用户侧卸载重装或清启动器缓存  
-- **Gitee `/releases/latest` 会滞后**，PATCH `make_latest` 会 406；新版必须扫列表取最高版本，勿再信 `/latest` 单独结果  
-- **1.14.40 及更早**若「检测不出新版本」：让用户打开 Gitee Releases 手装，不要在旧包上死磕检查更新  
+- **Gitee `/releases/latest` 偶发滞后**，PATCH `make_latest` 会 406；新包必须扫列表取最高版本  
+- **1.14.40 旧包**：先看 `/latest` 是不是当前最新。现在已是 v1.14.44，一般能应用内升；只有 `/latest` 又滞后时才手装
 
 ---
 
@@ -183,7 +184,7 @@ scripts/publish-gitee-release.ps1
 - 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.44  
   备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.44
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
-- 更新：扫 Gitee 全量取最高版本。用户手里的 **1.14.40 检测不到新版** → 必须网页手装 ≥1.14.43，装上之后以后才能应用内更新
+- 更新：新包扫 Gitee 全量取最高版本。1.14.40 旧包靠 `/latest`；**当前 `/latest`=v1.14.44，可以应用内升**
 - 本轮修了视频上下滑进度：`next/previous` 在视频模式用 `startPos=-1` 读 `sessionPositions`；听歌仍从头。记忆本身一直在，是切条时被写死成 0 冲掉的
 - **下一刀已点名：听歌音质（§11）**。用户同意做，额度刷新后再动手。根因已写清：默认 Standard qn=64 会捡最低码率 dash 音轨
 
@@ -216,7 +217,7 @@ scripts/publish-gitee-release.ps1
 3. 若搜索结果仍与 B 站网页对不齐：对同一关键词对比 `searchPage` 与网页（WBI 参数 / 登录态）  
 4. 桌面图标再微调比例（当前 70%）  
 5. 继续动漫宣传片：从 `and/动漫宣传片-早班车的一只耳机/12-项目记忆.md` 开始  
-6. 1.14.40 用户若还没手装：再提醒一次 Gitee 链，不要在旧包上继续查更新  
+6. 1.14.40 用户先让他点「检查更新」；只有 `/latest` 又滞后才给 Gitee 手装链  
 
 ---
 
