@@ -309,9 +309,10 @@ fun MadusRoot(
                             playback = playback,
                             onToggle = vm::togglePlay,
                             onNext = vm::next,
-                            // 点迷你条 → 推荐页电台台面（不是清屏页）
+                            onPrevious = vm::previous,
+                            // 听歌进沉浸页，不再绕去推荐电台
                             onOpenNowPlaying = {
-                                openRecommendPlayer()
+                                nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true }
                             },
                             onOpenQueue = {
                                 nav.navigate(Routes.QUEUE) { launchSingleTop = true }
@@ -940,6 +941,10 @@ fun MadusRoot(
                             onSleepClick = { showSleepPicker = true },
                             qualityLabel = playerSettings.quality.label,
                             sleepLabel = sleepLabel,
+                            playMode = playMode,
+                            onCyclePlayMode = vm::cyclePlayMode,
+                            soundFx = playerSettings.soundFx,
+                            onCycleSoundFx = vm::cycleSoundFx,
                             videoMode = playerSettings.videoMode || MadusApp.instance.videoModeEnabled,
                             gestureMode = playerSettings.gestureMode,
                             onFullscreen = {

@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -566,6 +567,17 @@ class AppViewModel(
             playerPrefs.setSoundFx(fx)
             player.setSoundFx(fx)
             _toast.value = "音效：${fx.label}"
+        }
+    }
+
+    fun cycleSoundFx() {
+        viewModelScope.launch {
+            val cur = playerPrefs.flow.first().soundFx
+            val all = SoundFx.entries
+            val next = all[(all.indexOf(cur) + 1).mod(all.size)]
+            playerPrefs.setSoundFx(next)
+            player.setSoundFx(next)
+            _toast.value = "音效：${next.label}"
         }
     }
 
@@ -1955,6 +1967,10 @@ class AppViewModel(
         } else {
             resumePositionOf(track.id, track.durationMs)
         }
+        // 听歌：先把封面/标题切过去并显示加载，避免还停在上一首像卡住
+        if (!isVideoPlayback()) {
+            player.prepareTrack(track, asVideo = false)
+        }
         // 先占前台服务（服务内立刻 startForeground），取流期间进程不被杀
         ensureService()
         // 熄屏/弱网：多试几次 + 允许用预取 CDN，避免「暂无可播地址」连环跳
@@ -2008,6 +2024,10 @@ class AppViewModel(
                     album = old.album.ifBlank { resolved.album },
                     ownerMid = old.ownerMid.ifBlank { resolved.ownerMid },
                     ownerFace = resolved.ownerFace.ifBlank { old.ownerFace },
+                    durationMs = when {
+                        resolved.durationMs > 0L -> resolved.durationMs
+                        else -> old.durationMs
+                    },
                 )
             }
         }

@@ -40,12 +40,16 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.Bedtime
@@ -89,9 +93,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.madus.mobile.data.SoundFx
 import com.madus.mobile.data.VIDEO_SPEED_OPTIONS
 import com.madus.mobile.data.VideoGestureMode
 import com.madus.mobile.domain.PlaybackState
+import com.madus.mobile.ui.PlayModeLabel
 import com.madus.mobile.ui.components.BiliPlayerSurface
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.MadusImageLoader
@@ -126,6 +132,10 @@ fun NowPlayingScreen(
     onSleepClick: () -> Unit = {},
     qualityLabel: String = "标准",
     sleepLabel: String? = null,
+    playMode: PlayModeLabel = PlayModeLabel.LOOP,
+    onCyclePlayMode: () -> Unit = {},
+    soundFx: SoundFx = SoundFx.Flat,
+    onCycleSoundFx: () -> Unit = {},
     videoMode: Boolean = false,
     gestureMode: VideoGestureMode = VideoGestureMode.DOUYIN,
     onFullscreen: () -> Unit = {},
@@ -171,16 +181,22 @@ fun NowPlayingScreen(
     } else {
         MusicImmersiveMode(
             playback = playback,
+            liked = liked,
             onBack = onBack,
             onToggle = onToggle,
             onNext = onNext,
             onPrevious = onPrevious,
             onSeek = onSeek,
+            onToggleLike = onToggleLike,
             onOpenQueue = onOpenQueue,
             onQualityClick = onQualityClick,
             onSleepClick = onSleepClick,
             qualityLabel = qualityLabel,
             sleepLabel = sleepLabel,
+            playMode = playMode,
+            onCyclePlayMode = onCyclePlayMode,
+            soundFx = soundFx,
+            onCycleSoundFx = onCycleSoundFx,
             modifier = modifier,
         )
     }
@@ -933,16 +949,22 @@ internal fun SpeedHud(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun MusicImmersiveMode(
     playback: PlaybackState,
+    liked: Boolean,
     onBack: () -> Unit,
     onToggle: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
+    onToggleLike: () -> Unit,
     onOpenQueue: () -> Unit,
     onQualityClick: () -> Unit,
     onSleepClick: () -> Unit,
     qualityLabel: String,
     sleepLabel: String?,
+    playMode: PlayModeLabel,
+    onCyclePlayMode: () -> Unit,
+    soundFx: SoundFx,
+    onCycleSoundFx: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val track = playback.current
@@ -991,25 +1013,62 @@ private fun MusicImmersiveMode(
             modifier = Modifier.fillMaxWidth(0.86f).aspectRatio(1f),
         )
         Spacer(Modifier.height(24.dp))
-        Text(
-            text = track?.title ?: "未在播放",
-            style = MaterialTheme.typography.headlineMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = track?.artist ?: "—",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Spacer(Modifier.size(48.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = track?.title ?: "未在播放",
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = track?.artist ?: "—",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(
+                onClick = onToggleLike,
+                enabled = track != null,
+            ) {
+                Icon(
+                    imageVector = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = if (liked) "取消喜欢" else "喜欢",
+                    tint = if (liked) {
+                        Color(0xFFFF4D6A)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+        }
+        val err = playback.errorMessage?.trim().orEmpty()
+        if (err.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = err,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
         Spacer(Modifier.height(24.dp))
         SeekBar(
             positionMs = playback.positionMs,
-            durationMs = playback.durationMs,
+            durationMs = maxOf(playback.durationMs, track?.durationMs ?: 0L),
             onSeek = onSeek,
             enabled = track != null,
             modifier = Modifier.fillMaxWidth(),
@@ -1022,12 +1081,20 @@ private fun MusicImmersiveMode(
             IconButton(onClick = onPrevious, enabled = track != null) {
                 Icon(Icons.Default.SkipPrevious, null, modifier = Modifier.size(36.dp))
             }
-            IconButton(onClick = onToggle, enabled = track != null) {
-                Icon(
-                    if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    null,
-                    modifier = Modifier.size(52.dp),
-                )
+            val switching = playback.isLoading && !playback.isPlaying
+            IconButton(onClick = onToggle, enabled = track != null && !switching) {
+                if (switching) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        if (playback.isPlaying) "暂停" else "播放",
+                        modifier = Modifier.size(52.dp),
+                    )
+                }
             }
             IconButton(onClick = onNext, enabled = track != null) {
                 Icon(Icons.Default.SkipNext, null, modifier = Modifier.size(36.dp))
@@ -1051,10 +1118,20 @@ private fun MusicImmersiveMode(
                 onClick = onQualityClick,
             )
             ImmersiveSecondary(
-                icon = Icons.AutoMirrored.Outlined.QueueMusic,
-                label = "队列",
-                active = false,
-                onClick = onOpenQueue,
+                icon = Icons.Filled.GraphicEq,
+                label = soundFx.label,
+                active = soundFx != SoundFx.Flat,
+                onClick = onCycleSoundFx,
+            )
+            ImmersiveSecondary(
+                icon = when (playMode) {
+                    PlayModeLabel.SHUFFLE -> Icons.Default.Shuffle
+                    PlayModeLabel.SINGLE -> Icons.Default.RepeatOne
+                    PlayModeLabel.LOOP -> Icons.Default.Repeat
+                },
+                label = playMode.label,
+                active = playMode != PlayModeLabel.LOOP,
+                onClick = onCyclePlayMode,
             )
         }
     }

@@ -2,11 +2,11 @@
 
 **日期：** 2026-08-13  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.44` / versionCode `264`  
-**正式包：** `and/apk/Madus-1.14.44.apk`  
+**当前版本：** `1.14.45` / versionCode `265`  
+**正式包：** `and/apk/Madus-1.14.45.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：** `4d3d65e` — fix: resume video position when swiping back (1.14.44)
+**最新 commit：**（打包后回填）— fix: music now-playing shows loading and errors (1.14.45)
 
 ---
 
@@ -157,6 +157,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
+| **1.14.45** | 听歌体感（音质除外）：加载/错误、循环、喜欢、进度、音效、迷你条、切歌先换封面 | 打包上传中 |
 | **1.14.44** | 修视频上下滑进度记忆：上滑再滑回从上次进度续播；听歌切歌仍从头 | **已传** 双仓 |
 | **1.14.36** | 新品牌蛇标 `h_logo`：桌面图标 + 开屏资源 + `BrandSplash` 轻放大渐入；底色 `#1F2121`；README 预览换新图 | **已传** 双仓 |
 | **1.14.37** | 桌面图标嫌大 → 内容缩至约 **70%** 画布，四周留白（只改 mipmap，开屏图不动） | **已传** 双仓 |
@@ -179,10 +180,10 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓最新：**1.14.44**（`4d3d65e`，Release 均已上传）
-- 包：`apk/Madus-1.14.44.apk`（约 16.6 MB）
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.44  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.44
+- 双仓目标：**1.14.45**（听歌体感，音质仍待 §11）
+- 包：`apk/Madus-1.14.45.apk`
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.45  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.45
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
 - 更新：新包扫 Gitee 全量取最高版本。1.14.40 旧包靠 `/latest`；**当前 `/latest`=v1.14.44，可以应用内升**
 - 本轮修了视频上下滑进度：`next/previous` 在视频模式用 `startPos=-1` 读 `sessionPositions`；听歌仍从头。记忆本身一直在，是切条时被写死成 0 冲掉的
@@ -267,7 +268,7 @@ scripts/publish-gitee-release.ps1
 
 **D. 发版**
 
-- 升 **1.14.45** / versionCode 265  
+- 升 **1.14.46** / versionCode 266  
 - `AppChangelog` + `CHANGELOG.md` + `scripts/release-notes-1.14.45.md`  
 - 真机听同一首歌：旧包 vs 新包，确认不再捡最低码率  
 - 打正式包推双仓（用户没说先别传就传）

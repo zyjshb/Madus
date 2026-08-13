@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.44：视频上下滑回来续播，不再从头开始
-        versionCode = 264
-        versionName = "1.14.44"
+        // 1.14.45：听歌页切歌显示加载，失败原因可见
+        versionCode = 265
+        versionName = "1.14.45"
         vectorDrawables.useSupportLibrary = true
     }
 

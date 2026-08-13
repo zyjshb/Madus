@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -203,11 +205,13 @@ fun MiniPlayerBar(
     playback: PlaybackState,
     onToggle: () -> Unit,
     onNext: () -> Unit,
+    onPrevious: () -> Unit = {},
     onOpenNowPlaying: () -> Unit,
     onOpenQueue: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val track = playback.current ?: return
+    val switching = playback.isLoading && !playback.isPlaying
     LineFrame(
         modifier = modifier.fillMaxWidth(),
         contentPadding = 0.dp,
@@ -236,11 +240,21 @@ fun MiniPlayerBar(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = onToggle) {
-                Icon(
-                    imageVector = if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (playback.isPlaying) "暂停" else "播放",
-                )
+            IconButton(onClick = onPrevious) {
+                Icon(Icons.Default.SkipPrevious, contentDescription = "上一首")
+            }
+            IconButton(onClick = onToggle, enabled = !switching) {
+                if (switching) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (playback.isPlaying) "暂停" else "播放",
+                    )
+                }
             }
             IconButton(onClick = onNext) {
                 Icon(Icons.Default.SkipNext, contentDescription = "下一首")
