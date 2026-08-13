@@ -2661,7 +2661,11 @@ class AppViewModel(
                 val audioTrack = withContext(Dispatchers.IO) {
                     runCatching {
                         biliApi.ensureGuestCookies()
-                        biliApi.resolvePlayUrl(current, preferredQn = 64, videoMode = false)
+                        biliApi.resolvePlayUrl(
+                            current,
+                            preferredQn = MadusApp.instance.currentQualityQn,
+                            videoMode = false,
+                        )
                     }.getOrElse { e ->
                         error("取音频失败：${e.message ?: "网络错误"}")
                     }

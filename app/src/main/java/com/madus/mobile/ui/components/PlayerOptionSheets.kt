@@ -72,9 +72,9 @@ fun QualityPickerSheet(
                     title = q.label,
                     subtitle = when (q) {
                         AudioQuality.DataSaver -> "更省流量"
-                        AudioQuality.Standard -> "默认，平衡听感与流量"
-                        AudioQuality.High -> "优先较高码率"
-                        AudioQuality.Highest -> "尽量最高可用"
+                        AudioQuality.Standard -> "平衡 · 以前默认，偏糊"
+                        AudioQuality.High -> "推荐 · 高码率音频"
+                        AudioQuality.Highest -> "能多高要多高，更费流"
                     },
                     selected = current == q,
                     onClick = {

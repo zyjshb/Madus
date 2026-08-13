@@ -79,7 +79,7 @@ class MadusApp : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     @Volatile
-    var currentQualityQn: Int = AudioQuality.Standard.qn
+    var currentQualityQn: Int = AudioQuality.High.qn
 
     /**
      * 整个 App 是否在后台（用户在打游戏/其它应用）。
@@ -146,6 +146,7 @@ class MadusApp : Application() {
                 com.madus.mobile.data.AppUpdate.cleanupDownloadedApks(this@MadusApp)
             }
             runCatching {
+                playerPrefs.migrateListenDefaults()
                 val s = playerPrefs.flow.first()
                 currentQualityQn = s.quality.qn
                 videoModeEnabled = s.videoMode

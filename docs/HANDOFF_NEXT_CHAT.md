@@ -2,11 +2,11 @@
 
 **日期：** 2026-08-13  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.45` / versionCode `265`  
-**正式包：** `and/apk/Madus-1.14.45.apk`  
+**当前版本：** `1.14.46` / versionCode `266`  
+**正式包：** `and/apk/Madus-1.14.46.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：** `4287c80` — fix: music listening UX polish (1.14.45)
+**最新 commit：**（打包后回填）— feat: listen high-bitrate default + studio fx (1.14.46)
 
 ---
 
@@ -157,6 +157,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
+| **1.14.46** | 听歌默认较高码率 + 精听；迷你条点回推荐电台 | 打包上传中 |
 | **1.14.45** | 听歌体感（音质除外）：加载/错误、循环、喜欢、进度、音效、迷你条、切歌先换封面 | **已传** 双仓 |
 | **1.14.44** | 修视频上下滑进度记忆：上滑再滑回从上次进度续播；听歌切歌仍从头 | **已传** 双仓 |
 | **1.14.36** | 新品牌蛇标 `h_logo`：桌面图标 + 开屏资源 + `BrandSplash` 轻放大渐入；底色 `#1F2121`；README 预览换新图 | **已传** 双仓 |
@@ -180,10 +181,10 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓最新：**1.14.45**（`4287c80`，Release 均已上传）
-- 包：`apk/Madus-1.14.45.apk`（约 16.6 MB）
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.45  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.45
+- 双仓目标：**1.14.46**（听歌高码 + 精听）
+- 包：`apk/Madus-1.14.46.apk`
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.46  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.46
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
 - 更新：新包扫 Gitee 全量取最高版本。1.14.40 旧包靠 `/latest`；**当前 `/latest`=v1.14.44，可以应用内升**
 - 本轮修了视频上下滑进度：`next/previous` 在视频模式用 `startPos=-1` 读 `sessionPositions`；听歌仍从头。记忆本身一直在，是切条时被写死成 0 冲掉的
@@ -213,8 +214,8 @@ scripts/publish-gitee-release.ps1
 - 未完成：16 段镜头提示词、剪辑配乐时间轴、参考图实际生成  
 
 **下次可做（未点名别擅自大改）：**  
-1. **已点名：听歌音质** → 见下文 §11，额度刷新后直接做，不要再调研  
-2. 其它一句话小改 App / 发版  
+1. 其它一句话小改 App / 发版  
+2. 听歌音质已在 **1.14.46** 落地（§11）；别回退默认较高 / 精听  
 3. 若搜索结果仍与 B 站网页对不齐：对同一关键词对比 `searchPage` 与网页（WBI 参数 / 登录态）  
 4. 桌面图标再微调比例（当前 70%）  
 5. 继续动漫宣传片：从 `and/动漫宣传片-早班车的一只耳机/12-项目记忆.md` 开始  
@@ -222,7 +223,7 @@ scripts/publish-gitee-release.ps1
 
 ---
 
-## 11. 下次直接做：听歌音质（用户已同意，2026-08-13）
+## 11. 听歌音质（1.14.46 已做，勿回退）
 
 **目标：** 同样一首 B 站歌明显更厚、更亮、人声清楚。  
 **不做：** 无损/杜比厅堂/把糊录音修成母带。视频取流少动。

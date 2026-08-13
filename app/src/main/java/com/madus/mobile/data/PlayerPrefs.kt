@@ -19,7 +19,7 @@ enum class AudioQuality(val id: String, val label: String, val qn: Int) {
     ;
 
     companion object {
-        fun fromId(id: String?) = entries.find { it.id == id } ?: Standard
+        fun fromId(id: String?) = entries.find { it.id == id } ?: High
     }
 }
 
@@ -27,6 +27,7 @@ enum class AudioQuality(val id: String, val label: String, val qn: Int) {
  * 环境音效预设（系统 Equalizer 频段近似）。
  */
 enum class SoundFx(val id: String, val label: String, val subtitle: String) {
+    Studio("studio", "精听", "人声清楚 · 不轰"),
     Flat("flat", "原声", "不改音色"),
     Bass("bass", "低音增强", "鼓点更厚"),
     Vocal("vocal", "人声突出", "中频抬升"),
@@ -36,7 +37,7 @@ enum class SoundFx(val id: String, val label: String, val subtitle: String) {
     ;
 
     companion object {
-        fun fromId(id: String?) = entries.find { it.id == id } ?: Flat
+        fun fromId(id: String?) = entries.find { it.id == id } ?: Studio
     }
 }
 
@@ -145,8 +146,8 @@ enum class NetworkIntensity(
 }
 
 data class PlayerSettings(
-    val quality: AudioQuality = AudioQuality.Standard,
-    val soundFx: SoundFx = SoundFx.Flat,
+    val quality: AudioQuality = AudioQuality.High,
+    val soundFx: SoundFx = SoundFx.Studio,
     /** 边听边写磁盘缓存；关=纯在线，更轻量 */
     val autoCache: Boolean = false,
     /**
@@ -172,6 +173,7 @@ data class PlayerSettings(
 class PlayerPrefs(private val context: Context) {
     private val keyQuality = stringPreferencesKey("audio_quality")
     private val keyFx = stringPreferencesKey("sound_fx")
+    private val keyListenDefaultsV1 = booleanPreferencesKey("listen_defaults_v1")
     private val keyAutoCache = booleanPreferencesKey("auto_cache")
     private val keyVideoMode = booleanPreferencesKey("video_mode")
     private val keyGuideSeen = booleanPreferencesKey("short_video_guide_seen_v1")
@@ -217,6 +219,25 @@ class PlayerPrefs(private val context: Context) {
 
     suspend fun setGuideSeenForMode(mode: VideoGestureMode, seen: Boolean = true) {
         context.playerPrefsStore.edit { it[guideModeKey(mode)] = seen }
+    }
+
+    /**
+     * 一次性：旧默认「标准 + 原声」升到「较高 + 精听」。
+     * 用户已手选省流/最高/低音等则不动。
+     */
+    suspend fun migrateListenDefaults() {
+        context.playerPrefsStore.edit { prefs ->
+            if (prefs[keyListenDefaultsV1] == true) return@edit
+            val q = prefs[keyQuality]
+            if (q.isNullOrBlank() || q == AudioQuality.Standard.id) {
+                prefs[keyQuality] = AudioQuality.High.id
+            }
+            val fx = prefs[keyFx]
+            if (fx.isNullOrBlank() || fx == SoundFx.Flat.id) {
+                prefs[keyFx] = SoundFx.Studio.id
+            }
+            prefs[keyListenDefaultsV1] = true
+        }
     }
 
     suspend fun setQuality(q: AudioQuality) {

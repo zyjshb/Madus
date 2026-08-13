@@ -29,6 +29,18 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.46",
+            date = "2026-08-13",
+            changed = listOf(
+                "听歌默认改「较高」，走高码率音频，不再捡最糊那条",
+                "新音效「精听」：人声清楚、低音不轰",
+                "点迷你条回到推荐电台",
+            ),
+            fixed = listOf(
+                "听歌先取音频轨；有更高码的也会用上",
+            ),
+        ),
+        Entry(
             version = "1.14.45",
             date = "2026-08-13",
             changed = listOf(

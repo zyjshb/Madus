@@ -310,9 +310,9 @@ fun MadusRoot(
                             onToggle = vm::togglePlay,
                             onNext = vm::next,
                             onPrevious = vm::previous,
-                            // 听歌进沉浸页，不再绕去推荐电台
+                            // 点迷你条 → 推荐页电台台面（不是清屏页）
                             onOpenNowPlaying = {
-                                nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true }
+                                openRecommendPlayer()
                             },
                             onOpenQueue = {
                                 nav.navigate(Routes.QUEUE) { launchSingleTop = true }

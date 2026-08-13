@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.45：听歌页切歌显示加载，失败原因可见
-        versionCode = 265
-        versionName = "1.14.45"
+        // 1.14.46：听歌默认较高码率 + 精听；迷你条点回推荐电台
+        versionCode = 266
+        versionName = "1.14.46"
         vectorDrawables.useSupportLibrary = true
     }
 

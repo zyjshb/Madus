@@ -12,7 +12,7 @@ class BilibiliSource(
     private val api: BilibiliApi,
     private val loginUi: suspend () -> String?,
     /** 当前音质 qn，默认 64 标准 */
-    private val qualityProvider: () -> Int = { 64 },
+    private val qualityProvider: () -> Int = { 80 },
     /** 视频模式：取可播画面流 */
     private val videoModeProvider: () -> Boolean = { false },
 ) : MusicSource {

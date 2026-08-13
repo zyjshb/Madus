@@ -1,16 +1,19 @@
 package com.madus.mobile.player
 
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import android.util.Log
 import com.madus.mobile.data.SoundFx
 
 /**
- * 系统 Equalizer 环境音效。会话级；设备/模拟器不支持时静默降级，绝不抛到主线程。
+ * 系统 Equalizer + 轻量 LoudnessEnhancer。
+ * 会话级；设备不支持时静默降级，绝不抛到主线程。
  */
 class AudioFxController {
     private var equalizer: Equalizer? = null
+    private var loudness: LoudnessEnhancer? = null
     private var currentSession: Int = 0
-    private var currentFx: SoundFx = SoundFx.Flat
+    private var currentFx: SoundFx = SoundFx.Studio
     private var supported: Boolean = true
 
     fun attach(audioSessionId: Int) {
@@ -24,12 +27,17 @@ class AudioFxController {
         currentSession = audioSessionId
         equalizer = try {
             Equalizer(0, audioSessionId).also {
-                // 部分模拟器 create 成功但 enable 即崩
                 it.enabled = false
             }
         } catch (t: Throwable) {
             Log.w(TAG, "Equalizer unsupported: ${t.message}")
             supported = false
+            null
+        }
+        loudness = try {
+            LoudnessEnhancer(audioSessionId).also { it.enabled = false }
+        } catch (t: Throwable) {
+            Log.w(TAG, "LoudnessEnhancer unsupported: ${t.message}")
             null
         }
         apply(currentFx)
@@ -46,11 +54,22 @@ class AudioFxController {
             equalizer?.release()
         } catch (_: Throwable) {
         }
+        try {
+            loudness?.enabled = false
+            loudness?.release()
+        } catch (_: Throwable) {
+        }
         equalizer = null
+        loudness = null
         currentSession = 0
     }
 
     private fun apply(fx: SoundFx) {
+        applyEq(fx)
+        applyLoudness(fx)
+    }
+
+    private fun applyEq(fx: SoundFx) {
         if (!supported) return
         val eq = equalizer ?: return
         try {
@@ -64,8 +83,9 @@ class AudioFxController {
                 milliBel.coerceIn(min.toInt(), max.toInt()).toShort()
 
             val shape: ShortArray = when (fx) {
+                SoundFx.Studio -> shortArrayOf(level(50), level(-80), level(300), level(200), level(90))
                 SoundFx.Flat -> ShortArray(5) { mid }
-                SoundFx.Bass -> shortArrayOf(level(600), level(300), mid, level(-100), level(-150))
+                SoundFx.Bass -> shortArrayOf(level(350), level(180), mid, level(-80), level(-120))
                 SoundFx.Vocal -> shortArrayOf(level(-200), level(100), level(450), level(250), level(-100))
                 SoundFx.Soft -> shortArrayOf(level(150), mid, level(-100), level(-250), level(-400))
                 SoundFx.Night -> shortArrayOf(level(200), level(100), mid, level(-350), level(-550))
@@ -89,9 +109,33 @@ class AudioFxController {
                 eq.enabled = true
             }
         } catch (t: Throwable) {
-            Log.w(TAG, "apply fx fail: ${t.message}")
+            Log.w(TAG, "apply eq fail: ${t.message}")
             supported = false
             release()
+        }
+    }
+
+    private fun applyLoudness(fx: SoundFx) {
+        val boost = loudness ?: return
+        val gain = when (fx) {
+            SoundFx.Studio -> 380
+            SoundFx.Live -> 220
+            SoundFx.Vocal -> 160
+            else -> 0
+        }
+        try {
+            if (gain <= 0) {
+                boost.enabled = false
+            } else {
+                boost.setTargetGain(gain)
+                boost.enabled = true
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "apply loudness fail: ${t.message}")
+            try {
+                boost.enabled = false
+            } catch (_: Throwable) {
+            }
         }
     }
 

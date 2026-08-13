@@ -856,6 +856,7 @@ class BilibiliApi(
         if (cid.isBlank()) error("无法获取 cid")
         if (bvid.isBlank() && aid.isBlank()) error("缺少稿件 id")
 
+        // 只作 playurl 画质/音质档，不要塞 30280 这类音频 id（会被截掉）
         val qn = preferredQn.coerceIn(0, 127)
         val attempts = if (videoMode) {
             // 视频：少打几枪，优先 html5 progressive（更快起播）
@@ -867,15 +868,13 @@ class BilibiliApi(
                 add("qn=0&fnval=16&fourk=0&platform=html5&high_quality=1")
             }.distinct()
         } else {
+            // 听歌：先 dash 音频，progressive 视频音轨只作兜底
             buildList {
-                if (qn > 0) {
-                    add("qn=$qn&fnval=1&fourk=0&platform=html5&high_quality=1")
-                    add("qn=$qn&fnval=16&fourk=0&platform=html5&high_quality=1")
-                }
-                add("qn=64&fnval=1&fourk=0&platform=html5&high_quality=1")
+                if (qn > 0) add("qn=$qn&fnval=16&fourk=0&platform=html5&high_quality=1")
                 add("qn=0&fnval=16&fourk=0&platform=html5&high_quality=1")
                 add("qn=0&fnval=16&fourk=1")
-                add("qn=64&fnval=16&fourk=0")
+                if (qn > 0) add("qn=$qn&fnval=1&fourk=0&platform=html5&high_quality=1")
+                add("qn=80&fnval=1&fourk=0&platform=html5&high_quality=1")
             }.distinct()
         }
 
@@ -920,7 +919,8 @@ class BilibiliApi(
                     break
                 }
             } else {
-                streamUrl = pickPlayableUrl(body, preferHigher = qn == 0 || qn >= 80)
+                // 省流才捡最低码率；标准/较高/最高都走高码
+                streamUrl = pickPlayableUrl(body, preferHigher = qn == 0 || qn >= 64)
                 if (streamUrl.isNotBlank()) {
                     gotVideo = false
                     Log.i(TAG, "got audio via $extra len=${streamUrl.length}")
@@ -2673,38 +2673,48 @@ class BilibiliApi(
         return bestUrl
     }
 
-    /** 优先 progressive durl，再 dash audio（含 backup）。听歌模式。 */
+    /** 听歌：dash.audio / flac / dolby 按码率选；progressive 仅兜底。 */
     private fun pickPlayableUrl(data: JSONObject, preferHigher: Boolean = true): String {
-        val progressive = pickProgressiveUrl(data)
-        // 听歌：若 progressive 是整段视频，仍可用但更费流量；优先 dash audio
         val dash = data.optJSONObject("dash")
         if (dash != null) {
-            val audios = dash.optJSONArray("audio")
-            if (audios != null && audios.length() > 0) {
-                var bestUrl = ""
-                var bestBw = if (preferHigher) -1L else Long.MAX_VALUE
-                for (i in 0 until audios.length()) {
-                    val a = audios.optJSONObject(i) ?: continue
-                    val bw = a.optLong("bandwidth", 0L)
-                    val candidates = buildList {
-                        add(a.optString("baseUrl", a.optString("base_url", "")))
-                        val bu = a.optJSONArray("backupUrl") ?: a.optJSONArray("backup_url")
-                        if (bu != null) {
-                            for (j in 0 until bu.length()) add(bu.optString(j, ""))
-                        }
-                    }.filter { it.isNotBlank() }
-                    if (candidates.isEmpty()) continue
-                    val better = if (preferHigher) bw >= bestBw else bw <= bestBw
-                    if (better) {
-                        bestBw = bw
-                        bestUrl = candidates.first()
-                    }
-                }
-                if (bestUrl.isNotBlank()) return bestUrl
+            val tracks = ArrayList<JSONObject>(8)
+            dash.optJSONArray("audio")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(tracks::add)
             }
+            dash.optJSONObject("flac")?.let { flac ->
+                flac.optJSONObject("audio")?.let(tracks::add)
+                if (flacUrl(flac).isNotBlank()) tracks.add(flac)
+            }
+            dash.optJSONObject("dolby")?.optJSONArray("audio")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(tracks::add)
+            }
+            var bestUrl = ""
+            var bestBw = if (preferHigher) -1L else Long.MAX_VALUE
+            for (a in tracks) {
+                val bw = a.optLong("bandwidth", 0L)
+                val candidates = dashAudioUrls(a)
+                if (candidates.isEmpty()) continue
+                val better = if (preferHigher) bw >= bestBw else bw <= bestBw
+                if (better) {
+                    bestBw = bw
+                    bestUrl = candidates.first()
+                }
+            }
+            if (bestUrl.isNotBlank()) return bestUrl
         }
-        return progressive
+        return pickProgressiveUrl(data)
     }
+
+    private fun flacUrl(o: JSONObject): String =
+        o.optString("baseUrl", o.optString("base_url", ""))
+
+    private fun dashAudioUrls(a: JSONObject): List<String> = buildList {
+        add(a.optString("baseUrl", a.optString("base_url", "")))
+        val bu = a.optJSONArray("backupUrl") ?: a.optJSONArray("backup_url")
+        if (bu != null) {
+            for (j in 0 until bu.length()) add(bu.optString(j, ""))
+        }
+    }.filter { it.isNotBlank() }
 
     private fun getJson(url: String, cookie: String, referer: String = "https://www.bilibili.com"): JSONObject {
         val conn = open(url, cookie, referer)
