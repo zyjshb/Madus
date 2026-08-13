@@ -6,7 +6,7 @@
 **正式包：** `and/apk/Madus-1.14.45.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：**（打包后回填）— fix: music now-playing shows loading and errors (1.14.45)
+**最新 commit：** `4287c80` — fix: music listening UX polish (1.14.45)
 
 ---
 
@@ -157,7 +157,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
-| **1.14.45** | 听歌体感（音质除外）：加载/错误、循环、喜欢、进度、音效、迷你条、切歌先换封面 | 打包上传中 |
+| **1.14.45** | 听歌体感（音质除外）：加载/错误、循环、喜欢、进度、音效、迷你条、切歌先换封面 | **已传** 双仓 |
 | **1.14.44** | 修视频上下滑进度记忆：上滑再滑回从上次进度续播；听歌切歌仍从头 | **已传** 双仓 |
 | **1.14.36** | 新品牌蛇标 `h_logo`：桌面图标 + 开屏资源 + `BrandSplash` 轻放大渐入；底色 `#1F2121`；README 预览换新图 | **已传** 双仓 |
 | **1.14.37** | 桌面图标嫌大 → 内容缩至约 **70%** 画布，四周留白（只改 mipmap，开屏图不动） | **已传** 双仓 |
@@ -180,8 +180,8 @@ scripts/publish-gitee-release.ps1
 
 ## 9. 关机前状态（2026-08-13）
 
-- 双仓目标：**1.14.45**（听歌体感，音质仍待 §11）
-- 包：`apk/Madus-1.14.45.apk`
+- 双仓最新：**1.14.45**（`4287c80`，Release 均已上传）
+- 包：`apk/Madus-1.14.45.apk`（约 16.6 MB）
 - 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.14.45  
   备用：https://github.com/zyjshb/Madus/releases/tag/v1.14.45
 - 起播：`startForYouRecommend` 单飞；有 feed 复用；`prepareTrack` 占位；等 `streamUrl/isPlaying` 再清 `isStartingPlayback`
