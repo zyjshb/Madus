@@ -1231,6 +1231,7 @@ class AppViewModel(
             runCatching { recommendationEventStore.record(event) }
             if (type in REALTIME_FEEDBACK_TYPES) {
                 runCatching { maybeInsertRealtime(track, event) }
+                runCatching { reshuffleUpcomingAfterLike(track) }
             }
         }
     }
@@ -1284,6 +1285,56 @@ class AppViewModel(
         }
     }
 
+    /**
+     * 点赞后重排「当前+下一条」之后的队列。
+     * 相关条不再被「列表里写过就算看过」挡掉。
+     */
+    private suspend fun reshuffleUpcomingAfterLike(seed: Track) {
+        if (!isForYouQueue()) return
+        val keep = (pendingIndex + 2).coerceAtMost(pendingQueue.size)
+        if (keep <= 0 || pendingQueue.isEmpty()) return
+        val head = pendingQueue.take(keep)
+        val rest = pendingQueue.drop(keep)
+        val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
+        val related = if (bv.isBlank()) {
+            emptyList()
+        } else {
+            runCatching { biliApi.relatedTracks(bv, 18) }.getOrDefault(emptyList())
+        }
+        if (related.isEmpty() && rest.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
+        val state = recommendationEngine.buildInterestState(events, now)
+        val headIds = head.mapTo(hashSetOf()) { it.id }
+        val played = sessionSeenIds.toSet()
+        val context = FeedContext(
+            nowMs = now,
+            limit = (rest.size + 12).coerceIn(12, 28),
+            sessionSeenIds = played,
+            queueIds = headIds,
+            recentQueue = head.takeLast(4),
+            mutedTopics = mutedTopicsOf(state, now),
+            mutedAuthors = mutedAuthorsOf(state, now),
+            sourceId = "recommend",
+        )
+        val pool = linkedMapOf<String, ScoredTrack>()
+        fun put(t: Track, source: String) {
+            if (t.id in headIds || t.id in played) return
+            val p = ContentProfileParser.profileFromTrack(t)
+            val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
+            val prev = pool[t.id]
+            if (prev == null || sc.score > prev.score) pool[t.id] = sc
+        }
+        related.forEach { put(it, "related-like") }
+        rest.forEach { put(it, "related") }
+        if (pool.isEmpty()) return
+        val (next, _) = recommendationReRanker.rerankWithReasons(pool.values.toList(), context)
+        if (next.isEmpty()) return
+        pendingQueue = head + next
+        _queueTracks.value = pendingQueue
+        _recommend.update { it.copy(feed = pendingQueue) }
+    }
+
     private fun realtimeQuota(
         event: RecommendationEvent,
         nowMs: Long,
@@ -1325,7 +1376,6 @@ class AppViewModel(
             }
             if (placed) {
                 insertedIds.add(track.id)
-                sessionSeenIds.add(track.id)
                 val ts = System.currentTimeMillis()
                 ContentProfileParser.profileFromTrack(track)
                     .topicKeys.filter { it != "unknown" }
@@ -1348,7 +1398,6 @@ class AppViewModel(
         for (track in tracks) {
             if (queue.any { it.id == track.id }) continue
             queue.add(at, track)
-            sessionSeenIds.add(track.id)
             at++
             added++
         }
@@ -4575,7 +4624,6 @@ class AppViewModel(
                 Triple(emptyList(), sessionRecent.asReversed().distinctBy { t -> t.id }, false)
             }
             val (feed, recent, loggedIn) = pack
-            feed.forEach { sessionSeenIds.add(it.id) }
             val shouldAutoStart = autoStart &&
                 !suppressRecommendAutoPlay &&
                 feed.isNotEmpty() &&
@@ -4732,8 +4780,9 @@ class AppViewModel(
             val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
             if (bv.isBlank()) continue
             val related = runCatching { biliApi.relatedTracks(bv, 18) }.getOrDefault(emptyList())
+            val src = if (seed.id in freshSeedIds) "related-like" else "related"
             val seedBonus = if (seed.id in freshSeedIds) 0.9 else 0.0
-            for (t in related) offer(t, "related", seedBonus)
+            for (t in related) offer(t, src, seedBonus)
         }
 
         // 2) 作者向搜索（常听的 UP）
@@ -4865,7 +4914,7 @@ class AppViewModel(
                     if (bv.isBlank()) continue
                     runCatching {
                         biliApi.relatedTracks(bv, if (thrift) 8 else 18)
-                    }.getOrDefault(emptyList()).forEach { putNew(it, "related", 0.9) }
+                    }.getOrDefault(emptyList()).forEach { putNew(it, "related-like", 0.9) }
                 }
 
                 for (seed in tailSeeds) {
@@ -4927,8 +4976,6 @@ class AppViewModel(
                 val (add, _) = recommendationReRanker.rerankWithReasons(batch.values.toList(), context)
                 if (add.isEmpty()) return@withContext
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    add.forEach { sessionSeenIds.add(it.id) }
-                    // 控制会话 seen 膨胀
                     while (sessionSeenIds.size > 800) {
                         val first = sessionSeenIds.firstOrNull() ?: break
                         sessionSeenIds.remove(first)
@@ -5032,7 +5079,6 @@ class AppViewModel(
                     return@launch
                 }
 
-                built.forEach { sessionSeenIds.add(it.id) }
                 _recommend.update {
                     it.copy(
                         feed = built,
@@ -5069,7 +5115,6 @@ class AppViewModel(
 
     private fun startRecommendQueue(feed: List<Track>) {
         if (feed.isEmpty()) return
-        feed.forEach { sessionSeenIds.add(it.id) }
         // 推荐流：不 loop 回第一首；靠无限续刷
         playTrack(
             feed.first(),

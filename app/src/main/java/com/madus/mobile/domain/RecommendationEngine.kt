@@ -122,14 +122,14 @@ class RecommendationEngine {
         val longTermAffinity = topics.sumOf { state.longTermTopics[it] ?: 0.0 }
 
         val sourceQuality = when (source) {
-            "realtime-related" -> 1.0
-            "related" -> 0.85
+            "realtime-related", "related-like" -> 1.0
             "homepage" -> 0.75
             "daily" -> 0.7
             "history" -> 0.7
             "search" -> 0.65
+            "related" -> 0.5
             "liked", "local" -> 0.6
-            "popular", "explore" -> 0.5
+            "popular", "explore" -> 0.55
             else -> 0.4
         }
 

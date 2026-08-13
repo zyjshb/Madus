@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.47：推荐池信号/冷却/续刷优化
-        versionCode = 267
-        versionName = "1.14.47"
+        // 1.14.48：评论图可放大；推荐不再把未看当已看
+        versionCode = 268
+        versionName = "1.14.48"
         vectorDrawables.useSupportLibrary = true
     }
 

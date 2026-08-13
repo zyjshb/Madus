@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.48",
+            date = "2026-08-13",
+            changed = listOf(
+                "推荐：只有播过才算看过；点赞后会重排后面几条",
+            ),
+            fixed = listOf(
+                "评论里的图片可以点开放大",
+            ),
+        ),
+        Entry(
             version = "1.14.47",
             date = "2026-08-13",
             changed = listOf(
