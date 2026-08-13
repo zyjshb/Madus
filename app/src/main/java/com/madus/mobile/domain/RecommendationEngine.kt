@@ -44,6 +44,8 @@ class RecommendationEngine {
                     age <= RecommendationTuning.REALTIME_TTL_MS
                 ) {
                     skipCounts.getOrPut(topic) { mutableListOf() }.add(event.occurredAtMs)
+                    hourlyTopics[topic] = (hourlyTopics[topic] ?: 0.0) +
+                        decayed(event.type.weight, age, RecommendationTuning.NEGATIVE_HALF_LIFE_MS)
                 }
             }
 
@@ -133,12 +135,11 @@ class RecommendationEngine {
 
         val fresh = track.id !in context.sessionSeenIds && track.id !in context.queueIds
         val freshness = if (fresh) 1.0 else 0.0
-        val novelty = if (state.longTermTopics.isNotEmpty() &&
-            topics.none { state.longTermTopics.containsKey(it) }
-        ) {
-            0.8
-        } else {
-            0.0
+        val novelty = when {
+            state.longTermTopics.isNotEmpty() &&
+                topics.none { state.longTermTopics.containsKey(it) } -> 0.8
+            state.longTermTopics.isEmpty() && (source == "popular" || source == "explore") -> 0.5
+            else -> 0.0
         }
 
         val negativePenalty = topics.count { topic ->
@@ -193,6 +194,8 @@ class RecommendationEngine {
             explore = source == "popular" || source == "explore",
             realtime = source == "realtime-related",
             dailyBaseline = source == "daily",
+            topicKeys = topics.toSet(),
+            authorKey = author,
         )
     }
 

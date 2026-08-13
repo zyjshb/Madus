@@ -60,6 +60,8 @@ data class ScoredTrack(
     val explore: Boolean = false,
     val realtime: Boolean = false,
     val dailyBaseline: Boolean = false,
+    val topicKeys: Set<String> = emptySet(),
+    val authorKey: String? = null,
 )
 
 data class FeedContext(

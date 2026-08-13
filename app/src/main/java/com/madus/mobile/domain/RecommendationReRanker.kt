@@ -63,8 +63,10 @@ class RecommendationReRanker {
 
         val window4 = picked.takeLast(4)
         val window6 = picked.takeLast(6)
-        val author = authorOf(candidate.track)
-        val topics = topicsOf(candidate.track)
+        val author = candidate.authorKey ?: authorOf(candidate.track)
+        val topics = candidate.topicKeys.ifEmpty { topicsOf(candidate.track) }
+        if (topics.any { it in context.mutedTopics }) return false
+        if (author != null && author in context.mutedAuthors) return false
 
         val authorLimit = when {
             relaxation >= 2 -> Int.MAX_VALUE
@@ -77,9 +79,9 @@ class RecommendationReRanker {
             else -> RecommendationTuning.MAX_SAME_TOPIC_IN_WINDOW_4
         }
 
-        if (author != null && window4.count { authorOf(it.track) == author } >= authorLimit) return false
+        if (author != null && window4.count { authorOf(it) == author } >= authorLimit) return false
         if (topics.isNotEmpty() &&
-            window4.count { topicsOf(it.track).any { t -> t in topics } } >= topicLimit
+            window4.count { topicsOf(it).any { t -> t in topics } } >= topicLimit
         ) {
             return false
         }
@@ -89,7 +91,7 @@ class RecommendationReRanker {
                 return false
             }
             val realtimeTopicIn6 = window6.count {
-                it.realtime && topicsOf(it.track).any { t -> t in topics }
+                it.realtime && topicsOf(it).any { t -> t in topics }
             }
             if (realtimeTopicIn6 >= 2) return false
             for (topic in topics) {
@@ -110,10 +112,16 @@ class RecommendationReRanker {
         return true
     }
 
+    private fun authorOf(scored: ScoredTrack): String? =
+        scored.authorKey ?: authorOf(scored.track)
+
     private fun authorOf(track: Track): String? {
         val author = track.artist.trim()
         return author.takeIf { it.isNotBlank() && !it.equals("Bilibili", ignoreCase = true) }?.lowercase()
     }
+
+    private fun topicsOf(scored: ScoredTrack): Set<String> =
+        scored.topicKeys.ifEmpty { topicsOf(scored.track) }
 
     private fun topicsOf(track: Track): Set<String> =
         ContentProfileParser.profileFromTrack(track).topicKeys.filter { it != "unknown" }.toSet()

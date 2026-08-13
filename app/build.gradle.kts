@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.46：听歌默认较高码率 + 精听；迷你条点回推荐电台
-        versionCode = 266
-        versionName = "1.14.46"
+        // 1.14.47：推荐池信号/冷却/续刷优化
+        versionCode = 267
+        versionName = "1.14.47"
         vectorDrawables.useSupportLibrary = true
     }
 

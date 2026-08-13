@@ -29,6 +29,15 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.14.47",
+            date = "2026-08-13",
+            changed = listOf(
+                "推荐：长视频看一半才算喜欢，很快划走会降这类",
+                "连着划走同一类，后面先躲开",
+                "刚点赞会搅动后面几条，续刷也不再一条 related 就停",
+            ),
+        ),
+        Entry(
             version = "1.14.46",
             date = "2026-08-13",
             changed = listOf(

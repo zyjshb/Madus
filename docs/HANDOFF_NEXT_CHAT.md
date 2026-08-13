@@ -2,11 +2,11 @@
 
 **日期：** 2026-08-13  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.14.46` / versionCode `266`  
-**正式包：** `and/apk/Madus-1.14.46.apk`  
+**当前版本：** `1.14.47` / versionCode `267`  
+**正式包：** `and/apk/Madus-1.14.47.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus  
-**最新 commit：** `a754b8d` — feat: listen high-bitrate default and studio fx (1.14.46)
+**最新 commit：**（打包后回填）— feat: tighter recommend signals and feed expand (1.14.47)
 
 ---
 
@@ -157,6 +157,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本/项 | 内容 | 是否上传 |
 |---------|------|----------|
+| **1.14.47** | 推荐：跳过/半播极性、冷却硬挡、点赞搅动后续、续刷加宽 | 打包上传中 |
 | **1.14.46** | 听歌默认较高码率 + 精听；迷你条点回推荐电台 | **已传** 双仓 |
 | **1.14.45** | 听歌体感（音质除外）：加载/错误、循环、喜欢、进度、音效、迷你条、切歌先换封面 | **已传** 双仓 |
 | **1.14.44** | 修视频上下滑进度记忆：上滑再滑回从上次进度续播；听歌切歌仍从头 | **已传** 双仓 |

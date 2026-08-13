@@ -22,6 +22,7 @@ import com.madus.mobile.domain.AuthSession
 import com.madus.mobile.domain.ContentProfile
 import com.madus.mobile.domain.ContentProfileParser
 import com.madus.mobile.domain.FeedContext
+import com.madus.mobile.domain.InterestState
 import com.madus.mobile.domain.MusicSourceType
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.PlayerCommand
@@ -1146,7 +1147,7 @@ class AppViewModel(
                 val dur = pb.durationMs
                 if (pos < 1_000L) continue
                 val threshold50 = if (dur > 0L) {
-                    minOf(dur / 2L, RecommendationTuning.WATCH_50_MIN_MS)
+                    maxOf(dur / 2L, RecommendationTuning.WATCH_50_MIN_MS).coerceAtMost(dur)
                 } else {
                     RecommendationTuning.WATCH_50_MIN_MS
                 }
@@ -1168,7 +1169,10 @@ class AppViewModel(
         if (t.id in sessionReplayedIds) return
         val dur = pb.durationMs
         val threshold = if (dur > 0L) {
-            maxOf(RecommendationTuning.SKIP_FAST_MIN_MS, dur / 100 * 15)
+            minOf(
+                RecommendationTuning.SKIP_FAST_MIN_MS,
+                maxOf(dur / 100 * 15, 5_000L),
+            )
         } else {
             RecommendationTuning.SKIP_FAST_MIN_MS
         }
@@ -1253,6 +1257,8 @@ class AppViewModel(
             sessionSeenIds = existing,
             queueIds = queueIds,
             recentQueue = pendingQueue.drop((pendingIndex - 2).coerceAtLeast(0)).take(6),
+            mutedTopics = mutedTopicsOf(state, now),
+            mutedAuthors = mutedAuthorsOf(state, now),
             sourceId = "recommend",
             realtimeTopicQuota = realtimeQuota(event, now),
         )
@@ -1264,7 +1270,11 @@ class AppViewModel(
 
         val (_, picked) = recommendationReRanker.rerankWithReasons(scored, context)
         if (picked.isEmpty()) return
-        val inserted = softInsertRealtime(picked.map { it.track }, pendingIndex)
+        val extras = picked.map { it.track }
+        val inserted = softInsertRealtime(extras, pendingIndex)
+        if (inserted.isEmpty()) {
+            spliceAfter(pendingIndex + 5, extras.take(3))
+        }
         if (inserted.isNotEmpty()) {
             val rows = picked.filter { it.track.id in inserted }
                 .map { "插:${it.track.title.take(14)} ${it.reason}" }
@@ -1295,7 +1305,7 @@ class AppViewModel(
         for (track in newTracks.take(2)) {
             if (queue.any { it.id == track.id }) continue
             var placed = false
-            for (offset in 2..4) {
+            for (offset in 2..8) {
                 val idx = currentIndex + offset
                 if (idx > queue.size) break
                 if (idx >= queue.size) {
@@ -1328,6 +1338,37 @@ class AppViewModel(
         _recommend.update { it.copy(feed = queue) }
         return insertedIds
     }
+
+    /** 把相关条塞到更后面，不碰当前和下一条。 */
+    private fun spliceAfter(index: Int, tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        val queue = pendingQueue.toMutableList()
+        var at = index.coerceIn(0, queue.size)
+        var added = 0
+        for (track in tracks) {
+            if (queue.any { it.id == track.id }) continue
+            queue.add(at, track)
+            sessionSeenIds.add(track.id)
+            at++
+            added++
+        }
+        if (added == 0) return
+        pendingQueue = queue
+        _queueTracks.value = queue
+        _recommend.update { it.copy(feed = queue) }
+    }
+
+    private fun mutedTopicsOf(state: InterestState, nowMs: Long): Set<String> =
+        state.mutedTopics
+            .filter { (key, until) -> until > nowMs && !key.startsWith("author:") }
+            .keys
+
+    private fun mutedAuthorsOf(state: InterestState, nowMs: Long): Set<String> =
+        state.mutedTopics
+            .filter { (key, until) -> until > nowMs && key.startsWith("author:") }
+            .keys
+            .map { it.removePrefix("author:") }
+            .toSet()
 
     private fun topicsOverlap(a: Track?, b: Track): Boolean {
         if (a == null) return false
@@ -4662,16 +4703,18 @@ class AppViewModel(
             sessionSeenIds = exclude,
             queueIds = emptySet(),
             recentQueue = recent.take(8),
+            mutedTopics = mutedTopicsOf(state, now),
+            mutedAuthors = mutedAuthorsOf(state, now),
             sourceId = "recommend",
         )
         val scoredPool = linkedMapOf<String, ScoredTrack>()
 
-        fun offer(t: Track, source: String) {
+        fun offer(t: Track, source: String, bonus: Double = 0.0) {
             if (t.id in exclude) return
             val p = profiles[profileKey(t)] ?: ContentProfileParser.profileFromTrack(t, now)
             val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
             val hourlyJitter = ((t.id.hashCode() xor hourSalt).toUInt() % 80u).toDouble() / 100.0
-            val withJitter = sc.copy(score = sc.score + hourlyJitter)
+            val withJitter = sc.copy(score = sc.score + hourlyJitter + bonus)
             val prev = scoredPool[t.id]
             if (prev == null || withJitter.score > prev.score) scoredPool[t.id] = withJitter
         }
@@ -4689,8 +4732,8 @@ class AppViewModel(
             val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
             if (bv.isBlank()) continue
             val related = runCatching { biliApi.relatedTracks(bv, 18) }.getOrDefault(emptyList())
-            val seedW = if (seed.id in freshSeedIds) 9.2 - i * 0.12 else 7.4 - i * 0.1
-            for (t in related) offer(t, "related")
+            val seedBonus = if (seed.id in freshSeedIds) 0.9 else 0.0
+            for (t in related) offer(t, "related", seedBonus)
         }
 
         // 2) 作者向搜索（常听的 UP）
@@ -4803,28 +4846,29 @@ class AppViewModel(
                     sessionSeenIds = existing,
                     queueIds = existing,
                     recentQueue = tailSeeds,
+                    mutedTopics = mutedTopicsOf(state, now),
+                    mutedAuthors = mutedAuthorsOf(state, now),
                     sourceId = "recommend",
                 )
                 val batch = linkedMapOf<String, ScoredTrack>()
-                fun putNew(t: Track, source: String) {
+                fun putNew(t: Track, source: String, bonus: Double = 0.0) {
                     if (t.id in existing) return
                     val p = profiles[profileKey(t)] ?: ContentProfileParser.profileFromTrack(t, now)
                     val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
+                    val bumped = if (bonus == 0.0) sc else sc.copy(score = sc.score + bonus)
                     val prev = batch[t.id]
-                    if (prev == null || sc.score > prev.score) batch[t.id] = sc
+                    if (prev == null || bumped.score > prev.score) batch[t.id] = bumped
                 }
 
                 for (seed in freshLikeSeeds) {
-                    if (batch.size >= minAdd + if (thrift) 2 else 10) break
                     val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
                     if (bv.isBlank()) continue
                     runCatching {
                         biliApi.relatedTracks(bv, if (thrift) 8 else 18)
-                    }.getOrDefault(emptyList()).forEach { putNew(it, "related") }
+                    }.getOrDefault(emptyList()).forEach { putNew(it, "related", 0.9) }
                 }
 
                 for (seed in tailSeeds) {
-                    if (batch.size >= minAdd + if (thrift) 2 else 10) break
                     val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
                     if (bv.isBlank()) continue
                     runCatching {
@@ -4930,16 +4974,25 @@ class AppViewModel(
                     )
                 }
 
-                // 优先复用已刷好的推荐列表；仅在空列表或非推荐源时重拉
+                // 有近 15 分钟新赞就重算，别抱着启动时那批旧列表
+                val likedInteractions = runCatching { likedStore.interactions() }.getOrDefault(emptyList())
+                val recentLikeIds = likedInteractions
+                    .filter { it.likedAtMs >= System.currentTimeMillis() - HOUR_MS }
+                    .mapTo(linkedSetOf<String>()) { it.track.id }
+                val veryFreshLike = likedInteractions.any {
+                    it.likedAtMs >= System.currentTimeMillis() - 15 * 60_000L
+                }
                 val reuse = _recommend.value.feed.takeIf {
-                    it.isNotEmpty() && _recommend.value.sourceId == "recommend"
+                    it.isNotEmpty() &&
+                        _recommend.value.sourceId == "recommend" &&
+                        !veryFreshLike
                 }
                 val built = if (reuse != null) {
                     reuse
                 } else {
                     runCatching {
                         withContext(Dispatchers.IO) {
-                            val liked = runCatching { likedStore.tracks() }.getOrDefault(emptyList())
+                            val liked = likedInteractions.map { it.track }
                             val recent = sessionRecent.asReversed().distinctBy { it.id }
                             val localSample = runCatching {
                                 localPl.listNonEmpty().flatMap { it.tracks }.shuffled().take(12)
@@ -4950,6 +5003,7 @@ class AppViewModel(
                                 localSample = localSample,
                                 limit = 40,
                                 excludeExtra = sessionSeenIds,
+                                recentLikeIds = recentLikeIds,
                             )
                         }
                     }.getOrDefault(emptyList())
