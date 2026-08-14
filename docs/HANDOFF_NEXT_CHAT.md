@@ -1,9 +1,9 @@
 # Madus 手机版 · 核心记忆（下机交接）
 
-**日期：** 2026-08-14  
+**日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.16.5` / versionCode `284`  
-**正式包：** `and/apk/Madus-1.16.5.apk`  
+**当前版本：** `1.16.6` / versionCode `285`  
+**正式包：** `and/apk/Madus-1.16.6.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 

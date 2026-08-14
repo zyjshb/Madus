@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.16.6",
+            date = "2026-08-15",
+            changed = listOf(
+                "画境迷你条点开进电台，跟简约一样，不再进独立播放页",
+            ),
+            fixed = listOf(
+                "画境标题和列表字还是黑的，亮壁纸上看不见",
+            ),
+        ),
+        Entry(
             version = "1.16.5",
             date = "2026-08-15",
             changed = listOf(

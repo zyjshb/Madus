@@ -85,6 +85,7 @@ fun SearchScreen(
             Text(
                 text = if (replaceHintTitle != null) "换歌" else "搜索",
                 style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onBackground,
             )
             if (onOpenAiSearch != null && replaceHintTitle == null) {
                 Text(
@@ -116,6 +117,7 @@ fun SearchScreen(
                     Text(
                         replaceHintTitle,
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 2,
                     )
                     Text(

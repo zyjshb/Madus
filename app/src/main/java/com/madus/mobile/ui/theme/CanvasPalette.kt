@@ -21,7 +21,7 @@ data class CanvasPalette(
             onBg = CanvasPaper,
             onMuted = CanvasPaper.copy(alpha = 0.72f),
             isDark = true,
-            minDim = 0.48f,
+            minDim = 0.56f,
         )
     }
 }
@@ -40,7 +40,7 @@ fun extractCanvasPalette(path: String?): CanvasPalette {
             val dominant = pal.dominantSwatch ?: pal.mutedSwatch ?: return CanvasPalette.Fallback
             val lum = ColorUtils.calculateLuminance(dominant.rgb)
             // 压暗之后几乎总是深底，字用浅色；亮图把最低压暗抬高
-            val minDim = (0.34f + lum.toFloat() * 0.48f).coerceIn(0.40f, 0.74f)
+            val minDim = (0.42f + lum.toFloat() * 0.48f).coerceIn(0.50f, 0.78f)
             val rawAccent = pal.vibrantSwatch?.rgb
                 ?: pal.lightVibrantSwatch?.rgb
                 ?: pal.darkVibrantSwatch?.rgb

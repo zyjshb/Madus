@@ -140,6 +140,7 @@ fun MeScreen(
                                 "游客"
                             },
                             style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onBackground,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

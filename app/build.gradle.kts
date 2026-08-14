@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // 1.16.5：电台不叠迷你条；换图/固定崩溃；壁纸配色
-        versionCode = 284
-        versionName = "1.16.5"
+        versionCode = 285
+        versionName = "1.16.6"
         vectorDrawables.useSupportLibrary = true
     }
 

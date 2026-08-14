@@ -1,11 +1,16 @@
 package com.madus.mobile.ui.theme
 
+import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowInsetsControllerCompat
 import com.madus.mobile.data.AppearanceMode
 import com.madus.mobile.data.ColorTheme
 import com.madus.mobile.data.LiquidAppearance
@@ -25,12 +30,14 @@ fun MadusTheme(
     content: @Composable () -> Unit,
 ) {
     if (visualTheme == VisualTheme.Canvas) {
-        val liquidDark = liquidDark(liquidAppearance, darkTheme)
+        // 壁纸当深底：字/图标永远浅色。透明 Scaffold 不会自己设 LocalContentColor，
+        // 缺了这一层就会落到默认黑字，亮图上直接看不见。
         val palette = remember(wallpaperPath, wallpaperStamp) { extractCanvasPalette(wallpaperPath) }
-        val dim = maxOf(wallpaperDim, palette.minDim)
+        val ink = CanvasPaper
+        val dim = maxOf(wallpaperDim, palette.minDim, 0.52f)
         val tokens = LiquidTokens.of(
             tint = glassTint,
-            dark = liquidDark,
+            dark = true,
             wallpaperPath = wallpaperPath,
             wallpaperDim = dim,
             wallpaperStamp = wallpaperStamp,
@@ -46,13 +53,24 @@ fun MadusTheme(
             panelAlpha = tokens.fillAlpha.coerceIn(0.22f, 0.38f),
             cardElevation = 0.dp,
         )
+        val view = LocalView.current
+        if (!view.isInEditMode) {
+            SideEffect {
+                val window = (view.context as? Activity)?.window ?: return@SideEffect
+                WindowInsetsControllerCompat(window, view).apply {
+                    isAppearanceLightStatusBars = false
+                    isAppearanceLightNavigationBars = false
+                }
+            }
+        }
         CompositionLocalProvider(
             LocalVisualTheme provides VisualTheme.Canvas,
             LocalLiquidTokens provides tokens,
             LocalAppearance provides appearanceForFallback,
+            LocalContentColor provides ink,
         ) {
             MaterialTheme(
-                colorScheme = liquidColorScheme(liquidDark, palette.accent, palette.onBg),
+                colorScheme = liquidColorScheme(dark = true, accent = palette.accent, onBg = ink),
                 typography = LiquidTypography,
                 content = content,
             )

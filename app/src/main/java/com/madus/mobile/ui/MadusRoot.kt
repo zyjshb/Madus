@@ -333,6 +333,7 @@ fun MadusRoot(
         modifier = modifier.fillMaxSize(),
         containerColor = if (liquid) androidx.compose.ui.graphics.Color.Transparent
         else MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (!liquid && (showTabChrome || showPlaylistMini)) {
@@ -1245,9 +1246,7 @@ fun MadusRoot(
                 onToggle = vm::togglePlay,
                 onPrevious = vm::previous,
                 onNext = vm::next,
-                onOpenMini = {
-                    nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true }
-                },
+                onOpenMini = { openRecommendPlayer() },
                 onChromeHeightPx = { px ->
                     chromeBottom = with(density) { px.toDp() } + LiquidChromeMetrics.contentExtra
                 },

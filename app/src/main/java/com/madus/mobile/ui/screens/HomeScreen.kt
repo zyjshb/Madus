@@ -119,6 +119,7 @@ fun HomeScreen(
                 Text(
                     text = state.greeting,
                     style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -387,7 +388,12 @@ private fun QuickCell(
         )
         Spacer(Modifier.width(10.dp))
         Column {
-            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+            )
             Text(
                 subtitle,
                 style = MaterialTheme.typography.labelSmall,
@@ -413,6 +419,7 @@ private fun CoverPlaylistCard(
         Text(
             text = playlist.title,
             style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
