@@ -3,7 +3,6 @@ package com.madus.mobile.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -16,49 +15,52 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.madus.mobile.data.LiquidAppearance
 
+/** 画境：香槟金压在照片上，不是系统蓝。 */
+val CanvasGold = Color(0xFFD8C4A4)
+val CanvasGoldSoft = Color(0xFFE8D5B5)
+val CanvasInk = Color(0xFF07090C)
+val CanvasPaper = Color(0xFFF4EFE6)
+
 @Immutable
 data class LiquidTokens(
     val tint: Float = 0.42f,
-    val dark: Boolean = false,
-    val cornerXs: Dp = 12.dp,
-    val cornerSm: Dp = 18.dp,
-    val cornerCard: Dp = 22.dp,
-    val cornerSheet: Dp = 32.dp,
+    val dark: Boolean = true,
+    val cornerCover: Dp = 10.dp,
+    val cornerGroup: Dp = 14.dp,
+    val cornerSheet: Dp = 28.dp,
+    val cornerAction: Dp = 14.dp,
+    val cornerNowPlaying: Dp = 22.dp,
     val cornerPill: Dp = 999.dp,
+    val hazeContainer: Color = Color(0xFF0A0C10),
+    val wallpaperPath: String? = null,
+    val wallpaperDim: Float = 0.55f,
 ) {
     val fillAlpha: Float
-        get() = 0.55f + tint * 0.30f
+        get() = (0.22f + tint * 0.36f).coerceIn(0.22f, 0.58f)
 
     val glassFill: Color
-        get() = if (dark) {
-            Color(0xFF2A2A30).copy(alpha = 0.62f + tint * 0.26f)
-        } else {
-            Color(0xFFF8FAFC).copy(alpha = fillAlpha)
-        }
-
-    val glassFillStrong: Color
-        get() = if (dark) {
-            Color(0xFF32323A).copy(alpha = 0.78f + tint * 0.16f)
-        } else {
-            Color.White.copy(alpha = (0.72f + tint * 0.20f).coerceAtMost(0.92f))
-        }
+        get() = Color(0xFF101318).copy(alpha = fillAlpha)
 
     val rim: Color
-        get() = Color.White.copy(alpha = if (dark) 0.22f else 0.70f)
+        get() = Color.White.copy(alpha = 0.16f)
 
-    val edge: Color
-        get() = Color.Black.copy(alpha = if (dark) 0.45f else 0.10f)
-
-    val specular: Float
-        get() = if (dark) 0.22f else 0.55f - tint * 0.18f
+    val goldRim: Color
+        get() = CanvasGold.copy(alpha = 0.55f)
 
     val accent: Color
-        get() = if (dark) Color(0xFF64B5FF) else Color(0xFF007AFF)
+        get() = CanvasGoldSoft
 
     companion object {
-        fun of(tint: Float, dark: Boolean) = LiquidTokens(
+        fun of(
+            tint: Float,
+            dark: Boolean,
+            wallpaperPath: String? = null,
+            wallpaperDim: Float = 0.55f,
+        ) = LiquidTokens(
             tint = tint.coerceIn(0f, 1f),
             dark = dark,
+            wallpaperPath = wallpaperPath,
+            wallpaperDim = wallpaperDim.coerceIn(0.25f, 0.82f),
         )
     }
 }
@@ -68,123 +70,106 @@ val LocalLiquidTokens = staticCompositionLocalOf { LiquidTokens() }
 @Composable
 fun liquidTokens(): LiquidTokens = LocalLiquidTokens.current
 
+object LiquidType {
+    val largeTitle = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
+        fontSize = 30.sp,
+        lineHeight = 36.sp,
+        letterSpacing = (-0.3).sp,
+    )
+    val title2 = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+    )
+    val title3 = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
+        fontSize = 20.sp,
+        lineHeight = 25.sp,
+    )
+    val headline = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
+        fontSize = 17.sp,
+        lineHeight = 22.sp,
+    )
+    val body = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
+    )
+    val subhead = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 14.sp,
+        lineHeight = 19.sp,
+    )
+    val footnote = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+    )
+    val caption = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 13.sp,
+    )
+}
+
+object LiquidChromeMetrics {
+    val hInset = 16.dp
+    val gap = 8.dp
+    val tabHeight = 58.dp
+    val miniHeight = 60.dp
+    val chromeBottom = 8.dp
+    val contentExtra = 16.dp
+    val edgeFade = 24.dp
+    fun contentBottom(showMini: Boolean): Dp =
+        (if (showMini) miniHeight + gap else 0.dp) + tabHeight + chromeBottom + contentExtra
+}
+
 fun liquidDark(appearance: LiquidAppearance, systemDark: Boolean): Boolean = when (appearance) {
-    LiquidAppearance.FollowSystem -> systemDark
+    LiquidAppearance.FollowSystem -> true
     LiquidAppearance.Light -> false
     LiquidAppearance.Dark -> true
 }
 
-fun liquidColorScheme(dark: Boolean) = if (dark) {
-    darkColorScheme(
-        primary = Color(0xFF64B5FF),
-        onPrimary = Color(0xFF001422),
-        secondary = Color(0xFFA1A1AA),
-        onSecondary = Color.White,
-        background = Color(0xFF0C0C0E),
-        onBackground = Color(0xFFF4F4F5),
-        surface = Color(0xFF1A1A1E),
-        onSurface = Color(0xFFF4F4F5),
-        surfaceVariant = Color(0xFF27272A),
-        onSurfaceVariant = Color(0xFFA1A1AA),
-        outline = Color(0xFF3F3F46),
-        outlineVariant = Color(0xFF27272A),
-        error = Color(0xFFFF453A),
-        onError = Color.White,
-    )
-} else {
-    lightColorScheme(
-        primary = Color(0xFF007AFF),
-        onPrimary = Color.White,
-        secondary = Color(0xFF6B7280),
-        onSecondary = Color.White,
-        background = Color(0xFFEEF1F6),
-        onBackground = Color(0xFF111113),
-        surface = Color(0xFFFFFFFF),
-        onSurface = Color(0xFF111113),
-        surfaceVariant = Color(0xFFE4E7EE),
-        onSurfaceVariant = Color(0xFF6B7280),
-        outline = Color(0xFFD0D5DD),
-        outlineVariant = Color(0xFFE4E7EE),
-        error = Color(0xFFFF3B30),
-        onError = Color.White,
-    )
-}
+fun liquidColorScheme(dark: Boolean) = darkColorScheme(
+    primary = CanvasGoldSoft,
+    onPrimary = Color(0xFF1A140C),
+    secondary = Color(0xFFC8BBA8),
+    onSecondary = Color.White,
+    background = CanvasInk,
+    onBackground = CanvasPaper,
+    surface = Color(0xFF161A1F),
+    onSurface = CanvasPaper,
+    surfaceVariant = Color(0xFF22262C),
+    onSurfaceVariant = Color(0xFFC8BBA8),
+    outline = Color(0x66D8C4A4),
+    outlineVariant = Color(0x3322262C),
+    error = Color(0xFFFF6B5C),
+    onError = Color.White,
+)
 
 val LiquidTypography = Typography(
-    displayLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Bold,
-        fontSize = 32.sp,
-        lineHeight = 38.sp,
-        letterSpacing = (-0.4).sp,
-    ),
-    displaySmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Bold,
-        fontSize = 32.sp,
-        lineHeight = 38.sp,
-        letterSpacing = (-0.4).sp,
-    ),
-    headlineMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-    ),
-    headlineSmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 26.sp,
-    ),
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp,
-    ),
-    titleMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
-    ),
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
-    ),
-    bodyMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
-    ),
-    bodySmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Normal,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-    ),
-    labelLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-    ),
-    labelMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
-    ),
+    displayLarge = LiquidType.largeTitle,
+    displaySmall = LiquidType.largeTitle,
+    headlineMedium = LiquidType.title2,
+    headlineSmall = LiquidType.title3,
+    titleLarge = LiquidType.headline,
+    titleMedium = LiquidType.headline,
+    bodyLarge = LiquidType.body,
+    bodyMedium = LiquidType.subhead,
+    bodySmall = LiquidType.footnote,
+    labelLarge = LiquidType.footnote,
+    labelMedium = LiquidType.footnote,
+    labelSmall = LiquidType.caption,
 )
 
 @Composable

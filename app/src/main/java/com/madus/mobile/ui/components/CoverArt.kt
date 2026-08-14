@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -22,6 +23,7 @@ import coil.request.ImageRequest
 import com.madus.mobile.data.AppearanceMode
 import com.madus.mobile.ui.theme.appearanceTokens
 import com.madus.mobile.ui.theme.isLiquidTheme
+import com.madus.mobile.ui.theme.liquidTokens
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -81,12 +83,15 @@ fun CoverArt(
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
     contentDescription: String? = null,
+    shape: Shape? = null,
 ) {
     val context = LocalContext.current
     val loader = remember { MadusImageLoader.get(context) }
     val tokens = appearanceTokens()
     val liquid = isLiquidTheme()
-    val coverShape = RoundedCornerShape(if (liquid) 18.dp else tokens.cornerSm)
+    val coverShape = shape ?: RoundedCornerShape(
+        if (liquid) liquidTokens().cornerCover else tokens.cornerSm,
+    )
     val sized = if (size > 0.dp) modifier.size(size) else modifier
 
     val normalized = normalizeCoverUrl(coverUrl)

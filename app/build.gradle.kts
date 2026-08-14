@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.15.9：底栏悬浮+全面屏提示；迷你条只暂停
-        versionCode = 278
-        versionName = "1.15.9"
+        // 1.16.3：画境电台舞台 + 私人 FM 整卡
+        versionCode = 282
+        versionName = "1.16.3"
         vectorDrawables.useSupportLibrary = true
     }
 

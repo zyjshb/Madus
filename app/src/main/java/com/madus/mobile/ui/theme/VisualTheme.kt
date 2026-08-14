@@ -7,4 +7,4 @@ import com.madus.mobile.data.VisualTheme
 val LocalVisualTheme = staticCompositionLocalOf { VisualTheme.Classic }
 
 @Composable
-fun isLiquidTheme(): Boolean = LocalVisualTheme.current == VisualTheme.LiquidGlass
+fun isLiquidTheme(): Boolean = LocalVisualTheme.current == VisualTheme.Canvas

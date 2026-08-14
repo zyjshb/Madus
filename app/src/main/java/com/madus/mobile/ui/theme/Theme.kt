@@ -17,24 +17,26 @@ fun MadusTheme(
     colorTheme: ColorTheme = ColorTheme.LineSketchMono,
     liquidAppearance: LiquidAppearance = LiquidAppearance.FollowSystem,
     glassTint: Float = 0.42f,
+    wallpaperPath: String? = null,
+    wallpaperDim: Float = 0.55f,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    if (visualTheme == VisualTheme.LiquidGlass) {
+    if (visualTheme == VisualTheme.Canvas) {
         val liquidDark = liquidDark(liquidAppearance, darkTheme)
-        val tokens = LiquidTokens.of(glassTint, liquidDark)
+        val tokens = LiquidTokens.of(glassTint, liquidDark, wallpaperPath, wallpaperDim)
         val appearanceForFallback = AppearanceTokens(
             mode = AppearanceMode.SoftGlass,
-            cornerXs = tokens.cornerXs,
-            cornerSm = tokens.cornerSm,
-            cornerMd = tokens.cornerCard,
-            cornerLg = tokens.cornerSheet,
+            cornerXs = 12.dp,
+            cornerSm = 12.dp,
+            cornerMd = 12.dp,
+            cornerLg = 28.dp,
             borderWidth = 0.6.dp,
             panelAlpha = tokens.fillAlpha,
             cardElevation = 0.dp,
         )
         CompositionLocalProvider(
-            LocalVisualTheme provides VisualTheme.LiquidGlass,
+            LocalVisualTheme provides VisualTheme.Canvas,
             LocalLiquidTokens provides tokens,
             LocalAppearance provides appearanceForFallback,
         ) {

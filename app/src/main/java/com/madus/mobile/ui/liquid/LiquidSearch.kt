@@ -11,28 +11,40 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.SearchUiState
+import com.madus.mobile.ui.theme.LiquidType
 import com.madus.mobile.ui.theme.liquidTokens
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -49,11 +61,13 @@ fun LiquidSearchScreen(
     onLoadMore: () -> Unit = {},
     replaceHintTitle: String? = null,
     onCancelReplace: (() -> Unit)? = null,
+    browseRecent: List<Track> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val focus = LocalFocusManager.current
     val listState = rememberLazyListState()
     val tokens = liquidTokens()
+    var fieldFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(listState, state.hasMore, state.loadingMore, state.results.size) {
         snapshotFlow {
@@ -67,150 +81,237 @@ fun LiquidSearchScreen(
             .collect { onLoadMore() }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 148.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.SpaceBetween,
+    val showSuggestions = state.suggestions.isNotEmpty()
+    val idle = state.query.isEmpty() && state.results.isEmpty() && !showSuggestions && replaceHintTitle == null
+
+    Box(modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                end = 20.dp,
+                top = 12.dp,
+                bottom = LocalLiquidChromeBottom.current,
+            ),
         ) {
-            Text(
-                if (replaceHintTitle != null) "换一首" else "搜索",
-                style = MaterialTheme.typography.displaySmall,
-            )
-            if (onOpenAiSearch != null && replaceHintTitle == null) {
-                GlassPill("AI 搜", selected = false, onClick = onOpenAiSearch)
-            }
-        }
-
-        if (!replaceHintTitle.isNullOrBlank()) {
-            Spacer(Modifier.height(14.dp))
-            GlassSurface(contentPadding = 14.dp) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("替换", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(replaceHintTitle, style = MaterialTheme.typography.bodyLarge)
-                    }
-                    if (onCancelReplace != null) {
-                        Text(
-                            "取消",
-                            color = tokens.accent,
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier
-                                .clickable(onClick = onCancelReplace)
-                                .padding(8.dp),
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            BasicTextField(
-                value = state.query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        focus.clearFocus()
-                        onSubmit()
-                    },
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                decorationBox = { inner ->
-                    if (state.query.isEmpty() && replaceHintTitle == null) {
-                        Text(
-                            "歌名、歌手、UP、BV",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    inner()
-                },
-            )
-        }
-
-        val showSuggestions = state.suggestions.isNotEmpty()
-        if (showSuggestions) {
-            Spacer(Modifier.height(12.dp))
-            GlassGroup {
-                state.suggestions.forEachIndexed { index, tip ->
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
                     Text(
-                        tip,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                focus.clearFocus()
-                                onSuggestionClick(tip)
-                            }
-                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        if (replaceHintTitle != null) "换一首" else "搜索",
+                        style = LiquidType.largeTitle,
+                        color = MaterialTheme.colorScheme.onBackground,
                     )
-                    if (index != state.suggestions.lastIndex) GlassDivider()
+                    if (onOpenAiSearch != null && replaceHintTitle == null) {
+                        Text(
+                            "AI 搜",
+                            style = LiquidType.footnote,
+                            color = tokens.accent,
+                            modifier = Modifier
+                                .heightIn(min = 44.dp)
+                                .clickable(onClick = onOpenAiSearch)
+                                .padding(horizontal = 8.dp, vertical = 12.dp),
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(Modifier.height(12.dp))
-        if (!showSuggestions) {
-            state.message?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(8.dp))
-            }
-            if (state.results.isNotEmpty() && state.total > 0) {
-                Text(
-                    if (state.hasMore || state.results.size < state.total) {
-                        "已显示 ${state.results.size} / ${state.total.coerceAtLeast(state.results.size)}"
-                    } else {
-                        "共 ${state.results.size} 条"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-            LazyColumn(
-                state = listState,
-                contentPadding = PaddingValues(bottom = 16.dp),
-            ) {
-                if (state.results.isNotEmpty()) {
-                    item {
-                        GlassGroup {
-                            state.results.forEachIndexed { i, track ->
-                                LiquidTrackRow(
-                                    track = track,
-                                    onClick = { onPlayTrack(track) },
-                                    onCollect = { onCollectTrack(track) },
+            if (!replaceHintTitle.isNullOrBlank()) {
+                item {
+                    Spacer(Modifier.height(14.dp))
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        Text("替换", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                replaceHintTitle,
+                                style = LiquidType.body,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (onCancelReplace != null) {
+                                Text(
+                                    "取消",
+                                    color = tokens.accent,
+                                    style = LiquidType.footnote,
+                                    modifier = Modifier
+                                        .clickable(onClick = onCancelReplace)
+                                        .padding(8.dp),
                                 )
-                                if (i != state.results.lastIndex) GlassDivider()
                             }
                         }
+                    }
+                }
+            }
+
+            item {
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LiquidSearchField(
+                        query = state.query,
+                        placeholder = if (replaceHintTitle == null) "歌曲、UP、BV" else "",
+                        onQueryChange = onQueryChange,
+                        onSubmit = {
+                            focus.clearFocus()
+                            onSubmit()
+                        },
+                        onFocusChange = { fieldFocused = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (fieldFocused || state.query.isNotEmpty()) {
+                        Text(
+                            "取消",
+                            style = LiquidType.footnote.copy(fontWeight = FontWeight.SemiBold),
+                            color = tokens.accent,
+                            modifier = Modifier
+                                .heightIn(min = 44.dp)
+                                .clickable {
+                                    onQueryChange("")
+                                    focus.clearFocus()
+                                }
+                                .padding(start = 10.dp, top = 12.dp, bottom = 12.dp),
+                        )
+                    }
+                }
+            }
+
+            if (showSuggestions) {
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    state.suggestions.forEach { tip ->
+                        Text(
+                            tip,
+                            style = LiquidType.body,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 44.dp)
+                                .clickable {
+                                    focus.clearFocus()
+                                    onSuggestionClick(tip)
+                                }
+                                .padding(vertical = 11.dp),
+                        )
+                    }
+                }
+            }
+
+            if (idle && browseRecent.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(22.dp))
+                    LiquidSectionLabel("最近听过")
+                    LiquidMusicShelf {
+                        browseRecent.take(12).forEach { track ->
+                            LiquidShelfCard(track.title, track.artist, track.coverUrl) {
+                                onPlayTrack(track)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!showSuggestions && !idle) {
+                item {
+                    Spacer(Modifier.height(14.dp))
+                    state.message?.let {
+                        Text(it, style = LiquidType.subhead, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    if (state.results.isNotEmpty() && state.total > 0) {
+                        Text(
+                            if (state.hasMore || state.results.size < state.total) {
+                                "已显示 ${state.results.size} / ${state.total.coerceAtLeast(state.results.size)}"
+                            } else {
+                                "共 ${state.results.size} 条"
+                            },
+                            style = LiquidType.footnote,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                    }
+                }
+                state.results.forEach { track ->
+                    item(key = track.id) {
+                        LiquidTrackRow(
+                            track = track,
+                            onClick = { onPlayTrack(track) },
+                            onMore = { onCollectTrack(track) },
+                            coverSize = 56.dp,
+                        )
                     }
                 }
                 if (state.loadingMore) {
                     item {
                         Text(
                             "加载更多…",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = LiquidType.subhead,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 16.dp),
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LiquidSearchField(
+    query: String,
+    placeholder: String,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.heightIn(min = 44.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Outlined.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = LiquidType.body.copy(color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { onFocusChange(it.isFocused) },
+                decorationBox = { inner ->
+                    if (query.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(
+                            placeholder,
+                            style = LiquidType.body,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    inner()
+                },
+            )
         }
     }
 }

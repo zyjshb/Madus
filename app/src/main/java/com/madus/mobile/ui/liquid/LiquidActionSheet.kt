@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -48,7 +49,10 @@ fun LiquidActionSheet(
     actions: List<LiquidSheetAction>,
     modifier: Modifier = Modifier,
 ) {
-    val accent = liquidTokens().accent
+    val tokens = liquidTokens()
+    val accent = tokens.accent
+    val actionShape = RoundedCornerShape(tokens.cornerAction)
+    val destructive = if (tokens.dark) Color(0xFFFF453A) else Color(0xFFFF3B30)
     Box(modifier = modifier.fillMaxSize()) {
         AnimatedVisibility(
             visible = visible,
@@ -66,7 +70,8 @@ fun LiquidActionSheet(
             visible = visible,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(start = 12.dp, end = 12.dp, bottom = 96.dp),
+                .navigationBarsPadding()
+                .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
             enter = slideInVertically(
                 animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
                 initialOffsetY = { it },
@@ -79,7 +84,7 @@ fun LiquidActionSheet(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = actionShape,
                 ) {
                     Column {
                         actions.forEachIndexed { i, action ->
@@ -91,7 +96,7 @@ fun LiquidActionSheet(
                                 ),
                                 color = when {
                                     !action.enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
-                                    action.destructive -> Color(0xFFFF3B30)
+                                    action.destructive -> destructive
                                     else -> accent
                                 },
                                 textAlign = TextAlign.Center,
@@ -115,7 +120,7 @@ fun LiquidActionSheet(
                 Spacer(Modifier.height(8.dp))
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = actionShape,
                     onClick = onDismiss,
                     contentPadding = 0.dp,
                 ) {

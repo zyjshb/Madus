@@ -72,6 +72,7 @@ data class HomeUiState(
     val message: String? = null,
     /** B 站头像，同步首页顶栏 */
     val avatarUrl: String? = null,
+    val biliLoggedIn: Boolean = false,
 )
 
 /** Play mode aligned with desktop cyclePlayMode */
@@ -1463,6 +1464,7 @@ class AppViewModel(
                 isLoading = false,
                 message = null,
                 avatarUrl = session?.avatarUrl,
+                biliLoggedIn = session?.isLoggedIn == true,
             )
             _recommend.update {
                 it.copy(likedIds = runCatching { likedStore.ids() }.getOrDefault(emptySet()))

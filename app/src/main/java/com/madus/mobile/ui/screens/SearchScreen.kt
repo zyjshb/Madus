@@ -53,6 +53,7 @@ fun SearchScreen(
     /** 换歌模式：顶部提示 + 点结果即替换 */
     replaceHintTitle: String? = null,
     onCancelReplace: (() -> Unit)? = null,
+    browseRecent: List<Track> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     if (isLiquidTheme()) {
@@ -67,6 +68,7 @@ fun SearchScreen(
             onLoadMore = onLoadMore,
             replaceHintTitle = replaceHintTitle,
             onCancelReplace = onCancelReplace,
+            browseRecent = browseRecent,
             modifier = modifier,
         )
         return

@@ -104,6 +104,8 @@ import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.components.SeekBar
 import com.madus.mobile.ui.components.ThinVideoProgress
 import com.madus.mobile.ui.components.normalizeCoverUrl
+import com.madus.mobile.ui.theme.isLiquidTheme
+import com.madus.mobile.ui.theme.liquidTokens
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -1011,6 +1013,11 @@ private fun MusicImmersiveMode(
             coverUrl = track?.coverUrl,
             size = 0.dp,
             modifier = Modifier.fillMaxWidth(0.86f).aspectRatio(1f),
+            shape = if (isLiquidTheme()) {
+                RoundedCornerShape(liquidTokens().cornerNowPlaying)
+            } else {
+                null
+            },
         )
         Spacer(Modifier.height(24.dp))
         Row(

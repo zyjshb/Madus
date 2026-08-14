@@ -117,6 +117,7 @@ fun RecommendScreen(
     onVideoModeChange: (Boolean) -> Unit = {},
     onFullscreen: () -> Unit = {},
     onOpenUp: () -> Unit = {},
+    onOpenNowPlaying: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (isLiquidTheme()) {
@@ -151,6 +152,7 @@ fun RecommendScreen(
             onVideoModeChange = onVideoModeChange,
             onFullscreen = onFullscreen,
             onOpenUp = onOpenUp,
+            onOpenNowPlaying = onOpenNowPlaying,
             modifier = modifier,
         )
         return

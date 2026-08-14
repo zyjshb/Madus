@@ -80,6 +80,9 @@ fun HomeScreen(
     onOpenRecentTab: () -> Unit = {},
     onOpenBiliList: () -> Unit = {},
     onOpenRadio: () -> Unit = {},
+    onOpenBiliLogin: () -> Unit = {},
+    onStartRadio: () -> Unit = {},
+    onNextRadio: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (isLiquidTheme()) {
@@ -94,6 +97,9 @@ fun HomeScreen(
             onOpenRecentTab = onOpenRecentTab,
             onOpenBiliList = onOpenBiliList,
             onOpenRadio = onOpenRadio,
+            onOpenBiliLogin = onOpenBiliLogin,
+            onStartRadio = onStartRadio,
+            onNextRadio = onNextRadio,
             modifier = modifier,
         )
         return

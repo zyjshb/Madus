@@ -4,8 +4,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -20,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +42,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -51,7 +51,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -85,7 +87,8 @@ import com.madus.mobile.data.VisualTheme
 import com.madus.mobile.ui.liquid.LiquidBackground
 import com.madus.mobile.ui.liquid.LiquidFloatingChrome
 import com.madus.mobile.ui.liquid.LocalHazeState
-import com.madus.mobile.ui.theme.isLiquidTheme
+import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
+import com.madus.mobile.ui.theme.LiquidChromeMetrics
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import com.madus.mobile.ui.screens.LibraryScreen
@@ -173,6 +176,7 @@ fun MadusRoot(
     val themeSettings by MadusApp.instance.themePrefs.flow.collectAsState(
         initial = ThemeSettings(),
     )
+    val liquid = themeSettings.visualTheme == VisualTheme.Canvas
     var showQualityPicker by remember { mutableStateOf(false) }
     var showSleepPicker by remember { mutableStateOf(false) }
     /** 清屏短视频内搜索浮层（不切 Tab，避免退出残留） */
@@ -271,7 +275,7 @@ fun MadusRoot(
             sourceLabel = sourceLabel,
             sourceId = sourceId,
         )
-        openRecommendPlayer()
+        if (!liquid) openRecommendPlayer()
     }
 
     /**
@@ -281,7 +285,7 @@ fun MadusRoot(
     fun playSearchAndOpen(track: com.madus.mobile.domain.Track) {
         vm.clearSearchFromImmersiveVideo()
         vm.playSearchTrack(track)
-        openRecommendPlayer()
+        if (!liquid) openRecommendPlayer()
     }
 
     LaunchedEffect(onRecommend) {
@@ -300,7 +304,6 @@ fun MadusRoot(
         vm.clearToast()
     }
 
-    val liquid = themeSettings.visualTheme == VisualTheme.LiquidGlass
     fun selectRootTab(tab: RootTab) {
         if (tab == RootTab.Home || tab == RootTab.Library) {
             runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
@@ -366,8 +369,18 @@ fun MadusRoot(
         },
     ) { padding ->
         val hazeState = rememberHazeState()
-        androidx.compose.runtime.CompositionLocalProvider(
+        val density = LocalDensity.current
+        val showMiniNow = liquid && playback.current != null &&
+            route != Routes.NOW_PLAYING && route != Routes.FULLSCREEN_VIDEO
+        var chromeBottom by remember {
+            mutableStateOf(LiquidChromeMetrics.contentBottom(showMiniNow))
+        }
+        LaunchedEffect(showMiniNow) {
+            chromeBottom = LiquidChromeMetrics.contentBottom(showMiniNow)
+        }
+        CompositionLocalProvider(
             LocalHazeState provides hazeState.takeIf { liquid },
+            LocalLiquidChromeBottom provides chromeBottom,
         ) {
         Box(Modifier.fillMaxSize()) {
         if (liquid) {
@@ -429,8 +442,7 @@ fun MadusRoot(
                 modifier = Modifier.fillMaxSize(),
                 enterTransition = {
                     if (liquid) {
-                        fadeIn(animationSpec = tween(240)) +
-                            scaleIn(initialScale = 0.985f, animationSpec = tween(280))
+                        fadeIn(animationSpec = tween(220))
                     } else {
                         fadeIn(animationSpec = tween(120))
                     }
@@ -471,17 +483,27 @@ fun MadusRoot(
                             }
                         },
                         onOpenRecentTab = {
-                            nav.navigate(RootTab.Recommend.route) {
-                                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                            if (liquid) {
+                                vm.openRecentPlaylist()
+                                nav.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                            } else {
+                                nav.navigate(RootTab.Recommend.route) {
+                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                                vm.setRecommendSegment(com.madus.mobile.ui.RecommendSegment.Recent)
                             }
-                            vm.setRecommendSegment(com.madus.mobile.ui.RecommendSegment.Recent)
                         },
                         onOpenBiliList = {
                             nav.navigate(Routes.BILI_FAVS) { launchSingleTop = true }
                         },
                         onOpenRadio = { openRecommendPlayer() },
+                        onOpenBiliLogin = { vm.requestLogin(MusicSourceType.BILIBILI) },
+                        onStartRadio = { vm.startRecommendIfReady() },
+                        onNextRadio = {
+                            if (playback.current != null) vm.next() else vm.startRecommendIfReady()
+                        },
                     )
                 }
                 composable(RootTab.Search.route) {
@@ -512,6 +534,7 @@ fun MadusRoot(
                         } else {
                             null
                         },
+                        browseRecent = home.recent,
                     )
                 }
                 composable(RootTab.Recommend.route) {
@@ -584,6 +607,9 @@ fun MadusRoot(
                                 }
                             }
                             vm.openUpSpace(t)
+                        },
+                        onOpenNowPlaying = {
+                            nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true }
                         },
                     )
                 }
@@ -794,6 +820,21 @@ fun MadusRoot(
                                 MadusApp.instance.themePrefs.setGlassTint(tint)
                             }
                         },
+                        onPickWallpaper = { uri ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setWallpaperFromUri(uri)
+                            }
+                        },
+                        onClearWallpaper = {
+                            scope.launch {
+                                MadusApp.instance.themePrefs.clearWallpaper()
+                            }
+                        },
+                        onWallpaperDim = { dim ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setWallpaperDim(dim)
+                            }
+                        },
                         onVideoMode = vm::setVideoMode,
                         onGestureMode = vm::setGestureMode,
                     )
@@ -887,7 +928,7 @@ fun MadusRoot(
                         onPlayTrack = { track, queue ->
                             // UP 投稿/合集详情也是分页；拉全量再入队，避免只有当前页
                             vm.playFromUpSpace(track, queue)
-                            openRecommendPlayer()
+                            if (!liquid) openRecommendPlayer()
                         },
                         onOpenSeason = vm::openUpSeason,
                         onCloseSeason = vm::closeUpSeason,
@@ -1151,14 +1192,34 @@ fun MadusRoot(
             }
         }
         if (liquid && (showTabChrome || showPlaylistMini)) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(LiquidChromeMetrics.edgeFade)
+                    .offset(y = -(chromeBottom - LiquidChromeMetrics.contentExtra))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                androidx.compose.ui.graphics.Color.Transparent,
+                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f),
+                            ),
+                        ),
+                    ),
+            )
             LiquidFloatingChrome(
                 route = route,
                 playback = playback,
-                showMini = playback.current != null && !onRecommend,
+                showMini = showMiniNow,
                 showTabs = showTabChrome,
                 onSelectTab = ::selectRootTab,
                 onToggle = vm::togglePlay,
-                onOpenMini = { openRecommendPlayer() },
+                onOpenMini = {
+                    nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true }
+                },
+                onChromeHeightPx = { px ->
+                    chromeBottom = with(density) { px.toDp() } + LiquidChromeMetrics.contentExtra
+                },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

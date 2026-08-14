@@ -1,5 +1,7 @@
 package com.madus.mobile.ui.liquid
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -24,14 +27,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.madus.mobile.data.AppearanceMode
 import com.madus.mobile.data.ColorTheme
 import com.madus.mobile.data.LiquidAppearance
 import com.madus.mobile.data.ThemeSettings
 import com.madus.mobile.data.VideoGestureMode
 import com.madus.mobile.data.VisualTheme
+import com.madus.mobile.ui.components.MadusImageLoader
+import com.madus.mobile.ui.theme.CanvasGold
+import com.madus.mobile.ui.theme.LiquidType
 import com.madus.mobile.ui.theme.liquidTokens
 
 @Composable
@@ -45,9 +56,15 @@ fun LiquidSettingsScreen(
     onLiquidAppearance: (LiquidAppearance) -> Unit,
     onGlassTint: (Float) -> Unit,
     onGestureMode: (VideoGestureMode) -> Unit,
+    onPickWallpaper: (String) -> Unit = {},
+    onClearWallpaper: () -> Unit = {},
+    onWallpaperDim: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val tokens = liquidTokens()
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onPickWallpaper(uri.toString())
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 32.dp),
@@ -55,7 +72,7 @@ fun LiquidSettingsScreen(
         item {
             LiquidPageHeader(
                 title = "主题",
-                subtitle = "两套排版，不是换一层颜色",
+                subtitle = "简约是线稿。画境是壁纸上的玻璃。",
                 onBack = onBack,
             )
         }
@@ -74,12 +91,12 @@ fun LiquidSettingsScreen(
                     preview = { ClassicMiniPreview() },
                 )
                 ThemePreviewCard(
-                    title = "液态玻璃",
-                    subtitle = "另排一版",
-                    selected = settings.visualTheme == VisualTheme.LiquidGlass,
-                    onClick = { onVisualTheme(VisualTheme.LiquidGlass) },
+                    title = "画境",
+                    subtitle = "壁纸 + 玻璃",
+                    selected = settings.visualTheme == VisualTheme.Canvas,
+                    onClick = { onVisualTheme(VisualTheme.Canvas) },
                     modifier = Modifier.weight(1f),
-                    preview = { LiquidMiniPreview() },
+                    preview = { CanvasMiniPreview(settings.wallpaperPath) },
                 )
             }
             Spacer(Modifier.height(22.dp))
@@ -89,7 +106,7 @@ fun LiquidSettingsScreen(
             item {
                 Column(Modifier.padding(horizontal = 20.dp)) {
                     LiquidSectionLabel("形态")
-                    GlassGroup {
+                    InsetGroup {
                         AppearanceMode.entries.forEachIndexed { i, mode ->
                             LiquidNavRow(
                                 title = mode.label,
@@ -99,28 +116,24 @@ fun LiquidSettingsScreen(
                                 },
                                 onClick = { onAppearance(mode) },
                                 trailing = {
-                                    if (settings.appearance == mode) {
-                                        Text("●", color = tokens.accent)
-                                    }
+                                    if (settings.appearance == mode) Text("●", color = tokens.accent)
                                 },
                             )
-                            if (i != AppearanceMode.entries.lastIndex) GlassDivider()
+                            if (i != AppearanceMode.entries.lastIndex) InsetDivider.text()
                         }
                     }
                     Spacer(Modifier.height(16.dp))
                     LiquidSectionLabel("颜色")
-                    GlassGroup {
+                    InsetGroup {
                         ColorTheme.entries.forEachIndexed { i, theme ->
                             LiquidNavRow(
                                 title = theme.label,
                                 onClick = { onColorTheme(theme) },
                                 trailing = {
-                                    if (settings.colorTheme == theme) {
-                                        Text("●", color = tokens.accent)
-                                    }
+                                    if (settings.colorTheme == theme) Text("●", color = tokens.accent)
                                 },
                             )
-                            if (i != ColorTheme.entries.lastIndex) GlassDivider()
+                            if (i != ColorTheme.entries.lastIndex) InsetDivider.text()
                         }
                     }
                 }
@@ -128,31 +141,38 @@ fun LiquidSettingsScreen(
         } else {
             item {
                 Column(Modifier.padding(horizontal = 20.dp)) {
-                    LiquidSectionLabel("深浅")
-                    GlassGroup {
-                        LiquidAppearance.entries.forEachIndexed { i, mode ->
-                            LiquidNavRow(
-                                title = mode.label,
-                                onClick = { onLiquidAppearance(mode) },
-                                trailing = {
-                                    if (settings.liquidAppearance == mode) {
-                                        Text("●", color = tokens.accent)
-                                    }
-                                },
+                    LiquidSectionLabel("壁纸")
+                    InsetGroup {
+                        LiquidNavRow("从相册选择", "铺满整页，字压在照片上", onClick = { pick.launch("image/*") })
+                        InsetDivider.text()
+                        LiquidNavRow("恢复默认", "深蓝渐变", onClick = onClearWallpaper)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LiquidSectionLabel("压暗")
+                    InsetGroup {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("透", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("实", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Slider(
+                                value = settings.wallpaperDim,
+                                onValueChange = onWallpaperDim,
+                                valueRange = 0.25f..0.82f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = tokens.accent,
+                                    activeTrackColor = tokens.accent,
+                                ),
                             )
-                            if (i != LiquidAppearance.entries.lastIndex) GlassDivider()
                         }
                     }
                     Spacer(Modifier.height(16.dp))
                     LiquidSectionLabel("玻璃")
-                    GlassSurface(contentPadding = 16.dp) {
-                        Column {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text("通透", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("着色", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    InsetGroup {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("通透", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("着色", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Slider(
                                 value = settings.glassTint,
@@ -172,7 +192,7 @@ fun LiquidSettingsScreen(
             Column(Modifier.padding(horizontal = 20.dp)) {
                 Spacer(Modifier.height(18.dp))
                 LiquidSectionLabel("短视频手势")
-                GlassGroup {
+                InsetGroup {
                     VideoGestureMode.entries.forEachIndexed { i, mode ->
                         LiquidNavRow(
                             title = mode.label,
@@ -182,7 +202,7 @@ fun LiquidSettingsScreen(
                                 if (gestureMode == mode) Text("●", color = tokens.accent)
                             },
                         )
-                        if (i != VideoGestureMode.entries.lastIndex) GlassDivider()
+                        if (i != VideoGestureMode.entries.lastIndex) InsetDivider.text()
                     }
                 }
             }
@@ -200,32 +220,24 @@ private fun ThemePreviewCard(
     preview: @Composable () -> Unit,
 ) {
     val tokens = liquidTokens()
+    val shape = RoundedCornerShape(12.dp)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .then(
-                if (selected) Modifier.border(2.dp, tokens.accent, RoundedCornerShape(18.dp))
-                else Modifier
-            )
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.22f))
+            .then(if (selected) Modifier.border(2.dp, tokens.accent, shape) else Modifier)
             .clickable(onClick = onClick)
             .padding(12.dp),
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(88.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .then(
-                        if (selected) Modifier.border(1.5.dp, tokens.accent, RoundedCornerShape(16.dp))
-                        else Modifier,
-                    ),
-            ) { preview() }
-            Spacer(Modifier.height(10.dp))
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(88.dp)
+                .clip(RoundedCornerShape(12.dp)),
+        ) { preview() }
+        Spacer(Modifier.height(10.dp))
+        Text(title, style = LiquidType.headline, color = MaterialTheme.colorScheme.onSurface)
+        Text(subtitle, style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -238,49 +250,50 @@ private fun ClassicMiniPreview() {
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(10.dp)
-                .background(Color(0xFF111111)),
-        )
-        Box(
-            Modifier
-                .fillMaxWidth(0.7f)
-                .height(8.dp)
-                .border(1.dp, Color(0xFF111111)),
-        )
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(28.dp)
-                .border(1.dp, Color(0xFF111111)),
-        )
+        Box(Modifier.fillMaxWidth().height(10.dp).background(Color(0xFF111111)))
+        Box(Modifier.fillMaxWidth(0.7f).height(8.dp).border(1.dp, Color(0xFF111111)))
+        Box(Modifier.fillMaxWidth().height(28.dp).border(1.dp, Color(0xFF111111)))
     }
 }
 
 @Composable
-private fun LiquidMiniPreview() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFD6E4F5)),
-    ) {
+private fun CanvasMiniPreview(wallpaperPath: String?) {
+    val context = LocalContext.current
+    val loader = androidx.compose.runtime.remember { MadusImageLoader.get(context) }
+    Box(Modifier.fillMaxSize()) {
+        if (!wallpaperPath.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(java.io.File(wallpaperPath)).build(),
+                contentDescription = null,
+                imageLoader = loader,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(Color(0xFF1A2A38), Color(0xFF07090C)))),
+            )
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(8.dp)
                 .fillMaxWidth()
-                .height(22.dp)
-                .clip(RoundedCornerShape(99.dp))
-                .background(Color.White.copy(alpha = 0.62f)),
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color.White.copy(alpha = 0.5f)),
-        )
+                .height(16.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White.copy(alpha = 0.18f)),
+        ) {
+            Row(
+                Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(5.dp).clip(CircleShape).background(CanvasGold))
+                Box(Modifier.size(5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.35f)))
+            }
+        }
     }
 }

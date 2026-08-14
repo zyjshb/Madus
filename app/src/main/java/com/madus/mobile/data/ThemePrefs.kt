@@ -1,27 +1,32 @@
 package com.madus.mobile.data
 
 import android.content.Context
+import android.net.Uri
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.io.File
 
 private val Context.themeStore by preferencesDataStore(name = "madus_theme")
 
-/** 顶层主题：简约（默认，现有排版）/ 液态玻璃（整套另排） */
+/** 顶层主题：简约（默认，现有排版）/ 画境（壁纸 + 玻璃） */
 enum class VisualTheme(val id: String, val label: String) {
     Classic("classic", "简约"),
-    LiquidGlass("liquid_glass", "液态玻璃"),
+    Canvas("canvas", "画境"),
     ;
 
     companion object {
-        fun fromId(id: String?) = entries.find { it.id == id } ?: Classic
+        fun fromId(id: String?) = when (id) {
+            "liquid_glass" -> Canvas
+            else -> entries.find { it.id == id } ?: Classic
+        }
     }
 }
 
-/** 液态玻璃的深浅 */
+/** 画境的深浅（玻璃层） */
 enum class LiquidAppearance(val id: String, val label: String) {
     FollowSystem("system", "跟随系统"),
     Light("light", "浅色"),
@@ -66,6 +71,9 @@ data class ThemeSettings(
     val liquidAppearance: LiquidAppearance = LiquidAppearance.FollowSystem,
     /** 0 = 通透，1 = 着色。默认略实，字好认。 */
     val glassTint: Float = 0.42f,
+    val wallpaperPath: String? = null,
+    /** 壁纸压暗 0–1，越高字越好认 */
+    val wallpaperDim: Float = 0.55f,
 )
 
 class ThemePrefs(private val context: Context) {
@@ -74,6 +82,8 @@ class ThemePrefs(private val context: Context) {
     private val keyColor = stringPreferencesKey("color_theme")
     private val keyLiquidAppearance = stringPreferencesKey("liquid_appearance")
     private val keyTint = floatPreferencesKey("glass_tint")
+    private val keyWallpaper = stringPreferencesKey("wallpaper_path")
+    private val keyDim = floatPreferencesKey("wallpaper_dim")
 
     val flow: Flow<ThemeSettings> = context.themeStore.data.map { prefs ->
         ThemeSettings(
@@ -82,6 +92,8 @@ class ThemePrefs(private val context: Context) {
             colorTheme = ColorTheme.fromId(prefs[keyColor]),
             liquidAppearance = LiquidAppearance.fromId(prefs[keyLiquidAppearance]),
             glassTint = (prefs[keyTint] ?: 0.42f).coerceIn(0f, 1f),
+            wallpaperPath = prefs[keyWallpaper],
+            wallpaperDim = (prefs[keyDim] ?: 0.55f).coerceIn(0.25f, 0.82f),
         )
     }
 
@@ -103,5 +115,27 @@ class ThemePrefs(private val context: Context) {
 
     suspend fun setGlassTint(tint: Float) {
         context.themeStore.edit { it[keyTint] = tint.coerceIn(0f, 1f) }
+    }
+
+    suspend fun setWallpaperDim(dim: Float) {
+        context.themeStore.edit { it[keyDim] = dim.coerceIn(0.25f, 0.82f) }
+    }
+
+    suspend fun setWallpaperFromUri(uri: String) {
+        val persisted = runCatching {
+            val input = context.contentResolver.openInputStream(Uri.parse(uri)) ?: return@runCatching null
+            val dir = File(context.filesDir, "theme").also { it.mkdirs() }
+            val out = File(dir, "wallpaper.jpg")
+            input.use { inp -> out.outputStream().use { o -> inp.copyTo(o) } }
+            out.absolutePath
+        }.getOrNull()
+        if (persisted != null) {
+            context.themeStore.edit { it[keyWallpaper] = persisted }
+        }
+    }
+
+    suspend fun clearWallpaper() {
+        runCatching { File(context.filesDir, "theme/wallpaper.jpg").delete() }
+        context.themeStore.edit { it.remove(keyWallpaper) }
     }
 }

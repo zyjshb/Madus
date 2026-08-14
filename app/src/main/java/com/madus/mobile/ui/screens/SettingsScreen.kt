@@ -54,6 +54,9 @@ fun SettingsScreen(
     onGlassTint: (Float) -> Unit = {},
     onVideoMode: (Boolean) -> Unit = {},
     onGestureMode: (VideoGestureMode) -> Unit = {},
+    onPickWallpaper: (String) -> Unit = {},
+    onClearWallpaper: () -> Unit = {},
+    onWallpaperDim: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (isLiquidTheme()) {
@@ -67,6 +70,9 @@ fun SettingsScreen(
             onLiquidAppearance = onLiquidAppearance,
             onGlassTint = onGlassTint,
             onGestureMode = onGestureMode,
+            onPickWallpaper = onPickWallpaper,
+            onClearWallpaper = onClearWallpaper,
+            onWallpaperDim = onWallpaperDim,
             modifier = modifier,
         )
         return
@@ -120,7 +126,7 @@ fun SettingsScreen(
                 SectionTitle(text = "主题")
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "简约是现在这套。液态玻璃会整页另排。",
+                    text = "简约是现在这套。画境会铺壁纸、整页另排。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -130,7 +136,7 @@ fun SettingsScreen(
                         title = theme.label,
                         subtitle = when (theme) {
                             VisualTheme.Classic -> "线稿 / 圆滑，现有排版"
-                            VisualTheme.LiquidGlass -> "浮动玻璃，首页到设置都另排"
+                            VisualTheme.Canvas -> "壁纸 + 玻璃，首页到设置都另排"
                         },
                         selected = settings.visualTheme == theme,
                         onClick = { onVisualTheme(theme) },

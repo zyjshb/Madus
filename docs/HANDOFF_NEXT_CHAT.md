@@ -2,8 +2,8 @@
 
 **日期：** 2026-08-14  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.15.9` / versionCode `278`  
-**正式包：** `and/apk/Madus-1.15.9.apk`  
+**当前版本：** `1.16.3` / versionCode `282`  
+**正式包：** `and/apk/Madus-1.16.3.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -76,7 +76,7 @@
 | **普通搜索** | **对齐 B 站网页**：`order=totalrank`、每页 **42**、优先 **WBI** `/x/web-interface/wbi/search/type`；滚到底 **loadMore**；全站视频不过度阉割 |
 | **推荐刷新** | 见 §12。只有**真正播过**才进 `sessionSeenIds`；点赞重排后续队列 |
 | **听歌默认音质** | **较高**（High / qn=80）+ 音效 **精听**。旧「标准+原声」一次性迁过去。省流仍可选 |
-| **迷你条点击** | **回推荐电台台面**（`openRecommendPlayer`），不要进清屏 `NOW_PLAYING`。用户 1.14.45 试过后者，要求改回 |
+| **迷你条点击** | 简约：**回推荐电台台面**。液态：**进 `NOW_PLAYING`**。不要两套都改成同一条 |
 | **视频上下滑** | 滑走再滑回从 `sessionPositions` 续播；听歌切歌仍从头 |
 | **评论图** | 可点全屏放大，多图左右翻（`CommentsSheet`） |
 | **改完即发** | 修完 bug 自动升版打正式包推双仓（用户说「先别传」时暂停） |

@@ -1,20 +1,24 @@
 package com.madus.mobile.ui.liquid
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudDownload
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.SystemUpdate
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.UploadFile
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,11 +29,21 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.madus.mobile.data.AppUpdate
 import com.madus.mobile.domain.MusicSourceType
 import com.madus.mobile.ui.MeUiState
+import com.madus.mobile.ui.components.MadusImageLoader
+import com.madus.mobile.ui.components.normalizeCoverUrl
+import com.madus.mobile.ui.theme.LiquidType
 import com.madus.mobile.ui.theme.liquidTokens
 
 @Composable
@@ -44,6 +58,8 @@ fun LiquidMeScreen(
     modifier: Modifier = Modifier,
 ) {
     val bili = state.sessions.firstOrNull { it.source == MusicSourceType.BILIBILI }
+    val loggedIn = bili?.isLoggedIn == true
+    val avatar = bili?.avatarUrl
     val aboutTapsNeeded = 7
     var aboutTaps by remember { mutableIntStateOf(0) }
     var aboutUnlocked by remember { mutableStateOf(false) }
@@ -53,6 +69,7 @@ fun LiquidMeScreen(
     var updateSubtitle by remember { mutableStateOf("v${state.appVersion}") }
     var updateAvailable by remember { mutableStateOf(false) }
     val tokens = liquidTokens()
+    val destructive = if (tokens.dark) Color(0xFFFF453A) else Color(0xFFFF3B30)
 
     LaunchedEffect(state.appVersion) {
         val current = state.appVersion.substringBefore("-")
@@ -78,57 +95,74 @@ fun LiquidMeScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 148.dp),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            end = 20.dp,
+            top = 12.dp,
+            bottom = LocalLiquidChromeBottom.current,
+        ),
     ) {
         item {
-            Text("我的", style = MaterialTheme.typography.displaySmall)
-            Spacer(Modifier.height(18.dp))
-            GlassGroup {
-                LiquidNavRow(
-                    title = if (bili?.isLoggedIn == true) {
-                        bili.displayName.ifBlank { "B站用户" }
-                    } else {
-                        "游客"
-                    },
-                    subtitle = if (bili?.isLoggedIn == true) "B站已登录" else "登录后同步收藏",
-                    onClick = onOpenBiliLogin,
-                    trailing = {
-                        Text(
-                            if (bili?.isLoggedIn == true) "重登" else "登录",
-                            color = tokens.accent,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    },
-                )
-            }
-            Spacer(Modifier.height(8.dp))
             Text(
-                "${state.likedCount} 喜欢 · ${state.recentCount} 最近",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                "我的",
+                style = LiquidType.largeTitle,
+                color = MaterialTheme.colorScheme.onBackground,
             )
+            Spacer(Modifier.height(18.dp))
+            InsetGroup {
+                AccountRow(
+                    loggedIn = loggedIn,
+                    displayName = if (loggedIn) bili?.displayName.orEmpty().ifBlank { "B站用户" } else "游客",
+                    subtitle = buildString {
+                        append(if (loggedIn) "已登录" else "未登录")
+                        append(" · ${state.likedCount} 喜欢 · ${state.recentCount} 最近")
+                    },
+                    avatarUrl = if (loggedIn) avatar else null,
+                    onClick = onOpenBiliLogin,
+                )
+                if (loggedIn) {
+                    InsetDivider.text()
+                    Text(
+                        "退出",
+                        style = LiquidType.body,
+                        color = destructive,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp)
+                            .clickable(onClick = onLogoutBili)
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(28.dp))
         }
 
         item {
-            LiquidSectionLabel("常用")
-            GlassGroup {
-                LiquidNavRow("播放设置", "音效 · 网络 · 边听缓存", Icons.Outlined.Tune, onClick = {
+            LiquidSectionLabel("播放")
+            InsetGroup {
+                LiquidNavRow("播放设置", "音效 · 网络 · 边听缓存", onClick = {
                     onToolClick("playback")
                 })
-                GlassDivider()
-                LiquidNavRow("缓存管理", state.cacheSizeLabel.ifBlank { "打开列表" }, Icons.Outlined.CloudDownload, onClick = {
+                InsetDivider.text()
+                LiquidNavRow("缓存管理", state.cacheSizeLabel.ifBlank { "打开列表" }, onClick = {
                     onToolClick("cache")
                 })
-                GlassDivider()
-                LiquidNavRow("导入音乐", "歌名歌手 / 链接", Icons.Outlined.UploadFile, onClick = {
+                InsetDivider.text()
+                LiquidNavRow("导入音乐", "歌名歌手 / 链接", onClick = {
                     onToolClick("import")
                 })
-                GlassDivider()
+            }
+            Spacer(Modifier.height(28.dp))
+        }
+
+        item {
+            LiquidSectionLabel("应用")
+            InsetGroup {
+                LiquidNavRow("主题", "简约 / 画境", onClick = onOpenSettings)
+                InsetDivider.text()
                 LiquidNavRow(
                     title = "检查更新",
                     subtitle = updateSubtitle,
-                    icon = Icons.Outlined.SystemUpdate,
                     onClick = {
                         val now = System.currentTimeMillis()
                         if (now - lastUpdateTapAt < 800L) return@LiquidNavRow
@@ -136,48 +170,13 @@ fun LiquidMeScreen(
                         onToolClick("update")
                     },
                     trailing = if (updateAvailable) {
-                        { Text("新", color = tokens.accent, style = MaterialTheme.typography.labelLarge) }
+                        { Text("新", color = tokens.accent, style = LiquidType.footnote) }
                     } else null,
                 )
-            }
-            Spacer(Modifier.height(18.dp))
-        }
-
-        item {
-            LiquidSectionLabel("账号")
-            GlassGroup {
-                LiquidNavRow(
-                    title = "Bilibili 音源",
-                    subtitle = if (bili?.isLoggedIn == true) {
-                        "已登录 · ${bili.displayName.ifBlank { "B站用户" }}"
-                    } else {
-                        "未登录"
-                    },
-                    icon = Icons.Outlined.Person,
-                    onClick = onOpenBiliLogin,
-                )
-                if (bili?.isLoggedIn == true) {
-                    GlassDivider()
-                    LiquidNavRow(
-                        title = "退出登录",
-                        subtitle = "清掉本机 B 站登录",
-                        icon = Icons.AutoMirrored.Outlined.Logout,
-                        onClick = onLogoutBili,
-                    )
-                }
-            }
-            Spacer(Modifier.height(18.dp))
-        }
-
-        item {
-            LiquidSectionLabel("应用")
-            GlassGroup {
-                LiquidNavRow("主题", "简约 / 液态玻璃", Icons.Outlined.Settings, onClick = onOpenSettings)
-                GlassDivider()
+                InsetDivider.text()
                 LiquidNavRow(
                     title = "关于 Madus",
                     subtitle = "v${state.appVersion}",
-                    icon = Icons.Outlined.Info,
                     onClick = {
                         val now = System.currentTimeMillis()
                         if (aboutUnlocked) {
@@ -209,6 +208,63 @@ fun LiquidMeScreen(
                 )
             }
             Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun AccountRow(
+    loggedIn: Boolean,
+    displayName: String,
+    subtitle: String,
+    avatarUrl: String?,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val loader = remember { MadusImageLoader.get(context) }
+    val url = normalizeCoverUrl(avatarUrl)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loggedIn && !url.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(url).crossfade(160).build(),
+                    contentDescription = null,
+                    imageLoader = loader,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(displayName, style = LiquidType.body, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                subtitle,
+                style = LiquidType.subhead,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
