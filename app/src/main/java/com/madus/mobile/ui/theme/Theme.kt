@@ -32,7 +32,7 @@ fun MadusTheme(
             cornerMd = 12.dp,
             cornerLg = 28.dp,
             borderWidth = 0.6.dp,
-            panelAlpha = tokens.fillAlpha,
+            panelAlpha = tokens.fillAlpha.coerceIn(0.22f, 0.38f),
             cardElevation = 0.dp,
         )
         CompositionLocalProvider(

@@ -67,23 +67,6 @@ fun LibraryScreen(
     onImportPlaylist: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    if (isLiquidTheme()) {
-        LiquidLibraryScreen(
-            state = state,
-            onOpenPlaylist = onOpenPlaylist,
-            onOpenRecent = onOpenRecent,
-            onOpenBiliList = onOpenBiliList,
-            onOpenCache = onOpenCache,
-            onCreatePlaylist = onCreatePlaylist,
-            onPlayTrack = onPlayTrack,
-            onCollectTrack = onCollectTrack,
-            onRemoveRecent = onRemoveRecent,
-            onLoginBili = onLoginBili,
-            onImportPlaylist = onImportPlaylist,
-            modifier = modifier,
-        )
-        return
-    }
     var showCreate by remember { mutableStateOf(false) }
     var createName by remember { mutableStateOf("") }
 
@@ -331,7 +314,17 @@ fun LibraryScreen(
             )
         }
 
-        item { Spacer(Modifier.height(88.dp)) }
+        item {
+            Spacer(
+                Modifier.height(
+                    if (isLiquidTheme()) {
+                        com.madus.mobile.ui.liquid.LocalLiquidChromeBottom.current
+                    } else {
+                        88.dp
+                    },
+                ),
+            )
+        }
     }
 
     if (showCreate) {

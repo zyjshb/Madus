@@ -54,7 +54,7 @@ import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.components.SectionTitle
 import com.madus.mobile.ui.components.TrackRow
 import com.madus.mobile.ui.components.normalizeCoverUrl
-import com.madus.mobile.ui.liquid.LiquidHomeScreen
+import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
 import com.madus.mobile.ui.theme.isLiquidTheme
 
 private enum class HomeChip(val label: String) {
@@ -85,25 +85,6 @@ fun HomeScreen(
     onNextRadio: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    if (isLiquidTheme()) {
-        LiquidHomeScreen(
-            state = state,
-            onPlayTrack = onPlayTrack,
-            onOpenPlaylist = onOpenPlaylist,
-            onCollectTrack = onCollectTrack,
-            onRemoveRecent = onRemoveRecent,
-            onClearRecent = onClearRecent,
-            onOpenMe = onOpenMe,
-            onOpenRecentTab = onOpenRecentTab,
-            onOpenBiliList = onOpenBiliList,
-            onOpenRadio = onOpenRadio,
-            onOpenBiliLogin = onOpenBiliLogin,
-            onStartRadio = onStartRadio,
-            onNextRadio = onNextRadio,
-            modifier = modifier,
-        )
-        return
-    }
     var chip by remember { mutableIntStateOf(0) }
     val chips = HomeChip.entries
     val selected = chips[chip.coerceIn(0, chips.lastIndex)]
@@ -257,7 +238,13 @@ fun HomeScreen(
             }
         }
 
-        item { Spacer(Modifier.height(88.dp)) }
+        item {
+            Spacer(
+                Modifier.height(
+                    if (isLiquidTheme()) LocalLiquidChromeBottom.current else 88.dp,
+                ),
+            )
+        }
     }
 }
 
@@ -379,7 +366,15 @@ private fun QuickCell(
     Row(
         modifier = modifier
             .height(58.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(if (isLiquidTheme()) 12.dp else 6.dp))
+            .then(
+                if (isLiquidTheme()) {
+                    Modifier.background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.22f))
+                } else {
+                    Modifier
+                },
+            )
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(if (isLiquidTheme()) 12.dp else 6.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

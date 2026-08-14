@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.16.4",
+            date = "2026-08-15",
+            added = listOf(
+                "画境壁纸可每日随机（t.alcy.cc），能固定、下载、相册自选",
+            ),
+            changed = listOf(
+                "画境改回简约排版和功能，只留壁纸和玻璃底栏",
+            ),
+        ),
+        Entry(
             version = "1.16.3",
             date = "2026-08-14",
             changed = listOf(

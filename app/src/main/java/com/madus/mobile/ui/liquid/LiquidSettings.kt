@@ -40,6 +40,7 @@ import com.madus.mobile.data.LiquidAppearance
 import com.madus.mobile.data.ThemeSettings
 import com.madus.mobile.data.VideoGestureMode
 import com.madus.mobile.data.VisualTheme
+import com.madus.mobile.data.WallpaperMode
 import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.theme.CanvasGold
 import com.madus.mobile.ui.theme.LiquidType
@@ -59,6 +60,10 @@ fun LiquidSettingsScreen(
     onPickWallpaper: (String) -> Unit = {},
     onClearWallpaper: () -> Unit = {},
     onWallpaperDim: (Float) -> Unit = {},
+    onWallpaperMode: (WallpaperMode) -> Unit = {},
+    onPinWallpaper: () -> Unit = {},
+    onRollWallpaper: () -> Unit = {},
+    onDownloadWallpaper: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val tokens = liquidTokens()
@@ -143,9 +148,35 @@ fun LiquidSettingsScreen(
                 Column(Modifier.padding(horizontal = 20.dp)) {
                     LiquidSectionLabel("壁纸")
                     InsetGroup {
-                        LiquidNavRow("从相册选择", "铺满整页，字压在照片上", onClick = { pick.launch("image/*") })
+                        WallpaperMode.entries.forEachIndexed { i, mode ->
+                            LiquidNavRow(
+                                title = mode.label,
+                                subtitle = when (mode) {
+                                    WallpaperMode.Daily -> "每天从 t.alcy.cc 换一张竖图"
+                                    WallpaperMode.Pinned -> "一直用现在这张"
+                                    WallpaperMode.Custom -> "自己从相册挑"
+                                },
+                                onClick = {
+                                    when (mode) {
+                                        WallpaperMode.Custom -> pick.launch("image/*")
+                                        WallpaperMode.Pinned -> onPinWallpaper()
+                                        WallpaperMode.Daily -> onWallpaperMode(mode)
+                                    }
+                                },
+                                trailing = {
+                                    if (settings.wallpaperMode == mode) Text("●", color = tokens.accent)
+                                },
+                            )
+                            if (i != WallpaperMode.entries.lastIndex) InsetDivider.text()
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    InsetGroup {
+                        LiquidNavRow("换一张", "再抽一张今日图", onClick = onRollWallpaper)
                         InsetDivider.text()
-                        LiquidNavRow("恢复默认", "深蓝渐变", onClick = onClearWallpaper)
+                        LiquidNavRow("下载这张", "存到相册 / Madus", onClick = onDownloadWallpaper)
+                        InsetDivider.text()
+                        LiquidNavRow("从相册选择", "自定义壁纸", onClick = { pick.launch("image/*") })
                     }
                     Spacer(Modifier.height(16.dp))
                     LiquidSectionLabel("压暗")

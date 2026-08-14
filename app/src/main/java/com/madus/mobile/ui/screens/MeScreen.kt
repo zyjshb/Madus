@@ -72,19 +72,6 @@ fun MeScreen(
     onAboutSystemToast: (message: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    if (isLiquidTheme()) {
-        LiquidMeScreen(
-            state = state,
-            onOpenBiliLogin = onOpenBiliLogin,
-            onLogoutBili = onLogoutBili,
-            onOpenSettings = onOpenSettings,
-            onToolClick = onToolClick,
-            onOpenEasterEgg = onOpenEasterEgg,
-            onAboutSystemToast = onAboutSystemToast,
-            modifier = modifier,
-        )
-        return
-    }
     val bili = state.sessions.firstOrNull { it.source == MusicSourceType.BILIBILI }
     val loggedInCount = state.sessions.count { it.isLoggedIn }
 
@@ -328,7 +315,17 @@ fun MeScreen(
             }
         }
 
-        item { Spacer(Modifier.height(72.dp)) }
+        item {
+            Spacer(
+                Modifier.height(
+                    if (isLiquidTheme()) {
+                        com.madus.mobile.ui.liquid.LocalLiquidChromeBottom.current
+                    } else {
+                        72.dp
+                    },
+                ),
+            )
+        }
     }
 }
 

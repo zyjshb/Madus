@@ -57,6 +57,10 @@ fun SettingsScreen(
     onPickWallpaper: (String) -> Unit = {},
     onClearWallpaper: () -> Unit = {},
     onWallpaperDim: (Float) -> Unit = {},
+    onWallpaperMode: (com.madus.mobile.data.WallpaperMode) -> Unit = {},
+    onPinWallpaper: () -> Unit = {},
+    onRollWallpaper: () -> Unit = {},
+    onDownloadWallpaper: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (isLiquidTheme()) {
@@ -73,6 +77,10 @@ fun SettingsScreen(
             onPickWallpaper = onPickWallpaper,
             onClearWallpaper = onClearWallpaper,
             onWallpaperDim = onWallpaperDim,
+            onWallpaperMode = onWallpaperMode,
+            onPinWallpaper = onPinWallpaper,
+            onRollWallpaper = onRollWallpaper,
+            onDownloadWallpaper = onDownloadWallpaper,
             modifier = modifier,
         )
         return

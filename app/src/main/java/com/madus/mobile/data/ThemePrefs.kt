@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.File
 
@@ -64,15 +65,27 @@ enum class ColorTheme(val id: String, val label: String) {
     }
 }
 
+enum class WallpaperMode(val id: String, val label: String) {
+    Daily("daily", "每日随机"),
+    Pinned("pinned", "固定这张"),
+    Custom("custom", "相册自选"),
+    ;
+
+    companion object {
+        fun fromId(id: String?) = entries.find { it.id == id } ?: Daily
+    }
+}
+
 data class ThemeSettings(
     val visualTheme: VisualTheme = VisualTheme.Classic,
     val appearance: AppearanceMode = AppearanceMode.SoftGlass,
     val colorTheme: ColorTheme = ColorTheme.LineSketchMono,
     val liquidAppearance: LiquidAppearance = LiquidAppearance.FollowSystem,
-    /** 0 = 通透，1 = 着色。默认略实，字好认。 */
     val glassTint: Float = 0.42f,
     val wallpaperPath: String? = null,
-    /** 壁纸压暗 0–1，越高字越好认 */
+    val wallpaperRemoteUrl: String? = null,
+    val wallpaperMode: WallpaperMode = WallpaperMode.Daily,
+    val wallpaperDay: String? = null,
     val wallpaperDim: Float = 0.55f,
 )
 
@@ -83,6 +96,9 @@ class ThemePrefs(private val context: Context) {
     private val keyLiquidAppearance = stringPreferencesKey("liquid_appearance")
     private val keyTint = floatPreferencesKey("glass_tint")
     private val keyWallpaper = stringPreferencesKey("wallpaper_path")
+    private val keyWallpaperUrl = stringPreferencesKey("wallpaper_remote")
+    private val keyWallpaperMode = stringPreferencesKey("wallpaper_mode")
+    private val keyWallpaperDay = stringPreferencesKey("wallpaper_day")
     private val keyDim = floatPreferencesKey("wallpaper_dim")
 
     val flow: Flow<ThemeSettings> = context.themeStore.data.map { prefs ->
@@ -93,6 +109,9 @@ class ThemePrefs(private val context: Context) {
             liquidAppearance = LiquidAppearance.fromId(prefs[keyLiquidAppearance]),
             glassTint = (prefs[keyTint] ?: 0.42f).coerceIn(0f, 1f),
             wallpaperPath = prefs[keyWallpaper],
+            wallpaperRemoteUrl = prefs[keyWallpaperUrl],
+            wallpaperMode = WallpaperMode.fromId(prefs[keyWallpaperMode]),
+            wallpaperDay = prefs[keyWallpaperDay],
             wallpaperDim = (prefs[keyDim] ?: 0.55f).coerceIn(0.25f, 0.82f),
         )
     }
@@ -121,6 +140,11 @@ class ThemePrefs(private val context: Context) {
         context.themeStore.edit { it[keyDim] = dim.coerceIn(0.25f, 0.82f) }
     }
 
+    suspend fun setWallpaperMode(mode: WallpaperMode) {
+        context.themeStore.edit { it[keyWallpaperMode] = mode.id }
+        if (mode == WallpaperMode.Daily) ensureDailyWallpaper(force = false)
+    }
+
     suspend fun setWallpaperFromUri(uri: String) {
         val persisted = runCatching {
             val input = context.contentResolver.openInputStream(Uri.parse(uri)) ?: return@runCatching null
@@ -130,12 +154,97 @@ class ThemePrefs(private val context: Context) {
             out.absolutePath
         }.getOrNull()
         if (persisted != null) {
-            context.themeStore.edit { it[keyWallpaper] = persisted }
+            context.themeStore.edit {
+                it[keyWallpaper] = persisted
+                it[keyWallpaperMode] = WallpaperMode.Custom.id
+                it.remove(keyWallpaperUrl)
+            }
+        }
+    }
+
+    suspend fun pinCurrentWallpaper() {
+        val current = currentWallpaperFile() ?: return
+        val pin = File(context.filesDir, "theme/wallpaper.jpg")
+        current.copyTo(pin, overwrite = true)
+        context.themeStore.edit {
+            it[keyWallpaper] = pin.absolutePath
+            it[keyWallpaperMode] = WallpaperMode.Pinned.id
+        }
+    }
+
+    suspend fun ensureDailyWallpaper(force: Boolean = false) {
+        val today = java.time.LocalDate.now().toString()
+        val dest = File(context.filesDir, "theme/daily.webp")
+        val prefs = context.themeStore.data.first()
+        val mode = WallpaperMode.fromId(prefs[keyWallpaperMode])
+        if (!force && mode != WallpaperMode.Daily) return
+        if (!force && prefs[keyWallpaperDay] == today && dest.exists() && dest.length() > 80) {
+            if (prefs[keyWallpaper] != dest.absolutePath) {
+                context.themeStore.edit { it[keyWallpaper] = dest.absolutePath }
+            }
+            return
+        }
+        val url = AlcyWallpaper.fetchRandomUrl() ?: return
+        if (!AlcyWallpaper.download(url, dest)) return
+        context.themeStore.edit {
+            it[keyWallpaper] = dest.absolutePath
+            it[keyWallpaperUrl] = url
+            it[keyWallpaperDay] = today
+            if (mode != WallpaperMode.Custom && mode != WallpaperMode.Pinned) {
+                it[keyWallpaperMode] = WallpaperMode.Daily.id
+            }
+        }
+    }
+
+    suspend fun rollNewDailyWallpaper() {
+        context.themeStore.edit { it[keyWallpaperMode] = WallpaperMode.Daily.id }
+        ensureDailyWallpaper(force = true)
+    }
+
+    suspend fun saveCurrentWallpaperToGallery(): Boolean {
+        val src = currentWallpaperFile() ?: return false
+        return runCatching {
+            val name = "Madus-${System.currentTimeMillis()}.webp"
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/webp")
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    put(
+                        android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                        android.os.Environment.DIRECTORY_PICTURES + "/Madus",
+                    )
+                }
+            }
+            val uri = context.contentResolver.insert(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values,
+            ) ?: return@runCatching false
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                src.inputStream().use { it.copyTo(out) }
+            } ?: return@runCatching false
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun currentWallpaperFile(): File? {
+        val pin = File(context.filesDir, "theme/wallpaper.jpg")
+        val daily = File(context.filesDir, "theme/daily.webp")
+        return when {
+            pin.exists() && pin.length() > 80 -> pin
+            daily.exists() && daily.length() > 80 -> daily
+            else -> null
         }
     }
 
     suspend fun clearWallpaper() {
         runCatching { File(context.filesDir, "theme/wallpaper.jpg").delete() }
-        context.themeStore.edit { it.remove(keyWallpaper) }
+        runCatching { File(context.filesDir, "theme/daily.webp").delete() }
+        context.themeStore.edit {
+            it.remove(keyWallpaper)
+            it.remove(keyWallpaperUrl)
+            it.remove(keyWallpaperDay)
+            it[keyWallpaperMode] = WallpaperMode.Daily.id
+        }
+        ensureDailyWallpaper(force = true)
     }
 }

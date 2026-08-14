@@ -76,7 +76,7 @@ import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.TrackRow
-import com.madus.mobile.ui.liquid.LiquidRecommendScreen
+import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
 import com.madus.mobile.ui.theme.appearanceTokens
 import com.madus.mobile.ui.theme.isLiquidTheme
 
@@ -120,48 +120,19 @@ fun RecommendScreen(
     onOpenNowPlaying: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    if (isLiquidTheme()) {
-        LiquidRecommendScreen(
-            state = state,
-            playback = playback,
-            onSegment = onSegment,
-            onToggle = onToggle,
-            onNext = onNext,
-            onPrevious = onPrevious,
-            onToggleLike = onToggleLike,
-            onPlayTrack = onPlayTrack,
-            onOpenQueue = onOpenQueue,
-            onSeek = onSeek,
-            onCollectCurrent = onCollectCurrent,
-            onCollectTrack = onCollectTrack,
-            onBiliCollectCurrent = onBiliCollectCurrent,
-            onRemoveRecent = onRemoveRecent,
-            onClearRecent = onClearRecent,
-            onImmersive = onImmersive,
-            onShare = onShare,
-            onComments = onComments,
-            onCache = onCache,
-            onRelatedRadio = onRelatedRadio,
-            onStartRadio = onStartRadio,
-            onLogin = onLogin,
-            onQualityClick = onQualityClick,
-            onSleepClick = onSleepClick,
-            qualityLabel = qualityLabel,
-            sleepLabel = sleepLabel,
-            videoMode = videoMode,
-            onVideoModeChange = onVideoModeChange,
-            onFullscreen = onFullscreen,
-            onOpenUp = onOpenUp,
-            onOpenNowPlaying = onOpenNowPlaying,
-            modifier = modifier,
-        )
-        return
-    }
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .background(
+                if (isLiquidTheme()) androidx.compose.ui.graphics.Color.Transparent
+                else MaterialTheme.colorScheme.background,
+            )
+            .padding(
+                start = 20.dp,
+                end = 20.dp,
+                top = 10.dp,
+                bottom = if (isLiquidTheme()) LocalLiquidChromeBottom.current else 10.dp,
+            ),
     ) {
         SegmentBar(
             selected = state.segment,

@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.16.3：画境电台舞台 + 私人 FM 整卡
-        versionCode = 282
-        versionName = "1.16.3"
+        // 1.16.4：画境跟简约排版，壁纸每日随机
+        versionCode = 283
+        versionName = "1.16.4"
         vectorDrawables.useSupportLibrary = true
     }
 

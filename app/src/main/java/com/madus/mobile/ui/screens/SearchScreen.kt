@@ -56,23 +56,6 @@ fun SearchScreen(
     browseRecent: List<Track> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
-    if (isLiquidTheme()) {
-        LiquidSearchScreen(
-            state = state,
-            onQueryChange = onQueryChange,
-            onSubmit = onSubmit,
-            onSuggestionClick = onSuggestionClick,
-            onPlayTrack = onPlayTrack,
-            onCollectTrack = onCollectTrack,
-            onOpenAiSearch = onOpenAiSearch,
-            onLoadMore = onLoadMore,
-            replaceHintTitle = replaceHintTitle,
-            onCancelReplace = onCancelReplace,
-            browseRecent = browseRecent,
-            modifier = modifier,
-        )
-        return
-    }
     val focus = LocalFocusManager.current
     val listState = rememberLazyListState()
 
@@ -259,7 +242,13 @@ fun SearchScreen(
 
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = 88.dp),
+                contentPadding = PaddingValues(
+                    bottom = if (isLiquidTheme()) {
+                        com.madus.mobile.ui.liquid.LocalLiquidChromeBottom.current
+                    } else {
+                        88.dp
+                    },
+                ),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 items(state.results, key = { it.id }) { track ->

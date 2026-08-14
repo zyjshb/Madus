@@ -177,6 +177,11 @@ fun MadusRoot(
         initial = ThemeSettings(),
     )
     val liquid = themeSettings.visualTheme == VisualTheme.Canvas
+    LaunchedEffect(liquid, themeSettings.wallpaperMode) {
+        if (liquid) {
+            MadusApp.instance.themePrefs.ensureDailyWallpaper(force = false)
+        }
+    }
     var showQualityPicker by remember { mutableStateOf(false) }
     var showSleepPicker by remember { mutableStateOf(false) }
     /** 清屏短视频内搜索浮层（不切 Tab，避免退出残留） */
@@ -833,6 +838,28 @@ fun MadusRoot(
                         onWallpaperDim = { dim ->
                             scope.launch {
                                 MadusApp.instance.themePrefs.setWallpaperDim(dim)
+                            }
+                        },
+                        onWallpaperMode = { mode ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setWallpaperMode(mode)
+                            }
+                        },
+                        onPinWallpaper = {
+                            scope.launch {
+                                MadusApp.instance.themePrefs.pinCurrentWallpaper()
+                                snackbar.showSnackbar("已固定这张壁纸")
+                            }
+                        },
+                        onRollWallpaper = {
+                            scope.launch {
+                                MadusApp.instance.themePrefs.rollNewDailyWallpaper()
+                            }
+                        },
+                        onDownloadWallpaper = {
+                            scope.launch {
+                                val ok = MadusApp.instance.themePrefs.saveCurrentWallpaperToGallery()
+                                snackbar.showSnackbar(if (ok) "已存到相册" else "保存失败")
                             }
                         },
                         onVideoMode = vm::setVideoMode,
