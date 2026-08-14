@@ -34,6 +34,8 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.SearchUiState
 import com.madus.mobile.ui.components.LineButton
 import com.madus.mobile.ui.components.TrackRow
+import com.madus.mobile.ui.liquid.LiquidSearchScreen
+import com.madus.mobile.ui.theme.isLiquidTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 
@@ -53,6 +55,22 @@ fun SearchScreen(
     onCancelReplace: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    if (isLiquidTheme()) {
+        LiquidSearchScreen(
+            state = state,
+            onQueryChange = onQueryChange,
+            onSubmit = onSubmit,
+            onSuggestionClick = onSuggestionClick,
+            onPlayTrack = onPlayTrack,
+            onCollectTrack = onCollectTrack,
+            onOpenAiSearch = onOpenAiSearch,
+            onLoadMore = onLoadMore,
+            replaceHintTitle = replaceHintTitle,
+            onCancelReplace = onCancelReplace,
+            modifier = modifier,
+        )
+        return
+    }
     val focus = LocalFocusManager.current
     val listState = rememberLazyListState()
 

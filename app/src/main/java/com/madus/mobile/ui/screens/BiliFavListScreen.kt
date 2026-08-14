@@ -26,6 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.Playlist
 import com.madus.mobile.ui.components.CoverArt
+import com.madus.mobile.ui.liquid.LiquidPageHeader
+import com.madus.mobile.ui.theme.isLiquidTheme
 
 /**
  * B站收藏夹列表：点宫格「B站收藏」进这里，再点具体夹。
@@ -40,6 +42,18 @@ fun BiliFavListScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
+        if (isLiquidTheme()) {
+            LiquidPageHeader(
+                title = "B站收藏",
+                subtitle = if (playlists.isEmpty()) "暂无收藏夹" else "${playlists.size} 个收藏夹",
+                onBack = onBack,
+                action = if (onCleanAllInvalid != null && playlists.isNotEmpty()) {
+                    {
+                        TextButton(onClick = onCleanAllInvalid) { Text("清失效") }
+                    }
+                } else null,
+            )
+        } else {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -62,6 +76,7 @@ fun BiliFavListScreen(
                     Text("清失效")
                 }
             }
+        }
         }
 
         if (playlists.isEmpty()) {

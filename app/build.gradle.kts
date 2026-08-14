@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.14.48：评论图可放大；推荐不再把未看当已看
-        versionCode = 268
-        versionName = "1.14.48"
+        // 1.15.9：底栏悬浮+全面屏提示；迷你条只暂停
+        versionCode = 278
+        versionName = "1.15.9"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -96,4 +96,8 @@ dependencies {
     // Cover art (OkHttp for Bilibili Referer)
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // 液态玻璃：背后内容真模糊
+    implementation("dev.chrisbanes.haze:haze:1.6.10")
+    implementation("dev.chrisbanes.haze:haze-materials:1.6.10")
 }

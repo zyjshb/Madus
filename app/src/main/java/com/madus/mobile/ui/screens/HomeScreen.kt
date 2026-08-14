@@ -54,6 +54,8 @@ import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.components.SectionTitle
 import com.madus.mobile.ui.components.TrackRow
 import com.madus.mobile.ui.components.normalizeCoverUrl
+import com.madus.mobile.ui.liquid.LiquidHomeScreen
+import com.madus.mobile.ui.theme.isLiquidTheme
 
 private enum class HomeChip(val label: String) {
     All("全部"),
@@ -77,8 +79,25 @@ fun HomeScreen(
     onOpenMe: () -> Unit = {},
     onOpenRecentTab: () -> Unit = {},
     onOpenBiliList: () -> Unit = {},
+    onOpenRadio: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (isLiquidTheme()) {
+        LiquidHomeScreen(
+            state = state,
+            onPlayTrack = onPlayTrack,
+            onOpenPlaylist = onOpenPlaylist,
+            onCollectTrack = onCollectTrack,
+            onRemoveRecent = onRemoveRecent,
+            onClearRecent = onClearRecent,
+            onOpenMe = onOpenMe,
+            onOpenRecentTab = onOpenRecentTab,
+            onOpenBiliList = onOpenBiliList,
+            onOpenRadio = onOpenRadio,
+            modifier = modifier,
+        )
+        return
+    }
     var chip by remember { mutableIntStateOf(0) }
     val chips = HomeChip.entries
     val selected = chips[chip.coerceIn(0, chips.lastIndex)]

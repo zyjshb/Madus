@@ -49,6 +49,10 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.PlaylistDetailUiState
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.LineButton
+import com.madus.mobile.ui.liquid.GlassIconButton
+import com.madus.mobile.ui.liquid.GlassPill
+import com.madus.mobile.ui.liquid.LiquidPageHeader
+import com.madus.mobile.ui.theme.isLiquidTheme
 import kotlinx.coroutines.delay
 
 /**
@@ -144,6 +148,65 @@ fun PlaylistDetailScreen(
                 }
             },
     ) {
+        if (isLiquidTheme()) {
+            LiquidPageHeader(
+                title = state.playlist?.title ?: "歌单",
+                subtitle = if (state.total > 0) "共 ${state.total} 首" else null,
+                onBack = onBack,
+                action = if (hasManage) {
+                    {
+                        Box {
+                            GlassIconButton(
+                                onClick = { headerMenu = true },
+                                icon = Icons.Default.MoreVert,
+                                contentDescription = "更多",
+                            )
+                            DropdownMenu(
+                                expanded = headerMenu,
+                                onDismissRequest = { headerMenu = false },
+                            ) {
+                                if (canRename) {
+                                    DropdownMenuItem(
+                                        text = { Text("改名") },
+                                        onClick = {
+                                            headerMenu = false
+                                            showRename = true
+                                        },
+                                    )
+                                }
+                                if (canChangeCover) {
+                                    DropdownMenuItem(
+                                        text = { Text("换封面") },
+                                        onClick = {
+                                            headerMenu = false
+                                            pickCover.launch("image/*")
+                                        },
+                                    )
+                                }
+                                if (canDeletePlaylist) {
+                                    DropdownMenuItem(
+                                        text = { Text("删除歌单") },
+                                        onClick = {
+                                            headerMenu = false
+                                            onDeletePlaylist()
+                                        },
+                                    )
+                                }
+                                if (canCleanInvalid) {
+                                    DropdownMenuItem(
+                                        text = { Text("清除失效视频") },
+                                        onClick = {
+                                            headerMenu = false
+                                            onCleanInvalid?.invoke()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else null,
+            )
+        } else {
         // 仅顶栏钉死
         Row(
             modifier = Modifier
@@ -210,6 +273,7 @@ fun PlaylistDetailScreen(
                 }
             }
         }
+        }
 
         when {
             state.isLoading -> {
@@ -243,7 +307,7 @@ fun PlaylistDetailScreen(
                         ) {
                             CoverArt(
                                 coverUrl = state.playlist?.coverUrl,
-                                size = 148.dp,
+                                size = if (isLiquidTheme()) 200.dp else 148.dp,
                                 modifier = if (canChangeCover) {
                                     Modifier.clickable { pickCover.launch("image/*") }
                                 } else {
@@ -277,6 +341,13 @@ fun PlaylistDetailScreen(
                             )
                             Spacer(Modifier.height(16.dp))
                             if (state.tracks.isNotEmpty()) {
+                                if (isLiquidTheme()) {
+                                    GlassPill(
+                                        text = "播放全部",
+                                        selected = true,
+                                        onClick = { if (playArmed) onPlayAll() },
+                                    )
+                                } else {
                                 LineButton(
                                     text = "播放全部",
                                     onClick = {
@@ -286,6 +357,7 @@ fun PlaylistDetailScreen(
                                     enabled = playArmed && !state.isLoading,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
+                                }
                             }
                             Spacer(Modifier.height(16.dp))
                         }

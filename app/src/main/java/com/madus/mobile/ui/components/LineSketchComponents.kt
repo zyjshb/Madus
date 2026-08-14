@@ -240,9 +240,6 @@ fun MiniPlayerBar(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = onPrevious) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "上一首")
-            }
             IconButton(onClick = onToggle, enabled = !switching) {
                 if (switching) {
                     CircularProgressIndicator(
@@ -255,9 +252,6 @@ fun MiniPlayerBar(
                         contentDescription = if (playback.isPlaying) "暂停" else "播放",
                     )
                 }
-            }
-            IconButton(onClick = onNext) {
-                Icon(Icons.Default.SkipNext, contentDescription = "下一首")
             }
             IconButton(onClick = onOpenQueue) {
                 Icon(

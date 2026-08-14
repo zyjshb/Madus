@@ -46,6 +46,8 @@ import com.madus.mobile.ui.LibraryUiState
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.SectionTitle
 import com.madus.mobile.ui.components.TrackRow
+import com.madus.mobile.ui.liquid.LiquidLibraryScreen
+import com.madus.mobile.ui.theme.isLiquidTheme
 
 /**
  * 曲库：我的喜欢 / 本地歌单 / B站收藏 / 最近播放 的一站式入口。
@@ -65,6 +67,23 @@ fun LibraryScreen(
     onImportPlaylist: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (isLiquidTheme()) {
+        LiquidLibraryScreen(
+            state = state,
+            onOpenPlaylist = onOpenPlaylist,
+            onOpenRecent = onOpenRecent,
+            onOpenBiliList = onOpenBiliList,
+            onOpenCache = onOpenCache,
+            onCreatePlaylist = onCreatePlaylist,
+            onPlayTrack = onPlayTrack,
+            onCollectTrack = onCollectTrack,
+            onRemoveRecent = onRemoveRecent,
+            onLoginBili = onLoginBili,
+            onImportPlaylist = onImportPlaylist,
+            modifier = modifier,
+        )
+        return
+    }
     var showCreate by remember { mutableStateOf(false) }
     var createName by remember { mutableStateOf("") }
 

@@ -4,6 +4,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -79,6 +81,13 @@ import com.madus.mobile.ui.screens.FullscreenVideoScreen
 import com.madus.mobile.ui.screens.HomeScreen
 import com.madus.mobile.MadusApp
 import com.madus.mobile.data.ThemeSettings
+import com.madus.mobile.data.VisualTheme
+import com.madus.mobile.ui.liquid.LiquidBackground
+import com.madus.mobile.ui.liquid.LiquidFloatingChrome
+import com.madus.mobile.ui.liquid.LocalHazeState
+import com.madus.mobile.ui.theme.isLiquidTheme
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import com.madus.mobile.ui.screens.LibraryScreen
 import com.madus.mobile.ui.screens.MeScreen
 import com.madus.mobile.ui.screens.NowPlayingScreen
@@ -291,12 +300,34 @@ fun MadusRoot(
         vm.clearToast()
     }
 
+    val liquid = themeSettings.visualTheme == VisualTheme.LiquidGlass
+    fun selectRootTab(tab: RootTab) {
+        if (tab == RootTab.Home || tab == RootTab.Library) {
+            runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
+            if (tab == RootTab.Home) {
+                runCatching { nav.popBackStack(Routes.BILI_FAVS, inclusive = true) }
+            }
+            vm.cancelPlaylistLoad()
+        }
+        if (tab == RootTab.Search) {
+            vm.clearSearchFromImmersiveVideo()
+        }
+        nav.navigate(tab.route) {
+            popUpTo(nav.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = tab != RootTab.Home
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (liquid) androidx.compose.ui.graphics.Color.Transparent
+        else MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (showTabChrome || showPlaylistMini) {
+            if (!liquid && (showTabChrome || showPlaylistMini)) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -327,33 +358,35 @@ fun MadusRoot(
                         )
                         LineSketchBottomBar(
                             route = route,
-                            onSelect = { tab ->
-                                // 回主页/曲库时：若还盖着歌单详情，先 pop
-                                if (tab == RootTab.Home || tab == RootTab.Library) {
-                                    runCatching { nav.popBackStack(Routes.PLAYLIST, inclusive = true) }
-                                    if (tab == RootTab.Home) {
-                                        runCatching { nav.popBackStack(Routes.BILI_FAVS, inclusive = true) }
-                                    }
-                                    vm.cancelPlaylistLoad()
-                                }
-                                if (tab == RootTab.Search) {
-                                    vm.clearSearchFromImmersiveVideo()
-                                }
-                                nav.navigate(tab.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = tab != RootTab.Home
-                                }
-                            },
+                            onSelect = ::selectRootTab,
                         )
                     }
                 }
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        val hazeState = rememberHazeState()
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalHazeState provides hazeState.takeIf { liquid },
+        ) {
+        Box(Modifier.fillMaxSize()) {
+        if (liquid) {
+            LiquidBackground()
+        }
+        val contentPad = if (liquid) {
+            androidx.compose.foundation.layout.PaddingValues(
+                top = padding.calculateTopPadding(),
+                bottom = 0.dp,
+            )
+        } else {
+            padding
+        }
+        Box(
+            Modifier
+                .padding(contentPad)
+                .fillMaxSize()
+                .then(if (hazeState != null) Modifier.hazeSource(hazeState) else Modifier),
+        ) {
             // 超长曲听太久：顶部轻提示条（像通知，不挡操作）
             if (!longPlayHint.isNullOrBlank()) {
                 Surface(
@@ -394,6 +427,24 @@ fun MadusRoot(
                 navController = nav,
                 startDestination = RootTab.Home.route,
                 modifier = Modifier.fillMaxSize(),
+                enterTransition = {
+                    if (liquid) {
+                        fadeIn(animationSpec = tween(240)) +
+                            scaleIn(initialScale = 0.985f, animationSpec = tween(280))
+                    } else {
+                        fadeIn(animationSpec = tween(120))
+                    }
+                },
+                exitTransition = {
+                    fadeOut(animationSpec = tween(if (liquid) 180 else 80))
+                },
+                popEnterTransition = {
+                    if (liquid) fadeIn(animationSpec = tween(220))
+                    else fadeIn(animationSpec = tween(120))
+                },
+                popExitTransition = {
+                    fadeOut(animationSpec = tween(if (liquid) 180 else 80))
+                },
             ) {
                 composable(RootTab.Home.route) {
                     HomeScreen(
@@ -430,6 +481,7 @@ fun MadusRoot(
                         onOpenBiliList = {
                             nav.navigate(Routes.BILI_FAVS) { launchSingleTop = true }
                         },
+                        onOpenRadio = { openRecommendPlayer() },
                     )
                 }
                 composable(RootTab.Search.route) {
@@ -572,6 +624,13 @@ fun MadusRoot(
                     MeScreen(
                         state = me,
                         onOpenBiliLogin = { vm.requestLogin(MusicSourceType.BILIBILI) },
+                        onLogoutBili = {
+                            vm.requestLogout(MusicSourceType.BILIBILI)
+                            scope.launch {
+                                snackbar.currentSnackbarData?.dismiss()
+                                snackbar.showSnackbar("已退出")
+                            }
+                        },
                         onOpenSettings = {
                             nav.navigate(Routes.SETTINGS) { launchSingleTop = true }
                         },
@@ -710,6 +769,11 @@ fun MadusRoot(
                         videoMode = playerSettings.videoMode,
                         gestureMode = playerSettings.gestureMode,
                         onBack = { nav.popBackStack() },
+                        onVisualTheme = { theme ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setVisualTheme(theme)
+                            }
+                        },
                         onAppearance = { mode ->
                             scope.launch {
                                 MadusApp.instance.themePrefs.setAppearance(mode)
@@ -718,6 +782,16 @@ fun MadusRoot(
                         onColorTheme = { theme ->
                             scope.launch {
                                 MadusApp.instance.themePrefs.setColorTheme(theme)
+                            }
+                        },
+                        onLiquidAppearance = { mode ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setLiquidAppearance(mode)
+                            }
+                        },
+                        onGlassTint = { tint ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setGlassTint(tint)
                             }
                         },
                         onVideoMode = vm::setVideoMode,
@@ -1075,6 +1149,20 @@ fun MadusRoot(
                     )
                 }
             }
+        }
+        if (liquid && (showTabChrome || showPlaylistMini)) {
+            LiquidFloatingChrome(
+                route = route,
+                playback = playback,
+                showMini = playback.current != null && !onRecommend,
+                showTabs = showTabChrome,
+                onSelectTab = ::selectRootTab,
+                onToggle = vm::togglePlay,
+                onOpenMini = { openRecommendPlayer() },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+        }
         }
 
         if (biliRecognize.panelVisible) {

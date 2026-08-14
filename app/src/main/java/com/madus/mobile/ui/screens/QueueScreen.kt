@@ -64,6 +64,8 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.PlayModeLabel
 import com.madus.mobile.ui.QueueSearchUiState
 import com.madus.mobile.ui.components.CoverArt
+import com.madus.mobile.ui.liquid.LiquidPageHeader
+import com.madus.mobile.ui.theme.isLiquidTheme
 import kotlin.math.roundToInt
 
 /**
@@ -121,11 +123,38 @@ fun QueueScreen(
         (queueSearch.results.isNotEmpty() || queueSearch.isSearching || queueSearch.message != null)
     val canDrag = query.trim().isEmpty()
 
+    val liquid = isLiquidTheme()
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .then(if (liquid) Modifier else Modifier.background(MaterialTheme.colorScheme.background)),
     ) {
+        if (liquid) {
+            LiquidPageHeader(
+                title = "队列",
+                subtitle = if (tracks.isEmpty()) "空" else "共 ${tracks.size} 首 · ${playMode.label}",
+                onBack = onBack,
+                action = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onCycleMode) {
+                            Icon(
+                                imageVector = when (playMode) {
+                                    PlayModeLabel.SHUFFLE -> Icons.Default.Shuffle
+                                    PlayModeLabel.SINGLE -> Icons.Default.RepeatOne
+                                    PlayModeLabel.LOOP -> Icons.Default.Repeat
+                                },
+                                contentDescription = playMode.label,
+                            )
+                        }
+                        if (tracks.isNotEmpty()) {
+                            TextButton(onClick = onClear) {
+                                Text("清空", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                    }
+                },
+            )
+        } else {
         // Grab handle visual (sheet language)
         Box(
             modifier = Modifier
@@ -179,6 +208,7 @@ fun QueueScreen(
                     Text("清空", style = MaterialTheme.typography.labelLarge)
                 }
             }
+        }
         }
 
         // 搜索条：过滤当前队列 + 回车搜 B 站新歌（插播）

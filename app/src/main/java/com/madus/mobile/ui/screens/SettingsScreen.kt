@@ -31,10 +31,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.data.AppearanceMode
 import com.madus.mobile.data.ColorTheme
+import com.madus.mobile.data.LiquidAppearance
 import com.madus.mobile.data.ThemeSettings
 import com.madus.mobile.data.VideoGestureMode
+import com.madus.mobile.data.VisualTheme
 import com.madus.mobile.ui.components.SectionTitle
+import com.madus.mobile.ui.liquid.LiquidSettingsScreen
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.isLiquidTheme
 
 /** 外观 + 短视频操作模式（视频/音乐开关仍在推荐页）。 */
 @Composable
@@ -43,12 +47,30 @@ fun SettingsScreen(
     videoMode: Boolean = false,
     gestureMode: VideoGestureMode = VideoGestureMode.DOUYIN,
     onBack: () -> Unit,
+    onVisualTheme: (VisualTheme) -> Unit = {},
     onAppearance: (AppearanceMode) -> Unit,
     onColorTheme: (ColorTheme) -> Unit,
+    onLiquidAppearance: (LiquidAppearance) -> Unit = {},
+    onGlassTint: (Float) -> Unit = {},
     onVideoMode: (Boolean) -> Unit = {},
     onGestureMode: (VideoGestureMode) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (isLiquidTheme()) {
+        LiquidSettingsScreen(
+            settings = settings,
+            gestureMode = gestureMode,
+            onBack = onBack,
+            onVisualTheme = onVisualTheme,
+            onAppearance = onAppearance,
+            onColorTheme = onColorTheme,
+            onLiquidAppearance = onLiquidAppearance,
+            onGlassTint = onGlassTint,
+            onGestureMode = onGestureMode,
+            modifier = modifier,
+        )
+        return
+    }
     val tokens = appearanceTokens()
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -95,10 +117,33 @@ fun SettingsScreen(
             }
 
             item {
+                SectionTitle(text = "主题")
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "简约是现在这套。液态玻璃会整页另排。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                VisualTheme.entries.forEach { theme ->
+                    SelectRow(
+                        title = theme.label,
+                        subtitle = when (theme) {
+                            VisualTheme.Classic -> "线稿 / 圆滑，现有排版"
+                            VisualTheme.LiquidGlass -> "浮动玻璃，首页到设置都另排"
+                        },
+                        selected = settings.visualTheme == theme,
+                        onClick = { onVisualTheme(theme) },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+
+            item {
                 SectionTitle(text = "外观形态")
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "形态与颜色分开选。默认保持方角线稿。",
+                    text = "只作用于简约主题。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

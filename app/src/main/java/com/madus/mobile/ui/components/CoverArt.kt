@@ -21,6 +21,7 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.madus.mobile.data.AppearanceMode
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.isLiquidTheme
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -84,7 +85,8 @@ fun CoverArt(
     val context = LocalContext.current
     val loader = remember { MadusImageLoader.get(context) }
     val tokens = appearanceTokens()
-    val coverShape = RoundedCornerShape(tokens.cornerSm)
+    val liquid = isLiquidTheme()
+    val coverShape = RoundedCornerShape(if (liquid) 18.dp else tokens.cornerSm)
     val sized = if (size > 0.dp) modifier.size(size) else modifier
 
     val normalized = normalizeCoverUrl(coverUrl)
@@ -100,9 +102,16 @@ fun CoverArt(
         Box(
             modifier = sized
                 .clip(coverShape)
-                .border(tokens.borderWidth, MaterialTheme.colorScheme.outline.copy(
-                    alpha = if (tokens.mode == AppearanceMode.SoftGlass) 0.2f else 1f,
-                ), coverShape),
+                .then(
+                    if (liquid) Modifier
+                    else Modifier.border(
+                        tokens.borderWidth,
+                        MaterialTheme.colorScheme.outline.copy(
+                            alpha = if (tokens.mode == AppearanceMode.SoftGlass) 0.2f else 1f,
+                        ),
+                        coverShape,
+                    ),
+                ),
         ) {
             SubcomposeAsyncImage(
                 model = ImageRequest.Builder(context)

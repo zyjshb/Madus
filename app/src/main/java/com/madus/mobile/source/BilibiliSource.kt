@@ -27,32 +27,33 @@ class BilibiliSource(
             cached = AuthSession(source = type, isLoggedIn = false, displayName = "未登录 · 点此登录")
             return cached
         }
-        // Cookie present = treat as logged in even if nav is slow/fails
-        val fallback = AuthSession(
-            source = type,
-            isLoggedIn = true,
-            displayName = "B站用户",
-            credentialBlob = cookie,
-            updatedAtMs = System.currentTimeMillis(),
-            avatarUrl = cached.avatarUrl,
-        )
         return runCatching {
             val nav = api.nav(cookie)
-            val logged = nav.isLogin || cookie.contains("SESSDATA")
+            if (!nav.isLogin) {
+                // 残留 SESSDATA / 过期 Cookie 不算登录
+                store.clearBiliCookie()
+                cached = AuthSession(source = type, isLoggedIn = false, displayName = "未登录 · 点此登录")
+                return cached
+            }
             cached = AuthSession(
                 source = type,
-                isLoggedIn = logged,
-                displayName = when {
-                    nav.uname.isNotBlank() -> nav.uname
-                    logged -> "B站用户"
-                    else -> "未登录 · 点此登录"
-                },
+                isLoggedIn = true,
+                displayName = nav.uname.ifBlank { "B站用户" },
                 credentialBlob = cookie,
                 updatedAtMs = System.currentTimeMillis(),
                 avatarUrl = nav.face.ifBlank { null },
             )
             cached
-        }.getOrDefault(fallback)
+        }.getOrElse {
+            // 网络失败：只有上次已经用接口确认过登录才沿用
+            if (cached.isLoggedIn && cached.displayName.isNotBlank() &&
+                cached.displayName != "B站用户" && cached.displayName != "未登录 · 点此登录"
+            ) {
+                cached
+            } else {
+                AuthSession(source = type, isLoggedIn = false, displayName = "未登录 · 点此登录")
+            }
+        }
     }
 
     override suspend fun login(): AuthSession {

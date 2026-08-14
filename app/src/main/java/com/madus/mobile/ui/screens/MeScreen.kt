@@ -57,18 +57,34 @@ import com.madus.mobile.ui.components.LineFrame
 import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.components.SectionTitle
 import com.madus.mobile.ui.components.normalizeCoverUrl
+import com.madus.mobile.ui.liquid.LiquidMeScreen
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.isLiquidTheme
 
 @Composable
 fun MeScreen(
     state: MeUiState,
     onOpenBiliLogin: () -> Unit,
+    onLogoutBili: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onToolClick: (String) -> Unit = {},
     onOpenEasterEgg: () -> Unit = {},
     onAboutSystemToast: (message: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (isLiquidTheme()) {
+        LiquidMeScreen(
+            state = state,
+            onOpenBiliLogin = onOpenBiliLogin,
+            onLogoutBili = onLogoutBili,
+            onOpenSettings = onOpenSettings,
+            onToolClick = onToolClick,
+            onOpenEasterEgg = onOpenEasterEgg,
+            onAboutSystemToast = onAboutSystemToast,
+            modifier = modifier,
+        )
+        return
+    }
     val bili = state.sessions.firstOrNull { it.source == MusicSourceType.BILIBILI }
     val loggedInCount = state.sessions.count { it.isLoggedIn }
 
@@ -156,6 +172,14 @@ fun MeScreen(
                         onClick = onOpenBiliLogin,
                         filled = bili?.isLoggedIn != true,
                     )
+                    if (bili?.isLoggedIn == true) {
+                        Spacer(Modifier.width(8.dp))
+                        LineButton(
+                            text = "退出",
+                            onClick = onLogoutBili,
+                            filled = false,
+                        )
+                    }
                 }
             }
         }

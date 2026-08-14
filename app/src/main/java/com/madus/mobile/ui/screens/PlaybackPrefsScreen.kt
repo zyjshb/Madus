@@ -29,7 +29,9 @@ import com.madus.mobile.data.NetworkIntensity
 import com.madus.mobile.data.PlayerSettings
 import com.madus.mobile.data.SoundFx
 import com.madus.mobile.ui.components.SectionTitle
+import com.madus.mobile.ui.liquid.LiquidPageHeader
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.isLiquidTheme
 
 /**
  * 播放设置：音效、网络档位、边听缓存等。
@@ -51,6 +53,13 @@ fun PlaybackPrefsScreen(
     val tokens = appearanceTokens()
 
     Column(modifier = modifier.fillMaxSize()) {
+        if (isLiquidTheme()) {
+            LiquidPageHeader(
+                title = "播放",
+                subtitle = "音质 / 定时在播放页点",
+                onBack = onBack,
+            )
+        } else {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -66,6 +75,7 @@ fun PlaybackPrefsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
         }
 
         LazyColumn(

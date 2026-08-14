@@ -3585,6 +3585,7 @@ class AppViewModel(
     }
 
     fun refreshMeStats() {
+        refreshSessions()
         viewModelScope.launch {
             val liked = runCatching { likedStore.tracks().size }.getOrDefault(0)
             val pl = runCatching { localPl.listNonEmpty().size }.getOrDefault(0)

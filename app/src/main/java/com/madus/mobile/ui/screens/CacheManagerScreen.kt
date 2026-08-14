@@ -34,7 +34,9 @@ import com.madus.mobile.data.TrackCacheStore
 import com.madus.mobile.player.StreamCache
 import com.madus.mobile.ui.CacheManagerUiState
 import com.madus.mobile.ui.components.CoverArt
+import com.madus.mobile.ui.liquid.LiquidPageHeader
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.isLiquidTheme
 
 @Composable
 fun CacheManagerScreen(
@@ -51,6 +53,13 @@ fun CacheManagerScreen(
     val shape = RoundedCornerShape(tokens.cornerMd)
 
     Column(modifier = modifier.fillMaxSize()) {
+        if (isLiquidTheme()) {
+            LiquidPageHeader(
+                title = "缓存",
+                subtitle = "合计 ${state.totalLabel}",
+                onBack = onBack,
+            )
+        } else {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -66,6 +75,7 @@ fun CacheManagerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
         }
 
         LazyColumn(

@@ -16,7 +16,8 @@
 
 **组件优先级（已落地骨架）：** SongRow / MiniPlayer / NowPlaying / SectionTitle / LineFrame / SearchField  
 
-明确不抄：霓虹渐变、玻璃拟态、粒子、重漫画分镜气泡墙、首页信息流过载。
+明确不抄进**默认简约**：霓虹渐变、粒子、重漫画分镜气泡墙、首页信息流过载。  
+液态玻璃是可选第二套主题（`VisualTheme.LiquidGlass`），整页另排，不替换默认。
 
 ## 视觉
 

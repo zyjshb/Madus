@@ -107,8 +107,11 @@ class MainActivity : ComponentActivity() {
             }
 
             MadusTheme(
+                visualTheme = theme.visualTheme,
                 appearance = theme.appearance,
                 colorTheme = theme.colorTheme,
+                liquidAppearance = theme.liquidAppearance,
+                glassTint = theme.glassTint,
             ) {
                 // 开屏固定品牌底；协议/主界面跟当前主题背景，避免黑屏协议切线稿纸色跳戏
                 val shellBg = when {
