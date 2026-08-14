@@ -376,6 +376,7 @@ fun MadusRoot(
         val hazeState = rememberHazeState()
         val density = LocalDensity.current
         val showMiniNow = liquid && playback.current != null &&
+            !onRecommend &&
             route != Routes.NOW_PLAYING && route != Routes.FULLSCREEN_VIDEO
         var chromeBottom by remember {
             mutableStateOf(LiquidChromeMetrics.contentBottom(showMiniNow))
@@ -388,9 +389,6 @@ fun MadusRoot(
             LocalLiquidChromeBottom provides chromeBottom,
         ) {
         Box(Modifier.fillMaxSize()) {
-        if (liquid) {
-            LiquidBackground()
-        }
         val contentPad = if (liquid) {
             androidx.compose.foundation.layout.PaddingValues(
                 top = padding.calculateTopPadding(),
@@ -403,8 +401,11 @@ fun MadusRoot(
             Modifier
                 .padding(contentPad)
                 .fillMaxSize()
-                .then(if (hazeState != null) Modifier.hazeSource(hazeState) else Modifier),
+                .then(if (liquid) Modifier.hazeSource(hazeState) else Modifier),
         ) {
+            if (liquid) {
+                LiquidBackground()
+            }
             // 超长曲听太久：顶部轻提示条（像通知，不挡操作）
             if (!longPlayHint.isNullOrBlank()) {
                 Surface(
@@ -853,7 +854,8 @@ fun MadusRoot(
                         },
                         onRollWallpaper = {
                             scope.launch {
-                                MadusApp.instance.themePrefs.rollNewDailyWallpaper()
+                                val ok = MadusApp.instance.themePrefs.rollNewDailyWallpaper()
+                                snackbar.showSnackbar(if (ok) "已换一张" else "换图失败，稍后再试")
                             }
                         },
                         onDownloadWallpaper = {
@@ -1241,6 +1243,8 @@ fun MadusRoot(
                 showTabs = showTabChrome,
                 onSelectTab = ::selectRootTab,
                 onToggle = vm::togglePlay,
+                onPrevious = vm::previous,
+                onNext = vm::next,
                 onOpenMini = {
                     nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true }
                 },

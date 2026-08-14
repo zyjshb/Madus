@@ -34,21 +34,23 @@ data class LiquidTokens(
     val hazeContainer: Color = Color(0xFF0A0C10),
     val wallpaperPath: String? = null,
     val wallpaperDim: Float = 0.55f,
+    val wallpaperStamp: Long = 0L,
+    val accentColor: Color = CanvasGoldSoft,
 ) {
     val fillAlpha: Float
-        get() = (0.22f + tint * 0.36f).coerceIn(0.22f, 0.58f)
+        get() = (0.18f + tint * 0.28f).coerceIn(0.18f, 0.46f)
 
     val glassFill: Color
         get() = Color(0xFF101318).copy(alpha = fillAlpha)
 
     val rim: Color
-        get() = Color.White.copy(alpha = 0.16f)
+        get() = Color.White.copy(alpha = 0.22f)
 
     val goldRim: Color
-        get() = CanvasGold.copy(alpha = 0.55f)
+        get() = accentColor.copy(alpha = 0.55f)
 
     val accent: Color
-        get() = CanvasGoldSoft
+        get() = accentColor
 
     companion object {
         fun of(
@@ -56,11 +58,15 @@ data class LiquidTokens(
             dark: Boolean,
             wallpaperPath: String? = null,
             wallpaperDim: Float = 0.55f,
+            wallpaperStamp: Long = 0L,
+            accentColor: Color = CanvasGoldSoft,
         ) = LiquidTokens(
             tint = tint.coerceIn(0f, 1f),
             dark = dark,
             wallpaperPath = wallpaperPath,
             wallpaperDim = wallpaperDim.coerceIn(0.25f, 0.82f),
+            wallpaperStamp = wallpaperStamp,
+            accentColor = accentColor,
         )
     }
 }
@@ -140,18 +146,22 @@ fun liquidDark(appearance: LiquidAppearance, systemDark: Boolean): Boolean = whe
     LiquidAppearance.Dark -> true
 }
 
-fun liquidColorScheme(dark: Boolean) = darkColorScheme(
-    primary = CanvasGoldSoft,
+fun liquidColorScheme(
+    dark: Boolean,
+    accent: Color = CanvasGoldSoft,
+    onBg: Color = CanvasPaper,
+) = darkColorScheme(
+    primary = accent,
     onPrimary = Color(0xFF1A140C),
-    secondary = Color(0xFFC8BBA8),
+    secondary = onBg.copy(alpha = 0.78f),
     onSecondary = Color.White,
     background = CanvasInk,
-    onBackground = CanvasPaper,
+    onBackground = onBg,
     surface = Color(0xFF161A1F),
-    onSurface = CanvasPaper,
+    onSurface = onBg,
     surfaceVariant = Color(0xFF22262C),
-    onSurfaceVariant = Color(0xFFC8BBA8),
-    outline = Color(0x66D8C4A4),
+    onSurfaceVariant = onBg.copy(alpha = 0.72f),
+    outline = accent.copy(alpha = 0.40f),
     outlineVariant = Color(0x3322262C),
     error = Color(0xFFFF6B5C),
     onError = Color.White,

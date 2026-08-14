@@ -2,8 +2,8 @@
 
 **日期：** 2026-08-14  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.16.4` / versionCode `283`  
-**正式包：** `and/apk/Madus-1.16.4.apk`  
+**当前版本：** `1.16.5` / versionCode `284`  
+**正式包：** `and/apk/Madus-1.16.5.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -17,7 +17,7 @@
 4. 关机前更新本文档  
 5. **GitHub / Gitee Releases 只上传正式 APK，禁止 `*-debug.apk`**  
 6. **文案忌 AI 味**：不要「像安卓旧版…」「玩笑」「端侧直连」这类说明书腔；界面短句即可  
-7. **改完即发双仓**（用户 2026-08-14 定的）：打正式包 → push GitHub/Gitee → 双仓 Release。只有用户说「先别传」才停  
+7. **改完即发双仓**（用户 2026-08-15 再确认：打包发布这些以后都自动）：打正式包 → push GitHub/Gitee → 双仓 Release。只有用户说「先别传」才停  
 
 ---
 

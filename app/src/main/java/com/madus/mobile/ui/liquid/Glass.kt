@@ -70,8 +70,14 @@ fun LiquidBackground(modifier: Modifier = Modifier, coverUrl: String? = null) {
     val loader = remember { MadusImageLoader.get(context) }
     Box(modifier.fillMaxSize()) {
         if (!path.isNullOrBlank()) {
+            val file = java.io.File(path)
             AsyncImage(
-                model = ImageRequest.Builder(context).data(java.io.File(path)).crossfade(280).build(),
+                model = ImageRequest.Builder(context)
+                    .data(file)
+                    .memoryCacheKey("$path-${tokens.wallpaperStamp}-${file.lastModified()}")
+                    .diskCacheKey("$path-${tokens.wallpaperStamp}")
+                    .crossfade(280)
+                    .build(),
                 contentDescription = null,
                 imageLoader = loader,
                 contentScale = ContentScale.Crop,

@@ -29,6 +29,18 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.16.5",
+            date = "2026-08-15",
+            changed = listOf(
+                "画境电台页不再叠迷你条；迷你条可切上一首/下一首",
+                "底栏玻璃会糊到壁纸；配色跟壁纸走，亮图自动压暗",
+            ),
+            fixed = listOf(
+                "换一张壁纸没反应",
+                "点随机再点固定会卡退",
+            ),
+        ),
+        Entry(
             version = "1.16.4",
             date = "2026-08-15",
             added = listOf(

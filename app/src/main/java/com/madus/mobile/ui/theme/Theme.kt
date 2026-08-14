@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.data.AppearanceMode
 import com.madus.mobile.data.ColorTheme
@@ -19,12 +20,22 @@ fun MadusTheme(
     glassTint: Float = 0.42f,
     wallpaperPath: String? = null,
     wallpaperDim: Float = 0.55f,
+    wallpaperStamp: Long = 0L,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
     if (visualTheme == VisualTheme.Canvas) {
         val liquidDark = liquidDark(liquidAppearance, darkTheme)
-        val tokens = LiquidTokens.of(glassTint, liquidDark, wallpaperPath, wallpaperDim)
+        val palette = remember(wallpaperPath, wallpaperStamp) { extractCanvasPalette(wallpaperPath) }
+        val dim = maxOf(wallpaperDim, palette.minDim)
+        val tokens = LiquidTokens.of(
+            tint = glassTint,
+            dark = liquidDark,
+            wallpaperPath = wallpaperPath,
+            wallpaperDim = dim,
+            wallpaperStamp = wallpaperStamp,
+            accentColor = palette.accent,
+        )
         val appearanceForFallback = AppearanceTokens(
             mode = AppearanceMode.SoftGlass,
             cornerXs = 12.dp,
@@ -41,7 +52,7 @@ fun MadusTheme(
             LocalAppearance provides appearanceForFallback,
         ) {
             MaterialTheme(
-                colorScheme = liquidColorScheme(liquidDark),
+                colorScheme = liquidColorScheme(liquidDark, palette.accent, palette.onBg),
                 typography = LiquidTypography,
                 content = content,
             )

@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.16.4：画境跟简约排版，壁纸每日随机
-        versionCode = 283
-        versionName = "1.16.4"
+        // 1.16.5：电台不叠迷你条；换图/固定崩溃；壁纸配色
+        versionCode = 284
+        versionName = "1.16.5"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -64,6 +64,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

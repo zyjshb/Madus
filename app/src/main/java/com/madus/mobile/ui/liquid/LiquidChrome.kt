@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
@@ -88,6 +90,8 @@ fun LiquidFloatingChrome(
     showTabs: Boolean,
     onSelectTab: (RootTab) -> Unit,
     onToggle: () -> Unit,
+    onPrevious: () -> Unit = {},
+    onNext: () -> Unit = {},
     onOpenMini: () -> Unit,
     modifier: Modifier = Modifier,
     onChromeHeightPx: (Int) -> Unit = {},
@@ -129,7 +133,12 @@ fun LiquidFloatingChrome(
                 contentPadding = 0.dp,
                 onClick = onOpenMini,
             ) {
-                LiquidMiniRow(playback = playback, onToggle = onToggle)
+                LiquidMiniRow(
+                    playback = playback,
+                    onToggle = onToggle,
+                    onPrevious = onPrevious,
+                    onNext = onNext,
+                )
             }
         }
         if (showTabs) {
@@ -186,6 +195,8 @@ fun LiquidFloatingChrome(
 private fun LiquidMiniRow(
     playback: PlaybackState,
     onToggle: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
 ) {
     val track = playback.current ?: return
     val switching = playback.isLoading && !playback.isPlaying
@@ -236,6 +247,19 @@ private fun LiquidMiniRow(
         }
         Box(
             modifier = Modifier
+                .size(40.dp)
+                .clickable(onClick = onPrevious),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.SkipPrevious,
+                contentDescription = "上一首",
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        Box(
+            modifier = Modifier
                 .size(44.dp)
                 .graphicsLayer {
                     scaleX = playScale
@@ -263,6 +287,19 @@ private fun LiquidMiniRow(
                     modifier = Modifier.size(28.dp),
                 )
             }
+        }
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clickable(onClick = onNext),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.SkipNext,
+                contentDescription = "下一首",
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
 }
