@@ -3,7 +3,7 @@
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
 **当前版本：** `1.16.8` / versionCode `287`  
-**提交：** （发版后填）  
+**提交：** `5cfd3fc`  
 **正式包：** `and/apk/Madus-1.16.8.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
@@ -259,7 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
-| **1.16.8** | 连点换壁纸不再叠 snackbar 挡底栏 | 待传 |  
+| **1.16.8** `5cfd3fc` | 连点换壁纸不再叠 snackbar 挡底栏 | **已传** |  
 | **1.16.7** `83c1597` | 跟随壁纸配色开关；玻璃通透/着色；背景模糊；去重相册入口；更新页跟主题 | **已传** |  
 | **1.16.6** `9f7053f` | 画境强制浅字；迷你条进电台（不再进播放页） | **已传** 双仓；Gitee `/latest` = v1.16.6 |
 | **1.16.5** `87b7393` | 电台不叠 mini；mini 可切歌；玻璃糊到壁纸；配色跟图；换图无反应；随机后再固定卡退 | **已传** |
@@ -272,7 +272,7 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.16.8**（发版后填）  
+- 双仓最新：**1.16.8**（`5cfd3fc`）  
 - 包：`apk/Madus-1.16.8.apk`  
 - 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.16.8  
   备用：https://github.com/zyjshb/Madus/releases/tag/v1.16.8  
