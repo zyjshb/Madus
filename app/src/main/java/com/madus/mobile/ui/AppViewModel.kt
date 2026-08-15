@@ -1161,11 +1161,7 @@ class AppViewModel(
         MadusApp.instance.videoModeEnabled ||
             playback.value.current?.isVideoStream == true
 
-    /**
-     * 切到相邻一条：读会话/最近记忆续播。
-     * 听歌「上一首」在当前曲 >3s 时仍是重头播当前（见 previous），
-     * 再按一次才回到上一首，那时必须带记忆，不能再写死 0。
-     */
+    /** 切到相邻一条：读会话/最近记忆续播。 */
     private fun startPosForNeighborSwitch(): Long = -1L
 
     /** 播放进度信号：WATCH_50 / WATCH_90，每曲每种只记一次。 */
@@ -2491,13 +2487,10 @@ class AppViewModel(
                     if (real >= 0) pendingIndex = real
                 }
             }
-            val pb = playback.value
             val canWrap = pendingQueue.size > 1 &&
                 (_playMode.value == PlayModeLabel.LOOP || _playMode.value == PlayModeLabel.SHUFFLE)
 
             // 队首 + 循环：上一首直接到队尾。
-            // 不要先走「播过 3s 重头」——否则第一首要点两次才能到最后一首。
-            val video = isVideoPlayback()
             val switchStart = startPosForNeighborSwitch()
             if (pendingIndex <= 0) {
                 if (canWrap) {
@@ -2508,13 +2501,7 @@ class AppViewModel(
                 return@launch
             }
 
-            // 非队首：纯音乐播过约 3s 再点上一首 = 重头播当前（常见播放器习惯）
-            // 视频模式 / 竖屏上下滑：始终切上一条，并用记忆续播
-            if (!video && pb.positionMs > 3_000) {
-                player.dispatch(PlayerCommand.Seek(0))
-                return@launch
-            }
-            // skipDelta=-1：取流失败也往「更早」找，绝不跳到新歌
+            // 上一首就是上一首。不要先重头加载当前（听歌/视频都一样，点两次才能切走）。
             playIndex(pendingIndex - 1, startPos = switchStart, skipDelta = -1)
         }
     }

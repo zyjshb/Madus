@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.9",
+            date = "2026-08-15",
+            fixed = listOf(
+                "切到下一首再点上一首，直接回上一条，不再先把当前视频重载一遍",
+            ),
+        ),
+        Entry(
             version = "1.17.8",
             date = "2026-08-15",
             fixed = listOf(

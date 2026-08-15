@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.8：切歌再切回来续播
-        versionCode = 297
-        versionName = "1.17.8"
+        // 1.17.9：上一首直接切上一条，不再先重载当前
+        versionCode = 298
+        versionName = "1.17.9"
         vectorDrawables.useSupportLibrary = true
     }
 
