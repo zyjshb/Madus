@@ -77,7 +77,6 @@ import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.TrackRow
-import com.madus.mobile.ui.components.hasVisibleLines
 import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
 import com.madus.mobile.ui.theme.appearanceTokens
 import com.madus.mobile.ui.theme.isLiquidTheme
@@ -121,7 +120,6 @@ fun RecommendScreen(
     onFullscreen: () -> Unit = {},
     onOpenUp: () -> Unit = {},
     onOpenNowPlaying: () -> Unit = {},
-    lyrics: com.madus.mobile.domain.LyricsUiState = com.madus.mobile.domain.LyricsUiState(),
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -162,7 +160,6 @@ fun RecommendScreen(
                 onPrevious = onPrevious,
                 onToggleLike = onToggleLike,
                 onNotInterested = onNotInterested,
-                lyrics = lyrics,
                 onOpenQueue = onOpenQueue,
                 onSeek = onSeek,
                 onCollectCurrent = onCollectCurrent,
@@ -248,7 +245,6 @@ private fun RadioPanel(
     onPrevious: () -> Unit,
     onToggleLike: () -> Unit,
     onNotInterested: () -> Unit = {},
-    lyrics: com.madus.mobile.domain.LyricsUiState = com.madus.mobile.domain.LyricsUiState(),
     onOpenQueue: () -> Unit = {},
     onSeek: (Long) -> Unit = {},
     onCollectCurrent: () -> Unit = {},
@@ -381,15 +377,6 @@ private fun RadioPanel(
                     Modifier
                 },
             )
-
-            if (track != null && lyrics.hasVisibleLines()) {
-                Spacer(Modifier.height(10.dp))
-                com.madus.mobile.ui.components.LyricTwoLines(
-                    state = lyrics,
-                    positionMs = playback.positionMs,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                )
-            }
 
             if (track != null) {
                 Spacer(Modifier.height(12.dp))

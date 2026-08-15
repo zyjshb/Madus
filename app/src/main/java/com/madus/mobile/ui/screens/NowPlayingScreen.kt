@@ -102,7 +102,6 @@ import com.madus.mobile.ui.components.BiliPlayerSurface
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.components.SeekBar
-import com.madus.mobile.ui.components.hasVisibleLines
 import com.madus.mobile.ui.components.ThinVideoProgress
 import com.madus.mobile.ui.components.normalizeCoverUrl
 import com.madus.mobile.ui.theme.isLiquidTheme
@@ -148,7 +147,6 @@ fun NowPlayingScreen(
     onPlaySeries: () -> Unit = {},
     onOpenUp: () -> Unit = {},
     ownerFaceUrl: String = "",
-    lyrics: com.madus.mobile.domain.LyricsUiState = com.madus.mobile.domain.LyricsUiState(),
     modifier: Modifier = Modifier,
 ) {
     val track = playback.current
@@ -203,7 +201,6 @@ fun NowPlayingScreen(
             onCyclePlayMode = onCyclePlayMode,
             soundFx = soundFx,
             onCycleSoundFx = onCycleSoundFx,
-            lyrics = lyrics,
             modifier = modifier,
         )
     }
@@ -977,7 +974,6 @@ private fun MusicImmersiveMode(
     onCyclePlayMode: () -> Unit,
     soundFx: SoundFx,
     onCycleSoundFx: () -> Unit,
-    lyrics: com.madus.mobile.domain.LyricsUiState = com.madus.mobile.domain.LyricsUiState(),
     modifier: Modifier = Modifier,
 ) {
     val track = playback.current
@@ -1070,13 +1066,6 @@ private fun MusicImmersiveMode(
                     },
                 )
             }
-        }
-        if (lyrics.hasVisibleLines()) {
-            Spacer(Modifier.height(12.dp))
-            com.madus.mobile.ui.components.LyricTwoLines(
-                state = lyrics,
-                positionMs = playback.positionMs,
-            )
         }
         val err = playback.errorMessage?.trim().orEmpty()
         if (err.isNotBlank()) {

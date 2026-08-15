@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.1：B 站字幕当歌词
-        versionCode = 290
-        versionName = "1.17.1"
+        // 1.17.2：去掉歌词
+        versionCode = 291
+        versionName = "1.17.2"
         vectorDrawables.useSupportLibrary = true
     }
 

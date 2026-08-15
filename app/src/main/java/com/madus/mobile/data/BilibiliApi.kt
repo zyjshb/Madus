@@ -1,10 +1,7 @@
 package com.madus.mobile.data
 
 import android.util.Log
-import com.madus.mobile.domain.LyricSheet
-import com.madus.mobile.domain.Lyrics
 import com.madus.mobile.domain.MusicSourceType
-import com.madus.mobile.domain.SubtitleChoice
 import com.madus.mobile.domain.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -59,9 +56,6 @@ class BilibiliApi(
 
     /** mid -> face，短视频头像 / UP 页复用 */
     private val ownerFaceCache = java.util.concurrent.ConcurrentHashMap<String, String>()
-
-    /** bvid:cid -> 字幕歌词 */
-    private val lyricsCache = java.util.concurrent.ConcurrentHashMap<String, LyricSheet>()
 
     /** WBI 签名 mixin key 缓存（约每日轮换） */
     private val wbiMixinKey = AtomicReference("")
@@ -2554,101 +2548,6 @@ class BilibiliApi(
             ownerName = ownerObj?.optString("name", "Bilibili").orEmpty(),
             tags = tags,
         )
-    }
-
-    /**
-     * 把稿件字幕当歌词。优先中文人工轨，其次 B 站智能字幕。
-     * 没有字幕返回 null。
-     */
-    suspend fun fetchLyrics(bvid: String, cid: String = ""): LyricSheet? = withContext(Dispatchers.IO) {
-        val bv = parseBvid(bvid) ?: return@withContext null
-        val cookie = mergedCookie()
-        var useCid = cid.trim()
-        if (useCid.isBlank()) {
-            useCid = viewMetaCache[bv]?.third.orEmpty()
-        }
-        if (useCid.isBlank()) {
-            val view = runCatching {
-                getJson(
-                    "https://api.bilibili.com/x/web-interface/view?bvid=${URLEncoder.encode(bv, "UTF-8")}",
-                    cookie,
-                    referer = "https://www.bilibili.com/video/$bv",
-                )
-            }.getOrNull()?.optJSONObject("data")
-            useCid = view?.opt("cid")?.toString()?.takeIf { it != "null" }.orEmpty()
-        }
-        if (useCid.isBlank()) return@withContext null
-
-        val cacheKey = "$bv:$useCid"
-        lyricsCache[cacheKey]?.let { return@withContext it }
-
-        val data = playerV2Data(bv, useCid, cookie) ?: return@withContext null
-        val arr = data.optJSONObject("subtitle")?.optJSONArray("subtitles")
-            ?: return@withContext null
-        val choices = buildList {
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                val url = Lyrics.normalizeSubtitleUrl(o.optString("subtitle_url"))
-                if (url.isBlank()) continue
-                add(
-                    SubtitleChoice(
-                        lan = o.optString("lan"),
-                        lanDoc = o.optString("lan_doc"),
-                        url = url,
-                    ),
-                )
-            }
-        }
-        val pick = Lyrics.pickSubtitle(choices) ?: return@withContext null
-        val json = runCatching {
-            getJson(pick.url, cookie, referer = "https://www.bilibili.com/video/$bv")
-        }.getOrNull() ?: return@withContext null
-        val lines = Lyrics.parseBody(json)
-        if (lines.isEmpty()) return@withContext null
-        val sheet = LyricSheet(
-            key = cacheKey,
-            language = pick.lanDoc.ifBlank { pick.lan },
-            lines = lines,
-        )
-        lyricsCache[cacheKey] = sheet
-        sheet
-    }
-
-    private suspend fun playerV2Data(bvid: String, cid: String, cookie: String): JSONObject? {
-        val referer = "https://www.bilibili.com/video/$bvid"
-        val wbi = runCatching {
-            val signed = signWbiQuery(
-                mapOf("bvid" to bvid, "cid" to cid),
-                cookie,
-            )
-            getJson("https://api.bilibili.com/x/player/wbi/v2?$signed", cookie, referer)
-        }.getOrNull()
-        if (wbi != null && wbi.optInt("code", -1) == 0) {
-            wbi.optJSONObject("data")?.let { return it }
-        }
-        val player = runCatching {
-            getJson(
-                "https://api.bilibili.com/x/player/v2?bvid=${URLEncoder.encode(bvid, "UTF-8")}" +
-                    "&cid=${URLEncoder.encode(cid, "UTF-8")}",
-                cookie,
-                referer,
-            )
-        }.getOrNull()
-        if (player != null && player.optInt("code", -1) == 0) {
-            player.optJSONObject("data")?.let { return it }
-        }
-        val web = runCatching {
-            getJson(
-                "https://api.bilibili.com/x/web-interface/player/v2?bvid=${URLEncoder.encode(bvid, "UTF-8")}" +
-                    "&cid=${URLEncoder.encode(cid, "UTF-8")}",
-                cookie,
-                referer,
-            )
-        }.getOrNull()
-        if (web != null && web.optInt("code", -1) == 0) {
-            return web.optJSONObject("data")
-        }
-        return null
     }
 
     /** 公开：按 bvid 拉多分 P 列表 */

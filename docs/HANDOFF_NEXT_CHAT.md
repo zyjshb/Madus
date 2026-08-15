@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.17.1` / versionCode `290`  
-**提交：** `ac3e12a`  
-**正式包：** `and/apk/Madus-1.17.1.apk`  
+**当前版本：** `1.17.2` / versionCode `291`  
+**提交：** （发版后填）  
+**正式包：** `and/apk/Madus-1.17.2.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -259,7 +259,8 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
-| **1.17.1** `ac3e12a` | B 站字幕当歌词（智能字幕也能用） | **已传** |  
+| **1.17.2** | 去掉歌词 | 待传 |  
+| **1.17.1** `ac3e12a` | B 站字幕当歌词（已撤回） | 已传 |  
 | **1.17.0** `3bb9b2d` | 不喜欢 + 通知栏点赞 | **已传** |  
 | **1.16.9** `c53e875` | iOS 手感：进页侧滑、Tab 淡入、按压缩放 | **已传** |  
 | **1.16.8** `5cfd3fc` | 连点换壁纸不再叠 snackbar 挡底栏 | **已传** |  
@@ -275,10 +276,10 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.17.1**（`ac3e12a`）  
-- 包：`apk/Madus-1.17.1.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.1  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.1  
+- 双仓最新：**1.17.2**（发版后填）  
+- 包：`apk/Madus-1.17.2.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.2  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.2  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  
