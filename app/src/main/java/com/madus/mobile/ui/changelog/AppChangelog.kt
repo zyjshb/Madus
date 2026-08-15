@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.1",
+            date = "2026-08-15",
+            added = listOf(
+                "听歌时用 B 站字幕当歌词，智能字幕也能用",
+                "电台和播放页显示当前句 + 下一句，跟着进度走",
+            ),
+        ),
+        Entry(
             version = "1.17.0",
             date = "2026-08-15",
             added = listOf(

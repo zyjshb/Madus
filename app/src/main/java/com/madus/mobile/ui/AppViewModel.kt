@@ -23,6 +23,7 @@ import com.madus.mobile.domain.ContentProfile
 import com.madus.mobile.domain.ContentProfileParser
 import com.madus.mobile.domain.FeedContext
 import com.madus.mobile.domain.InterestState
+import com.madus.mobile.domain.LyricsUiState
 import com.madus.mobile.domain.MusicSourceType
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.PlayerCommand
@@ -348,6 +349,10 @@ class AppViewModel(
 
     private val _recommend = MutableStateFlow(RecommendUiState(isLoading = true))
     val recommend: StateFlow<RecommendUiState> = _recommend.asStateFlow()
+
+    private val _lyrics = MutableStateFlow(LyricsUiState())
+    val lyrics: StateFlow<LyricsUiState> = _lyrics.asStateFlow()
+    private var lyricsJob: Job? = null
 
     private val _me = MutableStateFlow(MeUiState())
     val me: StateFlow<MeUiState> = _me.asStateFlow()
@@ -2145,6 +2150,31 @@ class AppViewModel(
         if (isForYouQueue()) scheduleInfinitePrefetch()
         // 始终预解析下一首，熄屏切歌少踩 CDN 空窗
         schedulePrefetchNextStreams()
+        requestLyrics(playTrack)
+    }
+
+    private fun requestLyrics(track: Track) {
+        if (track.source != MusicSourceType.BILIBILI || track.bvid.isBlank()) {
+            _lyrics.value = LyricsUiState()
+            return
+        }
+        val key = "${track.bvid}:${track.cid}"
+        val cur = _lyrics.value
+        if (cur.key == key && !cur.loading && (cur.lines.isNotEmpty() || cur.unavailable)) return
+        lyricsJob?.cancel()
+        lyricsJob = viewModelScope.launch {
+            _lyrics.value = LyricsUiState(key = key, loading = true)
+            val sheet = runCatching { biliApi.fetchLyrics(track.bvid, track.cid) }.getOrNull()
+            if (!isActive) return@launch
+            val lines = sheet?.lines.orEmpty()
+            _lyrics.value = LyricsUiState(
+                key = key,
+                lines = lines,
+                loading = false,
+                unavailable = lines.isEmpty(),
+                language = sheet?.language.orEmpty(),
+            )
+        }
     }
 
     /** 预解析数量：由用户网络档位决定（不关功能） */

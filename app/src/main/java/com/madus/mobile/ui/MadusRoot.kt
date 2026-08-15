@@ -149,6 +149,7 @@ fun MadusRoot(
     val search by vm.search.collectAsStateWithLifecycle()
     val library by vm.library.collectAsStateWithLifecycle()
     val recommend by vm.recommend.collectAsStateWithLifecycle()
+    val lyrics by vm.lyrics.collectAsStateWithLifecycle()
     val me by vm.me.collectAsStateWithLifecycle()
     val playback by vm.playback.collectAsStateWithLifecycle()
     val showPlaylistMini = onPlaylist && playback.current != null
@@ -583,6 +584,7 @@ fun MadusRoot(
                         onPrevious = vm::previous,
                         onToggleLike = vm::toggleLikeCurrent,
                         onNotInterested = { vm.markNotInterested() },
+                        lyrics = lyrics,
                         onPlayTrack = { track, queue ->
                             // 推荐页「最近」分段：有限列表循环，勿继承 recommend 无限流
                             if (recommend.segment == com.madus.mobile.ui.RecommendSegment.Recent) {
@@ -1119,6 +1121,7 @@ fun MadusRoot(
                             onGetSpeed = vm::currentPlaybackSpeed,
                             onPlaySeries = { vm.playSeriesContinuous(null) },
                             ownerFaceUrl = shortUpFace,
+                            lyrics = lyrics,
                             onOpenUp = {
                                 val t = playback.current ?: return@NowPlayingScreen
                                 if (nav.currentBackStackEntry?.destination?.route != Routes.UP_SPACE) {
