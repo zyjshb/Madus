@@ -60,6 +60,8 @@ fun LiquidSettingsScreen(
     onPickWallpaper: (String) -> Unit = {},
     onClearWallpaper: () -> Unit = {},
     onWallpaperDim: (Float) -> Unit = {},
+    onWallpaperBlur: (Float) -> Unit = {},
+    onFollowWallpaperColor: (Boolean) -> Unit = {},
     onWallpaperMode: (WallpaperMode) -> Unit = {},
     onPinWallpaper: () -> Unit = {},
     onRollWallpaper: () -> Unit = {},
@@ -148,27 +150,23 @@ fun LiquidSettingsScreen(
                 Column(Modifier.padding(horizontal = 20.dp)) {
                     LiquidSectionLabel("壁纸")
                     InsetGroup {
-                        WallpaperMode.entries.forEachIndexed { i, mode ->
-                            LiquidNavRow(
-                                title = mode.label,
-                                subtitle = when (mode) {
-                                    WallpaperMode.Daily -> "每天从 t.alcy.cc 换一张竖图"
-                                    WallpaperMode.Pinned -> "一直用现在这张"
-                                    WallpaperMode.Custom -> "自己从相册挑"
-                                },
-                                onClick = {
-                                    when (mode) {
-                                        WallpaperMode.Custom -> pick.launch("image/*")
-                                        WallpaperMode.Pinned -> onPinWallpaper()
-                                        WallpaperMode.Daily -> onWallpaperMode(mode)
-                                    }
-                                },
-                                trailing = {
-                                    if (settings.wallpaperMode == mode) Text("●", color = tokens.accent)
-                                },
-                            )
-                            if (i != WallpaperMode.entries.lastIndex) InsetDivider.text()
-                        }
+                        LiquidNavRow(
+                            title = "每日随机",
+                            subtitle = "每天从 t.alcy.cc 换一张竖图",
+                            onClick = { onWallpaperMode(WallpaperMode.Daily) },
+                            trailing = {
+                                if (settings.wallpaperMode == WallpaperMode.Daily) Text("●", color = tokens.accent)
+                            },
+                        )
+                        InsetDivider.text()
+                        LiquidNavRow(
+                            title = "固定这张",
+                            subtitle = "一直用现在这张",
+                            onClick = onPinWallpaper,
+                            trailing = {
+                                if (settings.wallpaperMode == WallpaperMode.Pinned) Text("●", color = tokens.accent)
+                            },
+                        )
                     }
                     Spacer(Modifier.height(10.dp))
                     InsetGroup {
@@ -176,7 +174,45 @@ fun LiquidSettingsScreen(
                         InsetDivider.text()
                         LiquidNavRow("下载这张", "存到相册 / Madus", onClick = onDownloadWallpaper)
                         InsetDivider.text()
-                        LiquidNavRow("从相册选择", "自定义壁纸", onClick = { pick.launch("image/*") })
+                        LiquidNavRow(
+                            title = "从相册选择",
+                            subtitle = "自己挑一张",
+                            onClick = { pick.launch("image/*") },
+                            trailing = {
+                                if (settings.wallpaperMode == WallpaperMode.Custom) Text("●", color = tokens.accent)
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LiquidSectionLabel("配色")
+                    InsetGroup {
+                        LiquidNavRow(
+                            title = "跟随壁纸",
+                            subtitle = "强调色从图里抽",
+                            onClick = { onFollowWallpaperColor(true) },
+                            trailing = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(tokens.accent),
+                                    )
+                                    if (settings.followWallpaperColor) {
+                                        Text("  ●", color = tokens.accent)
+                                    }
+                                }
+                            },
+                        )
+                        InsetDivider.text()
+                        LiquidNavRow(
+                            title = "香槟金",
+                            subtitle = "不跟图走",
+                            onClick = { onFollowWallpaperColor(false) },
+                            trailing = {
+                                if (!settings.followWallpaperColor) Text("●", color = tokens.accent)
+                            },
+                        )
                     }
                     Spacer(Modifier.height(16.dp))
                     LiquidSectionLabel("压暗")
@@ -190,6 +226,24 @@ fun LiquidSettingsScreen(
                                 value = settings.wallpaperDim,
                                 onValueChange = onWallpaperDim,
                                 valueRange = 0.25f..0.82f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = tokens.accent,
+                                    activeTrackColor = tokens.accent,
+                                ),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LiquidSectionLabel("模糊")
+                    InsetGroup {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("清", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("糊", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Slider(
+                                value = settings.wallpaperBlur,
+                                onValueChange = onWallpaperBlur,
                                 colors = SliderDefaults.colors(
                                     thumbColor = tokens.accent,
                                     activeTrackColor = tokens.accent,
@@ -213,6 +267,22 @@ fun LiquidSettingsScreen(
                                     activeTrackColor = tokens.accent,
                                 ),
                             )
+                            Text(
+                                "通透看得到后面。着色带强调色。",
+                                style = LiquidType.caption,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            GlassSurface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("预览", style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
                         }
                     }
                 }

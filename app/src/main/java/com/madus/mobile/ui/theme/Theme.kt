@@ -25,7 +25,9 @@ fun MadusTheme(
     glassTint: Float = 0.42f,
     wallpaperPath: String? = null,
     wallpaperDim: Float = 0.55f,
+    wallpaperBlur: Float = 0f,
     wallpaperStamp: Long = 0L,
+    followWallpaperColor: Boolean = true,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
@@ -35,13 +37,15 @@ fun MadusTheme(
         val palette = remember(wallpaperPath, wallpaperStamp) { extractCanvasPalette(wallpaperPath) }
         val ink = CanvasPaper
         val dim = maxOf(wallpaperDim, palette.minDim, 0.52f)
+        val accent = if (followWallpaperColor) palette.accent else CanvasGoldSoft
         val tokens = LiquidTokens.of(
             tint = glassTint,
             dark = true,
             wallpaperPath = wallpaperPath,
             wallpaperDim = dim,
+            wallpaperBlur = wallpaperBlur,
             wallpaperStamp = wallpaperStamp,
-            accentColor = palette.accent,
+            accentColor = accent,
         )
         val appearanceForFallback = AppearanceTokens(
             mode = AppearanceMode.SoftGlass,
@@ -70,7 +74,7 @@ fun MadusTheme(
             LocalContentColor provides ink,
         ) {
             MaterialTheme(
-                colorScheme = liquidColorScheme(dark = true, accent = palette.accent, onBg = ink),
+                colorScheme = liquidColorScheme(dark = true, accent = accent, onBg = ink),
                 typography = LiquidTypography,
                 content = content,
             )

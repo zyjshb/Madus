@@ -842,6 +842,16 @@ fun MadusRoot(
                                 MadusApp.instance.themePrefs.setWallpaperDim(dim)
                             }
                         },
+                        onWallpaperBlur = { blur ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setWallpaperBlur(blur)
+                            }
+                        },
+                        onFollowWallpaperColor = { follow ->
+                            scope.launch {
+                                MadusApp.instance.themePrefs.setFollowWallpaperColor(follow)
+                            }
+                        },
                         onWallpaperMode = { mode ->
                             scope.launch {
                                 MadusApp.instance.themePrefs.setWallpaperMode(mode)

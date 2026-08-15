@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.16.6` / versionCode `285`  
-**提交：** `9f7053f`  
-**正式包：** `and/apk/Madus-1.16.6.apk`  
+**当前版本：** `1.16.7` / versionCode `286`  
+**提交：** `72eb0ad`  
+**正式包：** `and/apk/Madus-1.16.7.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -82,11 +82,14 @@
 
 - 源：`https://t.alcy.cc/json?mp` → `{code,data:{link}}`（`AlcyWallpaper.kt`，带 UA / 跟跳转）  
 - 模式：`WallpaperMode` = Daily / Pinned / Custom  
-- 设置页：每日随机、固定、换一张、下载、相册自选、压暗/玻璃浓度滑条  
+- 设置页：每日随机、固定、换一张、下载、从相册选择、跟随壁纸/香槟金、压暗/模糊/玻璃滑条  
 - Coil 缓存键必须带 `path + stamp + mtime`，否则「换一张」看起来没换  
 - **固定**：先用已存路径；拷到 `wallpaper.jpg` 时若源和目标是同一文件 **禁止 `File.copyTo`**（1.16.5 卡退：随机后再固定自己拷自己）  
-- 配色：`extractCanvasPalette` 抽 accent；**字色永远 `CanvasPaper`**，不跟系统浅色走  
-- 亮图自动抬 `minDim`（1.16.6 地板约 0.50–0.78，再和用户滑条取 max，且不低于 0.52）
+- 配色：默认 `followWallpaperColor=true`，`extractCanvasPalette` 抽 accent；关了用香槟金。**字色永远 `CanvasPaper`**  
+- 玻璃 `glassTint`：通透=近白薄霜，着色=强调色厚釉，两端要一眼能看出来  
+- 壁纸模糊：`wallpaperBlur` 0–1，对应 0–28dp  
+- 亮图自动抬 `minDim`（1.16.6 地板约 0.50–0.78，再和用户滑条取 max，且不低于 0.52）  
+- **检查更新 / 更新日志**：画境下用 `LiquidPageHeader` + 透明底，禁止自己 Scaffold 实心底把壁纸盖住
 
 ### 字为什么曾经是黑的（1.16.6 根因）
 
@@ -256,6 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
+| **1.16.7** `72eb0ad` | 跟随壁纸配色开关；玻璃通透/着色；背景模糊；去重相册入口；更新页跟主题 | **已传** |  
 | **1.16.6** `9f7053f` | 画境强制浅字；迷你条进电台（不再进播放页） | **已传** 双仓；Gitee `/latest` = v1.16.6 |
 | **1.16.5** `87b7393` | 电台不叠 mini；mini 可切歌；玻璃糊到壁纸；配色跟图；换图无反应；随机后再固定卡退 | **已传** |
 | **1.16.4** `43cbd49` | 画境改回简约排版；每日随机壁纸（t.alcy.cc），可固定/下载/相册 | **已传** |
@@ -267,18 +271,17 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.16.6**（`9f7053f`，Release 均已上传）  
-- 包：`apk/Madus-1.16.6.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.16.6  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.16.6  
-- `/latest` 已是 **v1.16.6**  
+- 双仓最新：**1.16.7**（`72eb0ad`）  
+- 包：`apk/Madus-1.16.7.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.16.7  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.16.7  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  
 
 **下次可做（未点名别擅自大改）：**
 
-1. 真机看 1.16.6：画境字是否都浅、迷你条是否进电台  
+1. 真机看 1.16.7：跟随壁纸配色、玻璃通透/着色、模糊、检查更新是否透壁纸  
 2. 用户一句话小改 / 发版  
 3. 推荐若仍不跟手：先问「哪里不对」，再改 §12  
 4. 动漫宣传片：`and/动漫宣传片-早班车的一只耳机/12-项目记忆.md`（目录可能不在本工作区）  

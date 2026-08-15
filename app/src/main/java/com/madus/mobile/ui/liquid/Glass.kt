@@ -33,11 +33,14 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -66,9 +69,10 @@ fun LiquidBackground(modifier: Modifier = Modifier, coverUrl: String? = null) {
     val tokens = liquidTokens()
     val path = tokens.wallpaperPath
     val dim = tokens.wallpaperDim
+    val blurRadius = tokens.wallpaperBlurRadius
     val context = LocalContext.current
     val loader = remember { MadusImageLoader.get(context) }
-    Box(modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize().clip(RectangleShape)) {
         if (!path.isNullOrBlank()) {
             val file = java.io.File(path)
             AsyncImage(
@@ -81,7 +85,21 @@ fun LiquidBackground(modifier: Modifier = Modifier, coverUrl: String? = null) {
                 contentDescription = null,
                 imageLoader = loader,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (tokens.wallpaperBlur > 0.01f) {
+                            Modifier
+                                .graphicsLayer {
+                                    val extra = 1f + tokens.wallpaperBlur * 0.10f
+                                    scaleX = extra
+                                    scaleY = extra
+                                }
+                                .blur(blurRadius)
+                        } else {
+                            Modifier
+                        },
+                    ),
             )
         } else {
             Box(
@@ -154,8 +172,8 @@ fun InsetGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(tokens.cornerGroup))
-            .background(Color.Black.copy(alpha = 0.22f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(tokens.cornerGroup)),
+            .background(tokens.glassFill)
+            .border(0.5.dp, tokens.rim, RoundedCornerShape(tokens.cornerGroup)),
         content = content,
     )
 }

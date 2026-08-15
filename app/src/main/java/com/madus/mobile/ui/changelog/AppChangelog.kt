@@ -29,6 +29,19 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.16.7",
+            date = "2026-08-15",
+            added = listOf(
+                "画境可开关跟随壁纸配色，也能改回香槟金",
+                "画境壁纸可调模糊",
+            ),
+            changed = listOf(
+                "玻璃通透是看后面，着色会染上强调色",
+                "壁纸栏不再同时出现「相册自选」和「从相册选择」",
+                "检查更新和更新日志跟画境走",
+            ),
+        ),
+        Entry(
             version = "1.16.6",
             date = "2026-08-15",
             changed = listOf(

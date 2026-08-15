@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 import java.io.File
-import kotlin.math.abs
 
 data class CanvasPalette(
     val accent: Color,
@@ -44,13 +43,8 @@ fun extractCanvasPalette(path: String?): CanvasPalette {
             val rawAccent = pal.vibrantSwatch?.rgb
                 ?: pal.lightVibrantSwatch?.rgb
                 ?: pal.darkVibrantSwatch?.rgb
-                ?: 0xD8C4A4.toInt()
-            var accentLum = ColorUtils.calculateLuminance(rawAccent)
-            val accentRgb = if (accentLum < 0.38 || abs(accentLum - lum) < 0.12) {
-                0xE8D5B5.toInt()
-            } else {
-                rawAccent
-            }
+                ?: dominant.rgb
+            val accentRgb = liftWallpaperAccent(rawAccent)
             CanvasPalette(
                 accent = Color(accentRgb or 0xFF000000.toInt()),
                 onBg = CanvasPaper,
@@ -62,4 +56,14 @@ fun extractCanvasPalette(path: String?): CanvasPalette {
             bmp.recycle()
         }
     }.getOrDefault(CanvasPalette.Fallback)
+}
+
+/** 保住图里的色相，只把饱和度和亮度抬到能当强调色。灰图才退回香槟金。 */
+private fun liftWallpaperAccent(rgb: Int): Int {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(rgb or 0xFF000000.toInt(), hsl)
+    if (hsl[1] < 0.08f) return 0xE8D5B5.toInt()
+    hsl[1] = (hsl[1] * 1.18f + 0.10f).coerceIn(0.38f, 0.82f)
+    hsl[2] = hsl[2].coerceIn(0.48f, 0.70f)
+    return ColorUtils.HSLToColor(hsl)
 }

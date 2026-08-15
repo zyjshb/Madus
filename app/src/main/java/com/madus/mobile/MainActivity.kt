@@ -114,7 +114,9 @@ class MainActivity : ComponentActivity() {
                 glassTint = theme.glassTint,
                 wallpaperPath = theme.wallpaperPath,
                 wallpaperDim = theme.wallpaperDim,
+                wallpaperBlur = theme.wallpaperBlur,
                 wallpaperStamp = theme.wallpaperStamp,
+                followWallpaperColor = theme.followWallpaperColor,
             ) {
                 // 开屏固定品牌底；协议/主界面跟当前主题背景，避免黑屏协议切线稿纸色跳戏
                 val shellBg = when {

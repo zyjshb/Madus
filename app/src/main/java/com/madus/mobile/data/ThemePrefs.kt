@@ -2,6 +2,7 @@ package com.madus.mobile.data
 
 import android.content.Context
 import android.net.Uri
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -90,6 +91,8 @@ data class ThemeSettings(
     val wallpaperDay: String? = null,
     val wallpaperDim: Float = 0.55f,
     val wallpaperStamp: Long = 0L,
+    val followWallpaperColor: Boolean = true,
+    val wallpaperBlur: Float = 0f,
 )
 
 class ThemePrefs(private val context: Context) {
@@ -106,6 +109,8 @@ class ThemePrefs(private val context: Context) {
     private val keyWallpaperDay = stringPreferencesKey("wallpaper_day")
     private val keyWallpaperStamp = androidx.datastore.preferences.core.longPreferencesKey("wallpaper_stamp")
     private val keyDim = floatPreferencesKey("wallpaper_dim")
+    private val keyFollowColor = booleanPreferencesKey("follow_wallpaper_color")
+    private val keyBlur = floatPreferencesKey("wallpaper_blur")
 
     val flow: Flow<ThemeSettings> = context.themeStore.data.map { prefs ->
         ThemeSettings(
@@ -120,6 +125,8 @@ class ThemePrefs(private val context: Context) {
             wallpaperDay = prefs[keyWallpaperDay],
             wallpaperDim = (prefs[keyDim] ?: 0.55f).coerceIn(0.25f, 0.82f),
             wallpaperStamp = prefs[keyWallpaperStamp] ?: 0L,
+            followWallpaperColor = prefs[keyFollowColor] ?: true,
+            wallpaperBlur = (prefs[keyBlur] ?: 0f).coerceIn(0f, 1f),
         )
     }
 
@@ -145,6 +152,14 @@ class ThemePrefs(private val context: Context) {
 
     suspend fun setWallpaperDim(dim: Float) {
         context.themeStore.edit { it[keyDim] = dim.coerceIn(0.25f, 0.82f) }
+    }
+
+    suspend fun setFollowWallpaperColor(follow: Boolean) {
+        context.themeStore.edit { it[keyFollowColor] = follow }
+    }
+
+    suspend fun setWallpaperBlur(blur: Float) {
+        context.themeStore.edit { it[keyBlur] = blur.coerceIn(0f, 1f) }
     }
 
     suspend fun setWallpaperMode(mode: WallpaperMode) {

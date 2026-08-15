@@ -16,14 +16,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,9 +27,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.BuildConfig
 import com.madus.mobile.ui.changelog.AppChangelog
+import com.madus.mobile.ui.liquid.LiquidPageHeader
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.isLiquidTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangelogScreen(
     onBack: () -> Unit,
@@ -42,38 +39,35 @@ fun ChangelogScreen(
     val colors = MaterialTheme.colorScheme
     val tokens = appearanceTokens()
     val shape = RoundedCornerShape(tokens.cornerMd)
+    val liquid = isLiquidTheme()
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = colors.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("更新日志", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = "当前 v${BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.onSurfaceVariant,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = colors.background,
-                    titleContentColor = colors.onBackground,
-                ),
+    Column(modifier.fillMaxSize()) {
+        if (liquid) {
+            LiquidPageHeader(
+                title = "更新日志",
+                subtitle = "当前 v${BuildConfig.VERSION_NAME}",
+                onBack = onBack,
             )
-        },
-    ) { padding ->
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                }
+                Column {
+                    Text("更新日志", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        text = "当前 v${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {

@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,16 +16,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +41,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.madus.mobile.BuildConfig
 import com.madus.mobile.data.AppUpdate
+import com.madus.mobile.ui.liquid.InsetGroup
+import com.madus.mobile.ui.liquid.LiquidPageHeader
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.isLiquidTheme
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -51,7 +52,6 @@ import java.io.File
  * 检查更新页：先展示当前/最新版与说明，**用户点「更新到最新版」才下载安装**。
  * 下载过程显示真实进度条；下载后校验 APK，降低「解析软件包失败」。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpdateScreen(
     onBack: () -> Unit,
@@ -62,6 +62,7 @@ fun UpdateScreen(
     val colors = MaterialTheme.colorScheme
     val tokens = appearanceTokens()
     val shape = RoundedCornerShape(tokens.cornerMd)
+    val liquid = isLiquidTheme()
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -257,47 +258,54 @@ fun UpdateScreen(
     )
     val showBar = downloading || progressFraction >= 0f || progressText.isNotBlank()
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = colors.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("检查更新", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "由你决定是否升级",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.onSurfaceVariant,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = colors.background,
-                    titleContentColor = colors.onBackground,
-                ),
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+    @Composable
+    fun VersionCard(content: @Composable ColumnScope.() -> Unit) {
+        if (liquid) {
+            InsetGroup { Column(Modifier.padding(16.dp), content = content) }
+        } else {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(tokens.borderWidth, colors.outline, shape)
                     .padding(16.dp),
+                content = content,
+            )
+        }
+    }
+
+    Column(modifier.fillMaxSize()) {
+        if (liquid) {
+            LiquidPageHeader(
+                title = "检查更新",
+                subtitle = "由你决定是否升级",
+                onBack = onBack,
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                }
+                Column {
+                    Text("检查更新", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        "由你决定是否升级",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            VersionCard {
                 Text("当前版本", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
                 Text("v$current", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(12.dp))
@@ -474,12 +482,7 @@ fun UpdateScreen(
 
             val notes = available?.body?.trim().orEmpty()
             if (notes.isNotBlank()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(tokens.borderWidth, colors.outline.copy(alpha = 0.5f), shape)
-                        .padding(14.dp),
-                ) {
+                VersionCard {
                     Text(
                         "最新版说明",
                         style = MaterialTheme.typography.titleSmall,

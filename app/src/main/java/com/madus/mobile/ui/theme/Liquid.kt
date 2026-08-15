@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -31,20 +32,28 @@ data class LiquidTokens(
     val cornerAction: Dp = 14.dp,
     val cornerNowPlaying: Dp = 22.dp,
     val cornerPill: Dp = 999.dp,
-    val hazeContainer: Color = Color(0xFF0A0C10),
     val wallpaperPath: String? = null,
     val wallpaperDim: Float = 0.55f,
+    val wallpaperBlur: Float = 0f,
     val wallpaperStamp: Long = 0L,
     val accentColor: Color = CanvasGoldSoft,
 ) {
     val fillAlpha: Float
-        get() = (0.18f + tint * 0.28f).coerceIn(0.18f, 0.46f)
+        get() = (0.08f + tint * 0.46f).coerceIn(0.08f, 0.54f)
 
+    /** 通透=近白薄霜，着色=强调色厚釉。两端差要一眼能看出来。 */
     val glassFill: Color
-        get() = Color(0xFF101318).copy(alpha = fillAlpha)
+        get() {
+            val clear = Color.White.copy(alpha = 0.10f)
+            val stained = lerp(Color(0xE614181E), accentColor, 0.62f).copy(alpha = 0.52f)
+            return lerp(clear, stained, tint)
+        }
+
+    val hazeContainer: Color
+        get() = lerp(Color(0x66101820), lerp(Color(0xFF101318), accentColor, 0.48f), tint)
 
     val rim: Color
-        get() = Color.White.copy(alpha = 0.22f)
+        get() = lerp(Color.White.copy(alpha = 0.28f), accentColor.copy(alpha = 0.72f), tint)
 
     val goldRim: Color
         get() = accentColor.copy(alpha = 0.55f)
@@ -52,12 +61,16 @@ data class LiquidTokens(
     val accent: Color
         get() = accentColor
 
+    val wallpaperBlurRadius: Dp
+        get() = (wallpaperBlur * 28f).dp
+
     companion object {
         fun of(
             tint: Float,
             dark: Boolean,
             wallpaperPath: String? = null,
             wallpaperDim: Float = 0.55f,
+            wallpaperBlur: Float = 0f,
             wallpaperStamp: Long = 0L,
             accentColor: Color = CanvasGoldSoft,
         ) = LiquidTokens(
@@ -65,6 +78,7 @@ data class LiquidTokens(
             dark = dark,
             wallpaperPath = wallpaperPath,
             wallpaperDim = wallpaperDim.coerceIn(0.25f, 0.82f),
+            wallpaperBlur = wallpaperBlur.coerceIn(0f, 1f),
             wallpaperStamp = wallpaperStamp,
             accentColor = accentColor,
         )
