@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.16.9",
+            date = "2026-08-15",
+            changed = listOf(
+                "进出页改成 iOS 那种侧滑，Tab 交叉淡入",
+                "列表、底栏、玻璃按钮按下会轻轻缩一下",
+            ),
+        ),
+        Entry(
             version = "1.16.8",
             date = "2026-08-15",
             fixed = listOf(

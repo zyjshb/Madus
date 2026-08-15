@@ -1,11 +1,8 @@
 package com.madus.mobile.ui
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -90,6 +87,8 @@ import com.madus.mobile.ui.liquid.LiquidFloatingChrome
 import com.madus.mobile.ui.liquid.LocalHazeState
 import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
 import com.madus.mobile.ui.theme.LiquidChromeMetrics
+import com.madus.mobile.ui.theme.MadusMotion
+import com.madus.mobile.ui.theme.iosClickable
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import com.madus.mobile.ui.screens.LibraryScreen
@@ -471,21 +470,28 @@ fun MadusRoot(
                 startDestination = RootTab.Home.route,
                 modifier = Modifier.fillMaxSize(),
                 enterTransition = {
-                    if (liquid) {
-                        fadeIn(animationSpec = tween(220))
-                    } else {
-                        fadeIn(animationSpec = tween(120))
-                    }
+                    MadusMotion.enterFor(
+                        initialState.destination.route,
+                        targetState.destination.route,
+                    )
                 },
                 exitTransition = {
-                    fadeOut(animationSpec = tween(if (liquid) 180 else 80))
+                    MadusMotion.exitFor(
+                        initialState.destination.route,
+                        targetState.destination.route,
+                    )
                 },
                 popEnterTransition = {
-                    if (liquid) fadeIn(animationSpec = tween(220))
-                    else fadeIn(animationSpec = tween(120))
+                    MadusMotion.popEnterFor(
+                        initialState.destination.route,
+                        targetState.destination.route,
+                    )
                 },
                 popExitTransition = {
-                    fadeOut(animationSpec = tween(if (liquid) 180 else 80))
+                    MadusMotion.popExitFor(
+                        initialState.destination.route,
+                        targetState.destination.route,
+                    )
                 },
             ) {
                 composable(RootTab.Home.route) {
@@ -1046,27 +1052,12 @@ fun MadusRoot(
                         },
                     )
                 }
-                // 清屏 / 迷你条 → 沉浸页：自下而上丝滑进入（Apple 心智）
                 composable(
                     route = Routes.NOW_PLAYING,
-                    enterTransition = {
-                        slideInVertically(
-                            animationSpec = tween(420, easing = FastOutSlowInEasing),
-                            initialOffsetY = { it },
-                        ) + fadeIn(animationSpec = tween(280))
-                    },
-                    exitTransition = {
-                        fadeOut(animationSpec = tween(200))
-                    },
-                    popEnterTransition = {
-                        fadeIn(animationSpec = tween(220))
-                    },
-                    popExitTransition = {
-                        slideOutVertically(
-                            animationSpec = tween(380, easing = FastOutSlowInEasing),
-                            targetOffsetY = { it },
-                        ) + fadeOut(animationSpec = tween(280))
-                    },
+                    enterTransition = { MadusMotion.sheetIn() },
+                    exitTransition = { fadeOut(MadusMotion.fade) },
+                    popEnterTransition = { fadeIn(MadusMotion.fade) },
+                    popExitTransition = { MadusMotion.sheetOut() },
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val inVideoUi = (playerSettings.videoMode || MadusApp.instance.videoModeEnabled) &&
@@ -1424,7 +1415,7 @@ private fun LineSketchBottomBar(
             modifier = Modifier
                 .align(Alignment.Center)
                 .width(72.dp)
-                .clickable { onSelect(centerTab.tab) }
+                .iosClickable(pressScale = 0.92f) { onSelect(centerTab.tab) }
                 .padding(vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -1466,7 +1457,7 @@ private fun BottomTabItem(
 ) {
     Column(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .iosClickable(pressScale = 0.92f, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

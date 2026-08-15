@@ -2,6 +2,7 @@ package com.madus.mobile.ui.liquid
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -65,6 +66,8 @@ import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.navigation.RootTab
 import com.madus.mobile.ui.theme.LiquidChromeMetrics
 import com.madus.mobile.ui.theme.LiquidType
+import com.madus.mobile.ui.theme.MadusMotion
+import com.madus.mobile.ui.theme.iosClickable
 import com.madus.mobile.ui.theme.liquidTokens
 
 private data class LiquidTab(
@@ -156,24 +159,38 @@ fun LiquidFloatingChrome(
                     liquidTabs.forEach { item ->
                         val selected = route == item.tab.route
                         val accent = liquidTokens().accent
-                        val tint = if (selected) {
-                            accent
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
-                        }
+                        val tint by animateColorAsState(
+                            targetValue = if (selected) {
+                                accent
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+                            },
+                            animationSpec = MadusMotion.color,
+                            label = "tabTint",
+                        )
+                        val iconScale by animateFloatAsState(
+                            targetValue = if (selected) 1.08f else 1f,
+                            animationSpec = MadusMotion.press,
+                            label = "tabIcon",
+                        )
                         Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(LiquidChromeMetrics.tabHeight)
                                 .widthIn(min = 44.dp)
-                                .clickable { onSelectTab(item.tab) },
+                                .iosClickable(pressScale = 0.92f) { onSelectTab(item.tab) },
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
                             Icon(
                                 if (selected) item.filled else item.outlined,
                                 contentDescription = item.label,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .graphicsLayer {
+                                        scaleX = iconScale
+                                        scaleY = iconScale
+                                    },
                                 tint = tint,
                             )
                             Spacer(Modifier.height(2.dp))
@@ -223,7 +240,7 @@ private fun LiquidMiniRow(
         AnimatedContent(
             targetState = track.id to track.title,
             transitionSpec = {
-                fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                fadeIn(MadusMotion.fade) togetherWith fadeOut(MadusMotion.tabFade)
             },
             modifier = Modifier.weight(1f),
             label = "miniTitle",

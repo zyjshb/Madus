@@ -33,6 +33,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -54,6 +58,8 @@ import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.theme.CanvasInk
 import com.madus.mobile.ui.theme.LiquidType
+import com.madus.mobile.ui.theme.MadusMotion
+import com.madus.mobile.ui.theme.iosClickable
 import com.madus.mobile.ui.theme.liquidTokens
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -137,6 +143,13 @@ fun GlassSurface(
 ) {
     val tokens = liquidTokens()
     val haze = LocalHazeState.current
+    val press = remember { MutableInteractionSource() }
+    val down by press.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (onClick != null && down) 0.97f else 1f,
+        animationSpec = MadusMotion.press,
+        label = "glassPress",
+    )
     val hazeMod = if (haze != null) {
         @OptIn(ExperimentalHazeMaterialsApi::class)
         Modifier.hazeEffect(
@@ -148,6 +161,10 @@ fun GlassSurface(
     }
     Box(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .shadow(
                 elevation = 6.dp,
                 shape = shape,
@@ -159,7 +176,17 @@ fun GlassSurface(
             .then(hazeMod)
             .background(tokens.glassFill)
             .border(0.5.dp, tokens.rim, shape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = press,
+                        indication = null,
+                        onClick = onClick,
+                    )
+                } else {
+                    Modifier
+                },
+            )
             .then(if (contentPadding > 0.dp) Modifier.padding(contentPadding) else Modifier),
         content = content,
     )
@@ -299,7 +326,7 @@ fun LiquidNavRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
-            .clickable(onClick = onClick)
+            .iosClickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

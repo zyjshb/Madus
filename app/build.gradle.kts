@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.16.8：换图不再叠「已换一张」挡住底栏
-        versionCode = 287
-        versionName = "1.16.8"
+        // 1.16.9：iOS 手感转场 / 按压缩放
+        versionCode = 288
+        versionName = "1.16.9"
         vectorDrawables.useSupportLibrary = true
     }
 

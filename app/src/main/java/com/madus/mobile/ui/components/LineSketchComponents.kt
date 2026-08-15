@@ -40,6 +40,7 @@ import com.madus.mobile.data.AppearanceMode
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.theme.appearanceTokens
+import com.madus.mobile.ui.theme.iosClickable
 
 @Composable
 fun LineFrame(
@@ -73,7 +74,7 @@ fun LineFrame(
         .clip(shape)
         .border(border, shape)
         .background(bg)
-        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+        .then(if (onClick != null) Modifier.iosClickable(onClick = onClick) else Modifier)
         .padding(contentPadding)
     Box(modifier = base) { content() }
 }
@@ -148,7 +149,7 @@ fun TrackRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .iosClickable(onClick = onClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -299,7 +300,7 @@ fun LineButton(
                 shape,
             )
             .background(bg.copy(alpha = if (filled) 1f else tokens.panelAlpha))
-            .clickable(enabled = enabled, onClick = onClick)
+            .iosClickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {

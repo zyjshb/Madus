@@ -44,6 +44,7 @@ import com.madus.mobile.data.WallpaperMode
 import com.madus.mobile.ui.components.MadusImageLoader
 import com.madus.mobile.ui.theme.CanvasGold
 import com.madus.mobile.ui.theme.LiquidType
+import com.madus.mobile.ui.theme.iosClickable
 import com.madus.mobile.ui.theme.liquidTokens
 
 @Composable
@@ -327,7 +328,7 @@ private fun ThemePreviewCard(
             .clip(shape)
             .background(Color.Black.copy(alpha = 0.22f))
             .then(if (selected) Modifier.border(2.dp, tokens.accent, shape) else Modifier)
-            .clickable(onClick = onClick)
+            .iosClickable(onClick = onClick)
             .padding(12.dp),
     ) {
         Box(
