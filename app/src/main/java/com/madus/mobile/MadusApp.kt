@@ -76,7 +76,7 @@ class MadusApp : Application() {
     lateinit var aiChatHistoryStore: AiChatHistoryStore
         private set
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     @Volatile
     var currentQualityQn: Int = AudioQuality.High.qn
@@ -117,6 +117,13 @@ class MadusApp : Application() {
      */
     var requestPostNotifications: (() -> Unit)? = null
 
+    /** 通知栏点赞：由 ViewModel 注入，服务里直接调。 */
+    var onNotificationLike: (() -> Unit)? = null
+
+    /** 当前曲是否已喜欢，给通知栏爱心图标用。 */
+    @Volatile
+    var currentTrackLiked: Boolean = false
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -140,7 +147,7 @@ class MadusApp : Application() {
         biliApi = BilibiliApi { sessionStore.getBiliCookie() }
 
         // 异步读音质/音效，避免主线程 runBlocking 卡启动
-        appScope.launch {
+        applicationScope.launch {
             // 升级安装后清掉应用内下载的 APK，省空间
             runCatching {
                 com.madus.mobile.data.AppUpdate.cleanupDownloadedApks(this@MadusApp)

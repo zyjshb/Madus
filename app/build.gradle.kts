@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.16.9：iOS 手感转场 / 按压缩放
-        versionCode = 288
-        versionName = "1.16.9"
+        // 1.17.0：不喜欢 + 通知栏点赞
+        versionCode = 289
+        versionName = "1.17.0"
         vectorDrawables.useSupportLibrary = true
     }
 

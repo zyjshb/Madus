@@ -49,6 +49,18 @@ class RecommendationEngineTest {
     }
 
     @Test
+    fun notInterestedMutesTopicAndAuthorForAWeek() {
+        val nowMs = 1_800_000_000_000L
+        val events = listOf(
+            event("nope-1", RecommendationEventType.NOT_INTERESTED, nowMs, setOf("music"), "up-x"),
+        )
+        val state = engine.buildInterestState(events, nowMs)
+        val until = nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
+        assertEquals(until, state.mutedTopics.getValue("music"))
+        assertEquals(until, state.mutedTopics.getValue("author:up-x"))
+    }
+
+    @Test
     fun realtimeAffinityHasLargestPositiveWeight() {
         val nowMs = 1_800_000_000_000L
         val track = musicTrack()

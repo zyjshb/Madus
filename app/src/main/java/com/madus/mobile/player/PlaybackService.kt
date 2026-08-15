@@ -18,6 +18,7 @@ import androidx.media3.session.MediaSessionService
 import com.madus.mobile.MadusApp
 import com.madus.mobile.MainActivity
 import com.madus.mobile.R
+import kotlinx.coroutines.launch
 
 /**
  * 媒体前台服务：熄屏保活 + **可见**媒体通知（曲名/歌手 + 上/下首/播放暂停）。
@@ -70,6 +71,7 @@ class PlaybackService : MediaSessionService() {
                     mediaItem: androidx.media3.common.MediaItem?,
                     reason: Int,
                 ) {
+                    syncLikedFlag()
                     refreshNotification(force = true)
                 }
 
@@ -121,6 +123,15 @@ class PlaybackService : MediaSessionService() {
             ACTION_PREV -> runCatching {
                 MadusApp.instance.playerEngine.requestExternalPrevious()
             }
+            ACTION_LIKE -> runCatching {
+                val cb = MadusApp.instance.onNotificationLike
+                if (cb != null) {
+                    cb()
+                } else {
+                    toggleLikeInService()
+                }
+            }
+            ACTION_REFRESH -> { }
         }
         enterForeground(buildPlaybackNotification())
         return try {
@@ -168,7 +179,8 @@ class PlaybackService : MediaSessionService() {
         val exo = engine?.player
         val title = st?.current?.title.orEmpty()
         val playing = st?.isPlaying == true || exo?.isPlaying == true
-        val key = "$title|$playing|${st?.isLoading == true}"
+        val liked = MadusApp.instance.currentTrackLiked
+        val key = "$title|$playing|${st?.isLoading == true}|$liked"
         val now = System.currentTimeMillis()
         val minGap = when {
             MadusApp.instance.appInBackground && MadusApp.instance.gameLiteMode -> 3_000L
@@ -214,11 +226,17 @@ class PlaybackService : MediaSessionService() {
                 else -> "已暂停"
             }
         val isPlaying = state?.isPlaying == true || exo?.isPlaying == true
+        val liked = MadusApp.instance.currentTrackLiked
 
-        return buildMediaNotification(title = title, text = artist, isPlaying = isPlaying)
+        return buildMediaNotification(title = title, text = artist, isPlaying = isPlaying, liked = liked)
     }
 
-    private fun buildMediaNotification(title: String, text: String, isPlaying: Boolean): Notification {
+    private fun buildMediaNotification(
+        title: String,
+        text: String,
+        isPlaying: Boolean,
+        liked: Boolean,
+    ): Notification {
         val contentPi = activityPendingIntent(requestCode = 1)
 
         val prev = NotificationCompat.Action(
@@ -244,6 +262,11 @@ class PlaybackService : MediaSessionService() {
             "下一首",
             serviceActionPi(ACTION_NEXT, 13),
         )
+        val like = NotificationCompat.Action(
+            if (liked) R.drawable.ic_notif_liked else R.drawable.ic_notif_like,
+            if (liked) "取消喜欢" else "喜欢",
+            serviceActionPi(ACTION_LIKE, 16),
+        )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_music)
@@ -263,10 +286,11 @@ class PlaybackService : MediaSessionService() {
             .addAction(prev)
             .addAction(playPause)
             .addAction(next)
+            .addAction(like)
 
-        // MediaStyle：系统媒体样式 + 紧凑三键；挂上 Session 后锁屏/磁贴也能控
+        // 折叠/锁屏三键：播放、下一首、喜欢。上一首在展开通知里。
         val style = MediaNotificationCompat.MediaStyle()
-            .setShowActionsInCompactView(0, 1, 2)
+            .setShowActionsInCompactView(1, 2, 3)
             .setShowCancelButton(true)
             .setCancelButtonIntent(serviceActionPi(ACTION_PAUSE, 15))
         mediaSession?.let { session ->
@@ -277,6 +301,40 @@ class PlaybackService : MediaSessionService() {
         builder.setStyle(style)
 
         return builder.build()
+    }
+
+    private fun syncLikedFlag() {
+        val id = MadusApp.instance.playerEngine.state.value.current?.id ?: return
+        MadusApp.instance.applicationScope.launch {
+            MadusApp.instance.currentTrackLiked =
+                runCatching { MadusApp.instance.likedStore.contains(id) }.getOrDefault(false)
+            refreshNotification(force = true)
+        }
+    }
+
+    private fun toggleLikeInService() {
+        val track = MadusApp.instance.playerEngine.state.value.current ?: return
+        MadusApp.instance.applicationScope.launch {
+            val nowLiked = MadusApp.instance.likedStore.toggle(track)
+            MadusApp.instance.currentTrackLiked = nowLiked
+            if (nowLiked) {
+                val p = com.madus.mobile.domain.ContentProfileParser.profileFromTrack(track)
+                runCatching {
+                    MadusApp.instance.recommendationEventStore.record(
+                        com.madus.mobile.domain.RecommendationEvent(
+                            trackId = track.id,
+                            bvid = track.bvid,
+                            type = com.madus.mobile.domain.RecommendationEventType.LIKE,
+                            occurredAtMs = System.currentTimeMillis(),
+                            sourceId = "recommend",
+                            topicKeys = p.topicKeys,
+                            authorKey = p.authorKey,
+                        ),
+                    )
+                }
+            }
+            refreshNotification(force = true)
+        }
     }
 
     private fun activityPendingIntent(requestCode: Int): PendingIntent =
@@ -362,5 +420,7 @@ class PlaybackService : MediaSessionService() {
         const val ACTION_TOGGLE = "com.madus.mobile.action.TOGGLE"
         const val ACTION_NEXT = "com.madus.mobile.action.NEXT"
         const val ACTION_PREV = "com.madus.mobile.action.PREV"
+        const val ACTION_LIKE = "com.madus.mobile.action.LIKE"
+        const val ACTION_REFRESH = "com.madus.mobile.action.REFRESH"
     }
 }

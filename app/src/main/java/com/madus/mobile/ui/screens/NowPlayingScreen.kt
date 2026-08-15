@@ -123,6 +123,7 @@ fun NowPlayingScreen(
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleLike: () -> Unit = {},
+    onNotInterested: () -> Unit = {},
     onOpenQueue: () -> Unit = {},
     onCollectLocal: () -> Unit = {},
     onCollectBili: () -> Unit = {},
@@ -162,6 +163,7 @@ fun NowPlayingScreen(
             onPrevious = onPrevious,
             onSeek = onSeek,
             onToggleLike = onToggleLike,
+            onNotInterested = onNotInterested,
             onCollectLocal = onCollectLocal,
             onCollectBili = onCollectBili,
             onComments = onComments,
@@ -216,6 +218,7 @@ private fun DouyinStyleVideoMode(
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleLike: () -> Unit,
+    onNotInterested: () -> Unit = {},
     onCollectLocal: () -> Unit,
     onCollectBili: () -> Unit,
     onComments: () -> Unit,
@@ -740,6 +743,10 @@ private fun DouyinStyleVideoMode(
                 MoreMenuRow(if (liked) "取消喜欢" else "喜欢") {
                     showMoreMenu = false
                     onToggleLike()
+                }
+                MoreMenuRow("不喜欢") {
+                    showMoreMenu = false
+                    onNotInterested()
                 }
                 MoreMenuRow("横屏全屏") {
                     showMoreMenu = false

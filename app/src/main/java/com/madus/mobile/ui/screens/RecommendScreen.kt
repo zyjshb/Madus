@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.HighQuality
@@ -92,6 +93,7 @@ fun RecommendScreen(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onToggleLike: () -> Unit,
+    onNotInterested: () -> Unit = {},
     onPlayTrack: (Track, List<Track>) -> Unit,
     onOpenQueue: () -> Unit = {},
     onSeek: (Long) -> Unit = {},
@@ -157,6 +159,7 @@ fun RecommendScreen(
                 onNext = onNext,
                 onPrevious = onPrevious,
                 onToggleLike = onToggleLike,
+                onNotInterested = onNotInterested,
                 onOpenQueue = onOpenQueue,
                 onSeek = onSeek,
                 onCollectCurrent = onCollectCurrent,
@@ -241,6 +244,7 @@ private fun RadioPanel(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onToggleLike: () -> Unit,
+    onNotInterested: () -> Unit = {},
     onOpenQueue: () -> Unit = {},
     onSeek: (Long) -> Unit = {},
     onCollectCurrent: () -> Unit = {},
@@ -459,6 +463,12 @@ private fun RadioPanel(
                     contentDescription = "喜欢",
                 )
             }
+            IconButton(onClick = onNotInterested, enabled = track != null) {
+                Icon(
+                    Icons.Outlined.ThumbDown,
+                    contentDescription = "不喜欢",
+                )
+            }
             IconButton(onClick = onPrevious, enabled = track != null) {
                 Icon(Icons.Default.SkipPrevious, contentDescription = "上一首", modifier = Modifier.size(34.dp))
             }
@@ -546,6 +556,13 @@ private fun RadioPanel(
                         onClick = onCollectCurrent,
                         enabled = track != null,
                         contentDescription = "收藏（本地/B站）",
+                    )
+                    SecondaryAction(
+                        icon = Icons.Outlined.ThumbDown,
+                        label = "不喜欢",
+                        onClick = onNotInterested,
+                        enabled = track != null,
+                        contentDescription = "不喜欢，少推这类",
                     )
                     SecondaryAction(
                         icon = Icons.Default.Share,

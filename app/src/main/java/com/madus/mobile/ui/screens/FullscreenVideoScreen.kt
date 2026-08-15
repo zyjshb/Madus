@@ -109,6 +109,7 @@ fun FullscreenVideoScreen(
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleLike: () -> Unit = {},
+    onNotInterested: () -> Unit = {},
     onComments: () -> Unit = {},
     onShare: () -> Unit = {},
     onCollect: () -> Unit = {},
@@ -785,6 +786,10 @@ fun FullscreenVideoScreen(
                 SettingsRow(if (liked) "取消喜欢" else "喜欢") {
                     showSettings = false
                     onToggleLike()
+                }
+                SettingsRow("不喜欢") {
+                    showSettings = false
+                    onNotInterested()
                 }
                 SettingsRow("锁屏") {
                     showSettings = false

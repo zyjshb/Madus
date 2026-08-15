@@ -44,6 +44,7 @@ fun LiquidRecommendScreen(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onToggleLike: () -> Unit,
+    onNotInterested: () -> Unit = {},
     onPlayTrack: (Track, List<Track>) -> Unit,
     onOpenQueue: () -> Unit = {},
     onSeek: (Long) -> Unit = {},
@@ -203,6 +204,7 @@ fun LiquidRecommendScreen(
             actions = listOf(
                 LiquidSheetAction("全屏", enabled = has) { onFullscreen(); onImmersive() },
                 LiquidSheetAction("收藏", enabled = has) { onCollectCurrent() },
+                LiquidSheetAction("不喜欢", enabled = has) { onNotInterested() },
                 LiquidSheetAction("评论", enabled = has) { onComments() },
                 LiquidSheetAction(
                     title = if (videoMode) "封面" else "视频",

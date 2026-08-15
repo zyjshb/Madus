@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.16.9` / versionCode `288`  
-**提交：** `c53e875`  
-**正式包：** `and/apk/Madus-1.16.9.apk`  
+**当前版本：** `1.17.0` / versionCode `289`  
+**提交：** （发版后填）  
+**正式包：** `and/apk/Madus-1.17.0.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -259,6 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
+| **1.17.0** | 不喜欢 + 通知栏点赞 | 待传 |  
 | **1.16.9** `c53e875` | iOS 手感：进页侧滑、Tab 淡入、按压缩放 | **已传** |  
 | **1.16.8** `5cfd3fc` | 连点换壁纸不再叠 snackbar 挡底栏 | **已传** |  
 | **1.16.7** `83c1597` | 跟随壁纸配色开关；玻璃通透/着色；背景模糊；去重相册入口；更新页跟主题 | **已传** |  
@@ -273,10 +274,10 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.16.9**（`c53e875`）  
-- 包：`apk/Madus-1.16.9.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.16.9  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.16.9  
+- 双仓最新：**1.17.0**（发版后填）  
+- 包：`apk/Madus-1.17.0.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.0  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.0  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  
@@ -326,4 +327,6 @@ scripts/publish-gitee-release.ps1
 
 **别动：** 四层兴趣 + 多路召回 + 重排 + 软插入骨架；网络四档只调强度；不上传行为；不接非 B 站推荐后端。
 
-**已知还可能嫌差：** 主题只有十来个粗类；没「不感兴趣」按钮；本机规则不是抖音全站模型。再优化先问体感再改。
+**已知还可能嫌差：** 主题只有十来个粗类；本机规则不是抖音全站模型。再优化先问体感再改。
+
+**不喜欢（1.17.0）：** `markNotInterested` 写 `NOT_INTERESTED`，当前会话过滤这首，主题/UP 冷却 7 天，正在播就切下一首。入口：电台爱心旁 / 上滑菜单 / 短视频长按。通知栏爱心走 `PlaybackService.ACTION_LIKE`，折叠三键是播放、下一首、喜欢。

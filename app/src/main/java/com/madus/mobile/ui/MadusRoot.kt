@@ -582,6 +582,7 @@ fun MadusRoot(
                         onNext = vm::next,
                         onPrevious = vm::previous,
                         onToggleLike = vm::toggleLikeCurrent,
+                        onNotInterested = { vm.markNotInterested() },
                         onPlayTrack = { track, queue ->
                             // 推荐页「最近」分段：有限列表循环，勿继承 recommend 无限流
                             if (recommend.segment == com.madus.mobile.ui.RecommendSegment.Recent) {
@@ -1088,6 +1089,7 @@ fun MadusRoot(
                             onPrevious = vm::previous,
                             onSeek = vm::seek,
                             onToggleLike = vm::toggleLikeCurrent,
+                            onNotInterested = { vm.markNotInterested() },
                             onOpenQueue = {
                                 nav.navigate(Routes.QUEUE) { launchSingleTop = true }
                             },
@@ -1198,6 +1200,7 @@ fun MadusRoot(
                         onPrevious = vm::previous,
                         onSeek = vm::seek,
                         onToggleLike = vm::toggleLikeCurrent,
+                        onNotInterested = { vm.markNotInterested() },
                         onComments = { vm.openComments() },
                         onShare = { shareCurrent() },
                         onCollect = { vm.openCollectSheet(null, openBiliTab = false) },

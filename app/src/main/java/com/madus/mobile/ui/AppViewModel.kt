@@ -503,6 +503,7 @@ class AppViewModel(
         }
         startPositionPersistLoop()
         startRecommendationSignalLoop()
+        MadusApp.instance.onNotificationLike = ::toggleLikeCurrent
     }
 
     fun clearToast() {
@@ -3544,11 +3545,13 @@ class AppViewModel(
         viewModelScope.launch {
             val nowLiked = likedStore.toggle(track)
             if (nowLiked) recordEvent(track, RecommendationEventType.LIKE)
+            MadusApp.instance.currentTrackLiked = nowLiked
             _recommend.update { s ->
                 val next = s.likedIds.toMutableSet()
                 if (nowLiked) next.add(track.id) else next.remove(track.id)
                 s.copy(likedIds = next)
             }
+            notifyPlaybackNotification()
             refreshHome()
             val open = _playlistDetail.value.playlist
             if (open?.id == LikedStore.LIKED_ID) openPlaylist(open)
@@ -3564,7 +3567,75 @@ class AppViewModel(
                 if (nowLiked) next.add(track.id) else next.remove(track.id)
                 s.copy(likedIds = next)
             }
+            if (playback.value.current?.id == track.id) {
+                MadusApp.instance.currentTrackLiked = nowLiked
+            }
+            notifyPlaybackNotification()
             refreshHome()
+        }
+    }
+
+    /** 不喜欢：这首不再进推荐，同类/同 UP 冷却 7 天，当前正在播就切走。 */
+    fun markNotInterested(track: Track? = playback.value.current) {
+        val t = track ?: return
+        viewModelScope.launch {
+            val p = profileOf(t, fetchRemote = true)
+            val event = RecommendationEvent(
+                trackId = t.id,
+                bvid = t.bvid,
+                type = RecommendationEventType.NOT_INTERESTED,
+                occurredAtMs = System.currentTimeMillis(),
+                sourceId = _recommend.value.sourceId,
+                topicKeys = p.topicKeys,
+                authorKey = p.authorKey,
+            )
+            runCatching { recommendationEventStore.record(event) }
+            sessionSeenIds.add(t.id)
+            pruneUpcomingAfterNotInterested(t)
+            val playingThis = playback.value.current?.id == t.id
+            if (playingThis) {
+                if (pendingQueue.isNotEmpty()) {
+                    advanceToNext(userInitiated = true, recordSkipFast = false)
+                } else {
+                    player.dispatch(PlayerCommand.Pause)
+                }
+            }
+            if (isForYouQueue()) {
+                runCatching { ensureInfiniteFeed() }
+            }
+            _toast.value = "好，少推这类"
+        }
+    }
+
+    private suspend fun pruneUpcomingAfterNotInterested(t: Track) {
+        if (pendingQueue.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
+        val state = recommendationEngine.buildInterestState(events, now)
+        val mutedTopics = mutedTopicsOf(state, now)
+        val mutedAuthors = mutedAuthorsOf(state, now)
+        val keep = (pendingIndex + 1).coerceAtMost(pendingQueue.size)
+        val head = pendingQueue.take(keep)
+        val rest = pendingQueue.drop(keep).filter { item ->
+            if (item.id == t.id) return@filter false
+            val ip = ContentProfileParser.profileFromTrack(item)
+            val author = ip.authorKey
+            if (author != null && author in mutedAuthors) return@filter false
+            if (ip.topicKeys.any { it != "unknown" && it in mutedTopics }) return@filter false
+            true
+        }
+        pendingQueue = head + rest
+        _queueTracks.value = pendingQueue
+        _recommend.update { it.copy(feed = pendingQueue) }
+    }
+
+    private fun notifyPlaybackNotification() {
+        runCatching {
+            val ctx = MadusApp.instance
+            ctx.startService(
+                android.content.Intent(ctx, com.madus.mobile.player.PlaybackService::class.java)
+                    .setAction(com.madus.mobile.player.PlaybackService.ACTION_REFRESH),
+            )
         }
     }
 
@@ -5201,6 +5272,11 @@ class AppViewModel(
             val open = _playlistDetail.value.playlist
             if (open?.id == "recent") openPlaylist(open)
         }
+    }
+
+    override fun onCleared() {
+        MadusApp.instance.onNotificationLike = null
+        super.onCleared()
     }
 
     companion object {

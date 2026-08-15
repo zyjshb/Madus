@@ -29,6 +29,15 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.0",
+            date = "2026-08-15",
+            added = listOf(
+                "电台可点「不喜欢」，少推这首和同类 / 同 UP",
+                "短视频长按菜单也可不喜欢",
+                "通知栏可直接点赞，不用解锁",
+            ),
+        ),
+        Entry(
             version = "1.16.9",
             date = "2026-08-15",
             changed = listOf(
