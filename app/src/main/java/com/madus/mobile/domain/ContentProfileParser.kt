@@ -29,6 +29,26 @@ object ContentProfileParser {
         "digital" to listOf("数码", "手机", "电脑", "科技", "评测"),
         "comedy" to listOf("搞笑", "喜剧", "段子", "整活"),
         "news" to listOf("新闻", "资讯", "热点"),
+        // 细类：一首不喜欢就可以挡，不会封掉整个音乐区
+        "cover" to listOf("翻唱", "cover"),
+        "vocaloid" to listOf("vocaloid", "vsinger", "洛天依", "初音", "镜音"),
+        "live" to listOf("live", "现场", "演唱会"),
+        "instrumental" to listOf("纯音乐", "钢琴", "钢琴曲", "轻音乐", "演奏"),
+        "sleep" to listOf("助眠", "白噪音", "睡眠", "解压"),
+        "anime-song" to listOf("片头", "片尾", "动漫歌", "二次元"),
+        "gufeng" to listOf("古风", "国风"),
+        "rap" to listOf("说唱", "嘻哈"),
+        "dj" to listOf("电音", "remix"),
+        "jp-song" to listOf("日语", "日文", "jpop"),
+        "en-song" to listOf("英语", "英文", "欧美"),
+        "kpop" to listOf("韩语", "韩文", "kpop"),
+        "guichu" to listOf("鬼畜"),
+    )
+
+    private val TITLE_STOP = setOf(
+        "官方", "高清", "完整", "高音质", "中文", "英文", "日文", "歌曲", "视频",
+        "字幕", "动态", "歌词", "官方版", "正式版", "超清", "现场", "完整版",
+        "official", "lyric", "lyrics", "audio", "video", "full",
     )
 
     fun profileFromTrack(track: Track, fetchedAtMs: Long = System.currentTimeMillis()): ContentProfile {
@@ -91,5 +111,36 @@ object ContentProfileParser {
             if (t.contains("新闻") || t.contains("资讯") || t.contains("热点")) topics.add("news")
         }
         return topics.ifEmpty { setOf("unknown") }
+    }
+
+    fun titleKey(title: String): String =
+        title.lowercase()
+            .replace(Regex("【.*?】|\\[.*?]|\\(.*?\\)|（.*?）"), " ")
+            .replace(Regex("[\\s|｜/\\\\·•~～!！?？.。,，、:：;；\"'“”‘’]+"), " ")
+            .trim()
+
+    fun titleTokens(title: String): Set<String> {
+        val key = titleKey(title)
+        if (key.isBlank()) return emptySet()
+        val out = linkedSetOf<String>()
+        Regex("[\\u4e00-\\u9fff]{2,8}").findAll(key).forEach { m ->
+            val w = m.value
+            if (w !in TITLE_STOP) out.add("kw:$w")
+        }
+        Regex("[a-z0-9]{3,16}").findAll(key).forEach { m ->
+            val w = m.value
+            if (w !in TITLE_STOP) out.add("kw:$w")
+        }
+        return out
+    }
+
+    fun titlesOverlap(blockedKey: String, title: String): Boolean {
+        val a = blockedKey.ifBlank { return false }
+        val b = titleKey(title)
+        if (b.isBlank()) return false
+        if (a == b) return true
+        if (a.length >= 4 && b.contains(a)) return true
+        if (b.length >= 4 && a.contains(b)) return true
+        return false
     }
 }

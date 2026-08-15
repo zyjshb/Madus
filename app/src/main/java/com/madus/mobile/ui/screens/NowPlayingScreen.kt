@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.HighQuality
@@ -188,12 +189,14 @@ fun NowPlayingScreen(
         MusicImmersiveMode(
             playback = playback,
             liked = liked,
+            notInterested = notInterested,
             onBack = onBack,
             onToggle = onToggle,
             onNext = onNext,
             onPrevious = onPrevious,
             onSeek = onSeek,
             onToggleLike = onToggleLike,
+            onNotInterested = onNotInterested,
             onOpenQueue = onOpenQueue,
             onQualityClick = onQualityClick,
             onSleepClick = onSleepClick,
@@ -962,12 +965,14 @@ internal fun SpeedHud(text: String, modifier: Modifier = Modifier) {
 private fun MusicImmersiveMode(
     playback: PlaybackState,
     liked: Boolean,
+    notInterested: Boolean = false,
     onBack: () -> Unit,
     onToggle: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleLike: () -> Unit,
+    onNotInterested: () -> Unit = {},
     onOpenQueue: () -> Unit,
     onQualityClick: () -> Unit,
     onSleepClick: () -> Unit,
@@ -1034,7 +1039,20 @@ private fun MusicImmersiveMode(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Spacer(Modifier.size(48.dp))
+            IconButton(
+                onClick = onNotInterested,
+                enabled = track != null,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.ThumbDown,
+                    contentDescription = if (notInterested) "取消不喜欢" else "不喜欢",
+                    tint = if (notInterested) {
+                        MaterialTheme.colorScheme.onBackground
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,

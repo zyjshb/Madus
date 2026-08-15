@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.6：不喜欢提示缩短；推荐硬挡这首和这个 UP
-        versionCode = 295
-        versionName = "1.17.6"
+        // 1.17.7：提示 1 秒；音乐全屏不喜欢；连点不崩；细类同类少推
+        versionCode = 296
+        versionName = "1.17.7"
         vectorDrawables.useSupportLibrary = true
     }
 

@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.7",
+            date = "2026-08-15",
+            fixed = listOf(
+                "「不喜欢」提示大约 1 秒就消失",
+                "音乐模式全屏也能点不喜欢",
+                "连点不喜欢不再卡退",
+                "翻唱 / 古风 / 标题相近这类会跟着少推，不只挡这一首和这个 UP",
+            ),
+        ),
+        Entry(
             version = "1.17.6",
             date = "2026-08-15",
             fixed = listOf(

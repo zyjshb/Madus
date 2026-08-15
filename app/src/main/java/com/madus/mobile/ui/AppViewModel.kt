@@ -47,6 +47,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -419,11 +420,12 @@ class AppViewModel(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
-    /** 带按钮的 toast，目前只给「不喜欢 · 撤销」用。 */
+    /** 短提示。holdMs 很短时不带撤销（点不开）。 */
     data class ActionToast(
         val message: String,
-        val actionLabel: String,
-        val actionId: String,
+        val actionLabel: String? = null,
+        val actionId: String? = null,
+        val holdMs: Long = 4_000L,
         val token: Long = System.nanoTime(),
     )
 
@@ -436,6 +438,8 @@ class AppViewModel(
     private var lastNotInterested: Track? = null
     private var lastNotInterestedWasPlaying: Boolean = false
     private var lastNotInterestedAt: Long = 0L
+    private val markNotInterestedLock = Mutex()
+    @Volatile private var blocksCache: RecBlocks? = null
 
     /**
      * 超长曲（循环 BGM 等）听太久时的轻提示，非阻塞。
@@ -1462,9 +1466,15 @@ class AppViewModel(
         val authorIds: Set<String>,
         val authors: Set<String>,
         val topics: Set<String>,
+        val titleKeys: Set<String>,
     )
 
+    private fun invalidateBlocks() {
+        blocksCache = null
+    }
+
     private suspend fun recBlocks(): RecBlocks {
+        blocksCache?.let { return it }
         val hidden = runCatching { notInterestedStore.tracks() }.getOrDefault(emptyList())
         val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
         val now = System.currentTimeMillis()
@@ -1472,10 +1482,12 @@ class AppViewModel(
         val ids = linkedSetOf<String>()
         val bvids = linkedSetOf<String>()
         val authorIds = linkedSetOf<String>()
+        val titleKeys = linkedSetOf<String>()
         hidden.forEach { t ->
             ids.add(t.id)
             if (t.bvid.isNotBlank()) bvids.add(t.bvid)
             if (t.ownerMid.isNotBlank()) authorIds.add(t.ownerMid)
+            ContentProfileParser.titleKey(t.title).takeIf { it.isNotBlank() }?.let { titleKeys.add(it) }
         }
         events.filter { it.type == RecommendationEventType.NOT_INTERESTED }.forEach { ev ->
             ids.add(ev.trackId)
@@ -1484,13 +1496,16 @@ class AppViewModel(
                 if (key.startsWith("upid:")) authorIds.add(key.removePrefix("upid:"))
             }
         }
-        return RecBlocks(
+        val computed = RecBlocks(
             ids = ids,
             bvids = bvids,
             authorIds = authorIds,
             authors = mutedAuthorsOf(state, now),
             topics = mutedTopicsOf(state, now),
+            titleKeys = titleKeys,
         )
+        blocksCache = computed
+        return computed
     }
 
     private fun isBlocked(track: Track, blocks: RecBlocks): Boolean {
@@ -1504,6 +1519,10 @@ class AppViewModel(
         ) {
             return true
         }
+        val topics = ContentProfileParser.profileFromTrack(track).topicKeys +
+            ContentProfileParser.titleTokens(track.title)
+        if (topics.any { it != "unknown" && it in blocks.topics }) return true
+        if (blocks.titleKeys.any { ContentProfileParser.titlesOverlap(it, track.title) }) return true
         return false
     }
 
@@ -1514,6 +1533,7 @@ class AppViewModel(
         blockedIds = blocks.ids,
         blockedBvids = blocks.bvids,
         blockedAuthorIds = blocks.authorIds,
+        blockedTitleKeys = blocks.titleKeys,
     )
 
     private fun topicsOverlap(a: Track?, b: Track): Boolean {
@@ -3676,59 +3696,68 @@ class AppViewModel(
         }
     }
 
-    /** 不喜欢：这首不再进推荐，同类/同 UP 冷却 7 天，当前正在播就切走。 */
+    /** 不喜欢：这首 + 这个 UP + 细类/标题同类不再进推荐。连点忽略。 */
     fun markNotInterested(track: Track? = playback.value.current) {
         val t = track ?: return
+        if (t.id in _recommend.value.notInterestedIds) return
         viewModelScope.launch {
-            val p = profileOf(t, fetchRemote = true)
-            val mid = p.authorId?.takeIf { it.isNotBlank() } ?: t.ownerMid
-            val stored = t.copy(ownerMid = mid)
-            val topics = p.topicKeys.toMutableSet()
-            if (mid.isNotBlank()) topics.add("upid:$mid")
-            val event = RecommendationEvent(
-                trackId = t.id,
-                bvid = t.bvid,
-                type = RecommendationEventType.NOT_INTERESTED,
-                occurredAtMs = System.currentTimeMillis(),
-                sourceId = _recommend.value.sourceId,
-                topicKeys = topics,
-                authorKey = p.authorKey,
-            )
-            runCatching { recommendationEventStore.record(event) }
-            runCatching { notInterestedStore.add(stored) }
-            sessionSeenIds.add(t.id)
-            lastNotInterested = stored
-            lastNotInterestedWasPlaying = playback.value.current?.id == t.id
-            lastNotInterestedAt = System.currentTimeMillis()
-            val historySize = pruneUpcomingAfterNotInterested(stored)
-            val playingThis = lastNotInterestedWasPlaying
-            if (isForYouQueue()) {
-                runCatching { ensureInfiniteFeed(force = true, minAdd = 12) }
-            }
-            if (playingThis) {
-                if (isForYouQueue() && historySize < pendingQueue.size) {
-                    playIndex(historySize, startPos = 0L)
-                } else if (pendingQueue.isNotEmpty()) {
-                    advanceToNext(userInitiated = true, recordSkipFast = false)
-                } else {
-                    player.dispatch(PlayerCommand.Pause)
+            if (!markNotInterestedLock.tryLock()) return@launch
+            var refill = false
+            try {
+                val p = ContentProfileParser.profileFromTrack(t)
+                val mid = p.authorId?.takeIf { it.isNotBlank() } ?: t.ownerMid
+                val stored = t.copy(ownerMid = mid)
+                val topics = p.topicKeys.toMutableSet()
+                if (mid.isNotBlank()) topics.add("upid:$mid")
+                topics.addAll(ContentProfileParser.titleTokens(t.title))
+                val event = RecommendationEvent(
+                    trackId = t.id,
+                    bvid = t.bvid,
+                    type = RecommendationEventType.NOT_INTERESTED,
+                    occurredAtMs = System.currentTimeMillis(),
+                    sourceId = _recommend.value.sourceId,
+                    topicKeys = topics,
+                    authorKey = p.authorKey,
+                )
+                runCatching { recommendationEventStore.record(event) }
+                runCatching { notInterestedStore.add(stored) }
+                sessionSeenIds.add(t.id)
+                invalidateBlocks()
+                lastNotInterested = stored
+                lastNotInterestedWasPlaying = playback.value.current?.id == t.id
+                lastNotInterestedAt = System.currentTimeMillis()
+                val historySize = pruneUpcomingAfterNotInterested(stored)
+                val playingThis = lastNotInterestedWasPlaying
+                if (playingThis) {
+                    if (isForYouQueue() && historySize < pendingQueue.size) {
+                        playIndex(historySize, startPos = 0L)
+                    } else if (pendingQueue.isNotEmpty()) {
+                        advanceToNext(userInitiated = true, recordSkipFast = false)
+                    } else {
+                        player.dispatch(PlayerCommand.Pause)
+                    }
                 }
+                refreshNotInterestedUi()
+                _actionToast.value = ActionToast(
+                    message = "好，少推这类",
+                    holdMs = 1_100L,
+                )
+                refill = isForYouQueue()
+            } finally {
+                markNotInterestedLock.unlock()
             }
-            refreshNotInterestedUi()
-            _actionToast.value = ActionToast(
-                message = "好，少推这类",
-                actionLabel = "撤销",
-                actionId = ACTION_UNDO_NOT_INTERESTED,
-            )
+            if (refill) {
+                runCatching { ensureInfiniteFeed(force = true, minAdd = 8) }
+            }
         }
     }
 
     fun toggleNotInterested(track: Track? = playback.value.current) {
         val t = track ?: return
-        viewModelScope.launch {
-            val hidden = _recommend.value.notInterestedIds.contains(t.id) ||
-                runCatching { notInterestedStore.contains(t.id) }.getOrDefault(false)
-            if (hidden) undoNotInterested(t) else markNotInterested(t)
+        if (_recommend.value.notInterestedIds.contains(t.id)) {
+            undoNotInterested(t)
+        } else {
+            markNotInterested(t)
         }
     }
 
@@ -3747,6 +3776,7 @@ class AppViewModel(
                 lastNotInterested = null
                 lastNotInterestedWasPlaying = false
             }
+            invalidateBlocks()
             refreshNotInterestedUi()
             if (replay) restoreDislikedTrack(t)
             _toast.value = "已取消不喜欢"
@@ -3772,6 +3802,7 @@ class AppViewModel(
         runCatching { recommendationEventStore.removeNotInterested(track.id, track.bvid) }
         runCatching { notInterestedStore.remove(track.id, track.bvid) }
         sessionSeenIds.remove(track.id)
+        invalidateBlocks()
         refreshNotInterestedUi()
     }
 

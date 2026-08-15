@@ -68,6 +68,24 @@ class RecommendationEngineTest {
     }
 
     @Test
+    fun notInterestedMutesFineTopicAndTitleToken() {
+        val nowMs = 1_800_000_000_000L
+        val events = listOf(
+            event(
+                "nope-2",
+                RecommendationEventType.NOT_INTERESTED,
+                nowMs,
+                setOf("cover", "kw:告白气球"),
+                "up-y",
+            ),
+        )
+        val state = engine.buildInterestState(events, nowMs)
+        val until = nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
+        assertEquals(until, state.mutedTopics.getValue("cover"))
+        assertEquals(until, state.mutedTopics.getValue("kw:告白气球"))
+    }
+
+    @Test
     fun removingNotInterestedEventClearsMute() {
         val nowMs = 1_800_000_000_000L
         val events = listOf(

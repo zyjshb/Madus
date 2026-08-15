@@ -75,6 +75,7 @@ data class FeedContext(
     val blockedIds: Set<String> = emptySet(),
     val blockedBvids: Set<String> = emptySet(),
     val blockedAuthorIds: Set<String> = emptySet(),
+    val blockedTitleKeys: Set<String> = emptySet(),
     val sourceId: String = "recommend",
     val realtimeTopicQuota: Map<String, Int> = emptyMap(),
 )

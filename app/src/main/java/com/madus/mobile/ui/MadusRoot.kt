@@ -321,15 +321,27 @@ fun MadusRoot(
     LaunchedEffect(actionToast) {
         val t = actionToast ?: return@LaunchedEffect
         snackbar.currentSnackbarData?.dismiss()
-        val result = snackbar.showSnackbar(
-            message = t.message,
-            actionLabel = t.actionLabel,
-            duration = SnackbarDuration.Short,
-        )
-        if (result == SnackbarResult.ActionPerformed &&
-            t.actionId == AppViewModel.ACTION_UNDO_NOT_INTERESTED
-        ) {
-            vm.undoNotInterested()
+        if (t.holdMs in 1..2_000L && t.actionLabel.isNullOrBlank()) {
+            val shown = launch {
+                snackbar.showSnackbar(
+                    message = t.message,
+                    duration = SnackbarDuration.Indefinite,
+                )
+            }
+            kotlinx.coroutines.delay(t.holdMs)
+            snackbar.currentSnackbarData?.dismiss()
+            shown.cancel()
+        } else {
+            val result = snackbar.showSnackbar(
+                message = t.message,
+                actionLabel = t.actionLabel,
+                duration = SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed &&
+                t.actionId == AppViewModel.ACTION_UNDO_NOT_INTERESTED
+            ) {
+                vm.undoNotInterested()
+            }
         }
         vm.clearActionToast()
     }
