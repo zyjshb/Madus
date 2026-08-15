@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.5",
+            date = "2026-08-15",
+            changed = listOf(
+                "简约回到纸色底、近直角、墨线框，不再默认圆滑玻璃",
+            ),
+        ),
+        Entry(
             version = "1.17.4",
             date = "2026-08-15",
             added = listOf(

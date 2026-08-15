@@ -26,10 +26,10 @@ data class AppearanceTokens(
         fun forMode(mode: AppearanceMode): AppearanceTokens = when (mode) {
             AppearanceMode.LineSketch -> AppearanceTokens(
                 mode = mode,
-                cornerXs = 0.dp,
-                cornerSm = 0.dp,
-                cornerMd = 0.dp,
-                cornerLg = 0.dp,
+                cornerXs = 2.dp,
+                cornerSm = 2.dp,
+                cornerMd = 2.dp,
+                cornerLg = 4.dp,
                 borderWidth = 1.dp,
                 panelAlpha = 1f,
                 cardElevation = 0.dp,

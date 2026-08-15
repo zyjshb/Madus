@@ -49,7 +49,7 @@ enum class AppearanceMode(val id: String, val label: String) {
     ;
 
     companion object {
-        fun fromId(id: String?) = entries.find { it.id == id } ?: SoftGlass
+        fun fromId(id: String?) = entries.find { it.id == id } ?: LineSketch
     }
 }
 
@@ -81,7 +81,7 @@ enum class WallpaperMode(val id: String, val label: String) {
 
 data class ThemeSettings(
     val visualTheme: VisualTheme = VisualTheme.Classic,
-    val appearance: AppearanceMode = AppearanceMode.SoftGlass,
+    val appearance: AppearanceMode = AppearanceMode.LineSketch,
     val colorTheme: ColorTheme = ColorTheme.LineSketchMono,
     val liquidAppearance: LiquidAppearance = LiquidAppearance.FollowSystem,
     val glassTint: Float = 0.42f,
@@ -100,6 +100,7 @@ class ThemePrefs(private val context: Context) {
 
     private val keyVisual = stringPreferencesKey("visual_theme")
     private val keyAppearance = stringPreferencesKey("appearance_mode")
+    private val keyLineSketchDefault = booleanPreferencesKey("appearance_line_default_v1")
     private val keyColor = stringPreferencesKey("color_theme")
     private val keyLiquidAppearance = stringPreferencesKey("liquid_appearance")
     private val keyTint = floatPreferencesKey("glass_tint")
@@ -128,6 +129,21 @@ class ThemePrefs(private val context: Context) {
             followWallpaperColor = prefs[keyFollowColor] ?: true,
             wallpaperBlur = (prefs[keyBlur] ?: 0f).coerceIn(0f, 1f),
         )
+    }
+
+    /**
+     * 简约默认曾误写成圆滑玻璃，墨线看不见。
+     * 一次性改回方角线稿；以后在设置里选圆滑的不再动。
+     */
+    suspend fun migrateClassicLineSketch() {
+        context.themeStore.edit { prefs ->
+            if (prefs[keyLineSketchDefault] == true) return@edit
+            val current = prefs[keyAppearance]
+            if (current.isNullOrBlank() || current == AppearanceMode.SoftGlass.id) {
+                prefs[keyAppearance] = AppearanceMode.LineSketch.id
+            }
+            prefs[keyLineSketchDefault] = true
+        }
     }
 
     suspend fun setVisualTheme(theme: VisualTheme) {

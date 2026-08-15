@@ -158,6 +158,7 @@ class MadusApp : Application() {
             }
             runCatching {
                 playerPrefs.migrateListenDefaults()
+                themePrefs.migrateClassicLineSketch()
                 val s = playerPrefs.flow.first()
                 currentQualityQn = s.quality.qn
                 videoModeEnabled = s.videoMode

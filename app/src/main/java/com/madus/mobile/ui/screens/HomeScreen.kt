@@ -36,10 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.madus.mobile.domain.Playlist
@@ -51,6 +50,7 @@ import com.madus.mobile.ui.components.TrackRow
 import com.madus.mobile.ui.components.normalizeCoverUrl
 import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
 import com.madus.mobile.ui.theme.LiquidType
+import com.madus.mobile.ui.theme.appearanceTokens
 import com.madus.mobile.ui.theme.isLiquidTheme
 
 private enum class HomeChip(val label: String) {
@@ -60,12 +60,9 @@ private enum class HomeChip(val label: String) {
     Recent("最近"),
 }
 
-private val HomeCoverSize = 156.dp
-
 /**
- * iOS 26 / Apple Music Listen Now：
- * 大标题 + 头像 → 胶囊筛选 → 横向封面货架 → 最近列表。
- * 不再放快捷宫格/细栏，喜欢和 B 站收藏走货架本身。
+ * 首页：大标题 + 头像 → 筛选 → 横向封面货架 → 最近列表。
+ * 简约用纸底墨线；画境保持胶囊。不加快捷宫格。
  */
 @Composable
 fun HomeScreen(
@@ -92,6 +89,8 @@ fun HomeScreen(
     val bili = state.playlists
     val recent = state.recent
     val liquid = isLiquidTheme()
+    val pagePad = if (liquid) 20.dp else 16.dp
+    val coverSize = if (liquid) 156.dp else 140.dp
 
     val showLibrary = selected == HomeChip.All || selected == HomeChip.Library
     val showBili = selected == HomeChip.All || selected == HomeChip.Bili
@@ -99,13 +98,13 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+        contentPadding = PaddingValues(start = pagePad, end = pagePad, top = 8.dp, bottom = 12.dp),
     ) {
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 6.dp, bottom = 18.dp),
+                    .padding(top = 6.dp, bottom = if (liquid) 18.dp else 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -113,10 +112,7 @@ fun HomeScreen(
                     style = if (liquid) {
                         LiquidType.largeTitle
                     } else {
-                        MaterialTheme.typography.displaySmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = (-0.4).sp,
-                        )
+                        MaterialTheme.typography.displayLarge
                     },
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.weight(1f),
@@ -136,7 +132,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(bottom = 22.dp),
+                    .padding(bottom = if (liquid) 22.dp else 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 chips.forEachIndexed { i, c ->
@@ -164,7 +160,11 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     state.localPlaylists.forEach { pl ->
-                        CoverPlaylistCard(playlist = pl, onClick = { onOpenPlaylist(pl) })
+                        CoverPlaylistCard(
+                            playlist = pl,
+                            size = coverSize,
+                            onClick = { onOpenPlaylist(pl) },
+                        )
                     }
                 }
                 Spacer(Modifier.height(28.dp))
@@ -187,7 +187,11 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         bili.forEach { pl ->
-                            CoverPlaylistCard(playlist = pl, onClick = { onOpenPlaylist(pl) })
+                            CoverPlaylistCard(
+                                playlist = pl,
+                                size = coverSize,
+                                onClick = { onOpenPlaylist(pl) },
+                            )
                         }
                     }
                     Spacer(Modifier.height(28.dp))
@@ -267,7 +271,7 @@ private fun HomeSection(
             style = if (isLiquidTheme()) {
                 LiquidType.title3
             } else {
-                MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                MaterialTheme.typography.headlineMedium
             },
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f),
@@ -291,11 +295,13 @@ private fun HomeChipPill(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(999.dp)
+    val liquid = isLiquidTheme()
+    val tokens = appearanceTokens()
+    val shape = RoundedCornerShape(if (liquid) 999.dp else tokens.cornerXs)
     val bg = when {
         selected -> MaterialTheme.colorScheme.onBackground
-        isLiquidTheme() -> androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f)
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        liquid -> androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f)
+        else -> MaterialTheme.colorScheme.background
     }
     val fg = if (selected) {
         MaterialTheme.colorScheme.background
@@ -306,6 +312,13 @@ private fun HomeChipPill(
         modifier = Modifier
             .clip(shape)
             .background(bg)
+            .then(
+                if (liquid && !selected) {
+                    Modifier
+                } else {
+                    Modifier.border(tokens.borderWidth, MaterialTheme.colorScheme.outline, shape)
+                },
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 7.dp),
     ) {
@@ -362,14 +375,15 @@ private fun HomeAvatar(
 @Composable
 private fun CoverPlaylistCard(
     playlist: Playlist,
+    size: Dp,
     onClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
-            .width(HomeCoverSize)
+            .width(size)
             .clickable(onClick = onClick),
     ) {
-        CoverArt(coverUrl = playlist.coverUrl, size = HomeCoverSize)
+        CoverArt(coverUrl = playlist.coverUrl, size = size)
         Spacer(Modifier.height(8.dp))
         Text(
             text = playlist.title,

@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.4：不喜欢可撤销；首页改 iOS 26 货架
-        versionCode = 293
-        versionName = "1.17.4"
+        // 1.17.5：简约回到纸底墨线
+        versionCode = 294
+        versionName = "1.17.5"
         vectorDrawables.useSupportLibrary = true
     }
 

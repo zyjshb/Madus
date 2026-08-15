@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.17.4` / versionCode `293`  
-**提交：** `f951538`  
-**正式包：** `and/apk/Madus-1.17.4.apk`  
+**当前版本：** `1.17.5` / versionCode `294`  
+**提交：** （发版后填）  
+**正式包：** `and/apk/Madus-1.17.5.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -66,7 +66,7 @@
 
 | 项 | 结论 |
 |----|------|
-| `VisualTheme.Classic` | 默认简约 |
+| `VisualTheme.Classic` | 默认简约。**就是线稿**：纸色底 `#F7F5F2`、墨线 `#111111`、近直角 2dp。默认 `AppearanceMode.LineSketch`。1.17.5 把误默认的 SoftGlass 一次性迁回线稿 |
 | `VisualTheme.Canvas` | 画境。旧 `liquid_glass` **迁移到 Canvas**，不要再加回独立 Liquid 布局 |
 | 入口 | 我的 → 主题 / 外观设置 |
 | 清屏短视频 / 开屏 / 协议 | **不跟画境重排** |
@@ -259,6 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
+| **1.17.5** | 简约回到纸底墨线 | 发版中 |
 | **1.17.4** `f951538` | 不喜欢可撤销；首页 iOS 26 货架 | **已传** |
 | **1.17.3** `113d564` | 电台主控去掉重复不喜欢；首页 2×2 改细栏 | **已传** |
 | **1.17.2** `0e6a8c1` | 去掉歌词 | **已传** |  
@@ -278,10 +279,10 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.17.4**  
-- 包：`apk/Madus-1.17.4.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.4  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.4  
+- 双仓最新：**1.17.5**  
+- 包：`apk/Madus-1.17.5.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.5  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.5  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  

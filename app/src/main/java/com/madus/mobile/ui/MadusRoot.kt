@@ -405,7 +405,7 @@ fun MadusRoot(
                     if (showTabChrome) {
                         HorizontalDivider(
                             thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outline,
                         )
                         LineSketchBottomBar(
                             route = route,

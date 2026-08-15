@@ -47,6 +47,7 @@ import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.SectionTitle
 import com.madus.mobile.ui.components.TrackRow
 import com.madus.mobile.ui.liquid.LiquidLibraryScreen
+import com.madus.mobile.ui.theme.appearanceTokens
 import com.madus.mobile.ui.theme.isLiquidTheme
 
 /**
@@ -382,7 +383,11 @@ private fun HubCell(
     Row(
         modifier = modifier
             .height(58.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
+            .border(
+                appearanceTokens().borderWidth,
+                MaterialTheme.colorScheme.outline,
+                RoundedCornerShape(appearanceTokens().cornerSm),
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

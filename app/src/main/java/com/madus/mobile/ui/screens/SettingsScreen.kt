@@ -147,7 +147,7 @@ fun SettingsScreen(
                     SelectRow(
                         title = theme.label,
                         subtitle = when (theme) {
-                            VisualTheme.Classic -> "线稿 / 圆滑，现有排版"
+                            VisualTheme.Classic -> "纸色底、墨线框，手账线稿"
                             VisualTheme.Canvas -> "壁纸 + 玻璃，首页到设置都另排"
                         },
                         selected = settings.visualTheme == theme,
