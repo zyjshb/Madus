@@ -66,7 +66,9 @@ private enum class HomeChip(val label: String) {
 
 /**
  * Spotify-style Home A：
- * 问候顶栏 → chips → 2×2 快捷宫格 → 横滑歌单/B站 → 最近列表
+ * 问候顶栏 → chips → 一条快捷栏 → 横滑歌单/B站 → 最近列表
+ *
+ * 快捷栏是 2×2 宫格的折中：喜欢/收藏还在，但不再四块大卡挡封面货架。
  */
 @Composable
 fun HomeScreen(
@@ -146,22 +148,17 @@ fun HomeScreen(
             }
         }
 
-        // 2×2 快捷宫格
+        // 一条快捷栏：入口还在，不再用 2×2 大卡挡货架
         item {
-            QuickGrid(
-                liked = liked,
-                localCount = otherLocals.size,
-                biliCount = bili.size,
-                recentCount = recent.size,
+            QuickStrip(
                 onOpenLiked = { liked?.let(onOpenPlaylist) },
                 onOpenLibrary = {
-                    // 打开第一个本地歌单，或喜欢
                     (otherLocals.firstOrNull() ?: liked)?.let(onOpenPlaylist)
                 },
                 onOpenBili = onOpenBiliList,
                 onOpenRecent = onOpenRecentTab,
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
         }
 
         // 我的歌单横滑
@@ -270,50 +267,96 @@ private fun HomeChipPill(
 }
 
 @Composable
-private fun QuickGrid(
-    liked: Playlist?,
-    localCount: Int,
-    biliCount: Int,
-    recentCount: Int,
+private fun QuickStrip(
     onOpenLiked: () -> Unit,
     onOpenLibrary: () -> Unit,
     onOpenBili: () -> Unit,
     onOpenRecent: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            QuickCell(
-                title = "我的喜欢",
-                subtitle = "${liked?.trackCount ?: 0} 首",
-                icon = Icons.Filled.Favorite,
-                onClick = onOpenLiked,
-                modifier = Modifier.weight(1f),
+    val shape = RoundedCornerShape(if (isLiquidTheme()) 12.dp else 6.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .clip(shape)
+            .then(
+                if (isLiquidTheme()) {
+                    Modifier.background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.22f))
+                } else {
+                    Modifier
+                },
             )
-            QuickCell(
-                title = "我的歌单",
-                subtitle = if (localCount > 0) "$localCount 个" else "创建",
-                icon = Icons.Outlined.LibraryMusic,
-                onClick = onOpenLibrary,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            QuickCell(
-                title = "B站收藏",
-                subtitle = if (biliCount > 0) "$biliCount 个" else "未同步",
-                icon = Icons.Outlined.Folder,
-                onClick = onOpenBili,
-                modifier = Modifier.weight(1f),
-            )
-            QuickCell(
-                title = "最近播放",
-                subtitle = if (recentCount > 0) "$recentCount 首" else "暂无",
-                icon = Icons.Outlined.History,
-                onClick = onOpenRecent,
-                modifier = Modifier.weight(1f),
-            )
-        }
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        QuickStripItem(
+            title = "喜欢",
+            icon = Icons.Filled.Favorite,
+            onClick = onOpenLiked,
+            modifier = Modifier.weight(1f),
+        )
+        QuickStripDivider()
+        QuickStripItem(
+            title = "歌单",
+            icon = Icons.Outlined.LibraryMusic,
+            onClick = onOpenLibrary,
+            modifier = Modifier.weight(1f),
+        )
+        QuickStripDivider()
+        QuickStripItem(
+            title = "收藏",
+            icon = Icons.Outlined.Folder,
+            onClick = onOpenBili,
+            modifier = Modifier.weight(1f),
+        )
+        QuickStripDivider()
+        QuickStripItem(
+            title = "最近",
+            icon = Icons.Outlined.History,
+            onClick = onOpenRecent,
+            modifier = Modifier.weight(1f),
+        )
     }
+}
+
+@Composable
+private fun QuickStripItem(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun QuickStripDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(18.dp)
+            .background(MaterialTheme.colorScheme.outline),
+    )
 }
 
 @Composable
@@ -351,54 +394,6 @@ private fun HomeAvatar(
                 contentDescription = "我的",
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-    }
-}
-
-@Composable
-private fun QuickCell(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .height(58.dp)
-            .clip(RoundedCornerShape(if (isLiquidTheme()) 12.dp else 6.dp))
-            .then(
-                if (isLiquidTheme()) {
-                    Modifier.background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.22f))
-                } else {
-                    Modifier
-                },
-            )
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(if (isLiquidTheme()) 12.dp else 6.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(22.dp),
-            tint = MaterialTheme.colorScheme.onBackground,
-        )
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-            )
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
             )
         }
     }

@@ -446,6 +446,7 @@ private fun RadioPanel(
         }
 
         // 主控：爱心 · 上一首 · 播放 · 下一首 · 队列（切歌只靠这里）
+        // 「不喜欢」只放上滑菜单，避免主控 6 键挤歪、跟菜单重复
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -461,12 +462,6 @@ private fun RadioPanel(
                         Icons.Filled.FavoriteBorder
                     },
                     contentDescription = "喜欢",
-                )
-            }
-            IconButton(onClick = onNotInterested, enabled = track != null) {
-                Icon(
-                    Icons.Outlined.ThumbDown,
-                    contentDescription = "不喜欢",
                 )
             }
             IconButton(onClick = onPrevious, enabled = track != null) {

@@ -29,6 +29,14 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.3",
+            date = "2026-08-15",
+            changed = listOf(
+                "电台主控只留喜欢，不喜欢改到上滑菜单，不再两个挤歪",
+                "首页「我的喜欢 / B站收藏」收成一条细栏，入口还在，少挡货架",
+            ),
+        ),
+        Entry(
             version = "1.17.2",
             date = "2026-08-15",
             changed = listOf(

@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.17.2` / versionCode `291`  
-**提交：** `0e6a8c1`  
-**正式包：** `and/apk/Madus-1.17.2.apk`  
+**当前版本：** `1.17.3` / versionCode `292`  
+**提交：** （发版后填）  
+**正式包：** `and/apk/Madus-1.17.3.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -259,6 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
+| **1.17.3** | 电台主控去掉重复不喜欢；首页 2×2 改细栏 | 发版中 |
 | **1.17.2** `0e6a8c1` | 去掉歌词 | **已传** |  
 | **1.17.1** `ac3e12a` | B 站字幕当歌词（已撤回） | 已传 |  
 | **1.17.0** `3bb9b2d` | 不喜欢 + 通知栏点赞 | **已传** |  
@@ -276,10 +277,10 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.17.2**（`0e6a8c1`）  
-- 包：`apk/Madus-1.17.2.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.2  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.2  
+- 双仓最新：**1.17.3**  
+- 包：`apk/Madus-1.17.3.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.3  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.3  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  
@@ -331,4 +332,6 @@ scripts/publish-gitee-release.ps1
 
 **已知还可能嫌差：** 主题只有十来个粗类；本机规则不是抖音全站模型。再优化先问体感再改。
 
-**不喜欢（1.17.0）：** `markNotInterested` 写 `NOT_INTERESTED`，当前会话过滤这首，主题/UP 冷却 7 天，正在播就切下一首。入口：电台爱心旁 / 上滑菜单 / 短视频长按。通知栏爱心走 `PlaybackService.ACTION_LIKE`，折叠三键是播放、下一首、喜欢。
+**不喜欢（1.17.0 / 1.17.3）：** `markNotInterested` 写 `NOT_INTERESTED`，当前会话过滤这首，主题/UP 冷却 7 天，正在播就切下一首。入口：**上滑菜单 / 短视频长按**。不要再塞进电台主控（1.17.3 拿掉了爱心旁那颗，六个键会挤歪，还跟上滑菜单重复）。通知栏爱心走 `PlaybackService.ACTION_LIKE`，折叠三键是播放、下一首、喜欢。
+
+**首页快捷栏（1.17.3）：** 原先 2×2 宫格（我的喜欢 / 我的歌单 / B站收藏 / 最近播放）改成一条 46dp 细栏「喜欢 / 歌单 / 收藏 / 最近」。入口都在，货架（我的歌单横滑、B站收藏横滑）也不动。别再加回四块大卡。
