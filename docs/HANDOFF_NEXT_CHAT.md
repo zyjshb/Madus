@@ -3,7 +3,7 @@
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
 **当前版本：** `1.17.9` / versionCode `298`  
-**提交：** `d9a1ae0`  
+**提交：** `d9a1ae0`（发版） / 文档另提交  
 **正式包：** `and/apk/Madus-1.17.9.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
@@ -12,7 +12,7 @@
 
 ## 0. 新对话开场
 
-1. **先读本文**  
+1. **先读本文**（尤其 §3 画境、§12 推荐、**§13 本会话定稿**）  
 2. 中文、少废话、真机优先  
 3. 接近 **450–500k token** 再开新对话，**必须带本文档**  
 4. 关机前更新本文档  
@@ -197,7 +197,8 @@ app/src/main/java/com/madus/mobile/
   data/BilibiliApi.kt
   data/PlayerPrefs.kt
   data/AppUpdate.kt
-  data/ThemePrefs.kt              # 画境壁纸 Daily/Pinned/Custom
+  data/ThemePrefs.kt              # 画境壁纸 Daily/Pinned/Custom；简约默认 LineSketch
+  data/NotInterestedStore.kt      # 不喜欢快照（可撤销列表）
   data/AlcyWallpaper.kt           # t.alcy.cc
   data/ExternalPlaylistImporter.kt
   player/PlayerEngine.kt
@@ -210,7 +211,8 @@ app/src/main/java/com/madus/mobile/
   ui/splash/BrandSplash.kt
   ui/screens/HomeScreen.kt / SearchScreen.kt / LibraryScreen.kt
   ui/screens/MeScreen.kt / UpdateScreen.kt / PlaybackPrefsScreen.kt
-  ui/screens/PlaylistDetailScreen.kt
+  ui/screens/PlaylistDetailScreen.kt / RecommendScreen.kt / NowPlayingScreen.kt
+  ui/screens/NotInterestedScreen.kt
   MainActivity.kt
 app/src/main/res/
   drawable-nodpi/logo_madus.png
@@ -245,6 +247,7 @@ scripts/publish-gitee-release.ps1
 - **桌面图标**原图本身有大留白，再缩比例时别裁掉边再放大（会显大）；当前是**整图 70%** 贴画布  
 - 换图标后部分启动器会缓存旧图 → 用户侧卸载重装或清启动器缓存  
 - **Gitee `/releases/latest` 偶发滞后**，PATCH `make_latest` 会 406；新包必须扫列表取最高版本  
+- **Gitee 附件配额 1GB**（1.17.7 上传曾 400）。已删掉全部 `v1.14.*` Release 腾地方。再炸就删更早的 1.15/1.16 旧包，**留最近几版 + `/latest`**。不要为腾配额传 debug 包  
 - **1.14.40 旧包**：只信 Gitee `/latest`。发版脚本会校验；`/latest` 跟上就能应用内升，滞后才手装  
 - **切歌续播** `startPosForNeighborSwitch()` 一律 `-1` 读记忆。禁止再给听歌写死 `startPos=0`。`previous()` **不要**再「播过 3s 先 Seek(0) 当前」（1.17.9：切下一首再上一首会重载当前视频）。不喜欢切走仍可从头 |
 - **sessionSeenIds** 只能在 `playIndex` 里加。禁止进 feed / 续刷 / 软插入时整表标记已看（1.14.48 修过，回退推荐又会废）  
@@ -293,12 +296,12 @@ scripts/publish-gitee-release.ps1
 
 **下次可做（未点名别擅自大改）：**
 
-1. 真机看 1.16.7：跟随壁纸配色、玻璃通透/着色、模糊、检查更新是否透壁纸  
+1. 真机看 1.17.9：上一首是否直接回上一条、进度是否续、不喜欢是否还卡  
 2. 用户一句话小改 / 发版  
-3. 推荐若仍不跟手：先问「哪里不对」，再改 §12  
+3. 推荐若仍推同类：先问「哪一类、哪几首」，再改 §12 / §13，别再封整个 `music`  
 4. 动漫宣传片：`and/动漫宣传片-早班车的一只耳机/12-项目记忆.md`（目录可能不在本工作区）  
 
-不要再：重做液态整套页面、重设计电台/FM、把迷你条改回播放页。
+不要再：重做液态整套页面、重设计电台/FM、把迷你条改回播放页、首页加回 2×2/细栏、电台主控再塞「不喜欢」、听歌切歌写死 `startPos=0`、上一首先 Seek(0) 当前。
 
 ---
 
@@ -338,6 +341,52 @@ scripts/publish-gitee-release.ps1
 
 **已知还可能嫌差：** 主题只有十来个粗类；本机规则不是抖音全站模型。再优化先问体感再改。
 
-**不喜欢（1.17.7）：** 写事件 + store。硬挡这首 / bvid / UP，以及细类（翻唱、古风、vocaloid…）和标题词 `kw:`。不要封整个 `music`。提示约 **1 秒**、不带撤销按钮（撤销去 我的 → 不喜欢）。音乐全屏标题左侧也有。连点用 Mutex，先切歌再后台续刷，禁止叠 `profileOf(remote)`。入口：电台上滑、短视频长按、音乐全屏。
+**不喜欢：** 见 §13。
 
-**首页（1.17.4）：** iOS 26 Listen Now：大标题左、头像右，胶囊筛选，横向封面货架，最近列表。**不要再加快捷宫格/细栏**（碍眼）。「我的喜欢」是歌单货架第一张；B站收藏是自己那排货架；「全部」进曲库 / 收藏夹列表。
+**首页：** 见 §13。
+
+---
+
+## 13. 本会话定稿（2026-08-15，1.17.3–1.17.9）
+
+用户原话方向：**电台控件别挤歪；首页别挡视线；简约要线稿；不喜欢要能撤、提示短、别卡、少推同类；切歌要续播；上一首别先重载当前。画境差不多了，别大改。**
+
+### 电台主控
+
+- 五键：**喜欢 · 上一首 · 播放 · 下一首 · 队列**  
+- **禁止**再把「不喜欢」塞进主控（1.17.3 拿掉，六个键不对称，还跟上滑菜单重复）  
+- 不喜欢只留：上滑菜单 / 短视频长按 / **音乐全屏标题左侧**（1.17.7）
+
+### 首页
+
+- 大标题左、头像右 → 筛选 → 横向封面货架 → 最近  
+- **不要再加快捷宫格或细栏**（朋友嫌碍眼；1.17.3 细栏、1.17.4 去掉）  
+- 「我的喜欢」= 歌单货架第一张；B 站收藏自己一排；「全部」进曲库 / 收藏夹列表  
+- **简约**：纸底墨线、近直角 2dp、筛选带描边。默认 `AppearanceMode.LineSketch`（1.17.5 把误默认 SoftGlass 迁回去）  
+- **画境**：筛选仍是胶囊，货架布局共用 `HomeScreen.kt`，不要另做一套 Liquid 首页
+
+### 不喜欢
+
+| 项 | 结论 |
+|----|------|
+| 存储 | `RecommendationEvent.NOT_INTERESTED` + `NotInterestedStore` |
+| 硬挡 | 这首 id / bvid / UP 名 / UP mid；细类（翻唱、古风、vocaloid、助眠…）；标题词 `kw:`；标题很像的 |
+| 不要 | 一首不喜欢封掉整个 `music` / `anime`（太粗；related 又常没分区） |
+| 电台点完 | **丢掉后面整段 related 串**，再换源续刷 |
+| 提示 | 约 **1 秒**，不带「撤销」按钮（1 秒点不到） |
+| 撤销 | **我的 → 不喜欢**；点喜欢也会清掉这首 |
+| 连点 | `Mutex`；本地画像即可，**禁止**叠 `profileOf(fetchRemote)`；先切歌再后台 `ensureInfiniteFeed`（1.17.7 卡退根因：每次都联网续刷抢队列） |
+
+### 切歌 / 上一首
+
+| 项 | 结论 |
+|----|------|
+| 续播 | `startPosForNeighborSwitch()` **一律 `-1`** 读 `sessionPositions` / 最近进度 |
+| 禁止 | 听歌切歌写死 `startPos=0`（1.17.8：回去会从头，还会把已存进度盖成 0） |
+| 上一首 | **始终切上一条**。禁止「播过 3s 先 Seek(0) 当前」（1.17.9：下一首再上一首会重载当前视频，要点两次） |
+| 不喜欢切走 | 仍可从头 |
+
+### 发版杂记
+
+- 改完即发双仓。Gitee 附件满了先删旧 Release，再传新 APK  
+- 未入库别提交：`别人的提示词.md`、`Kazumi_windows_2.2.7/`、`docs/DESIGN_LIQUID_GLASS.md`、`f6592ff9e1783904468c059a725ab43b.png`、未点名的 `docs/DESIGN.md` 改动
