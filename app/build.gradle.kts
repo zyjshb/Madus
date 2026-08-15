@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.16.7：跟随壁纸配色开关；玻璃通透/着色；背景模糊；更新页跟主题
-        versionCode = 286
-        versionName = "1.16.7"
+        // 1.16.8：换图不再叠「已换一张」挡住底栏
+        versionCode = 287
+        versionName = "1.16.8"
         vectorDrawables.useSupportLibrary = true
     }
 

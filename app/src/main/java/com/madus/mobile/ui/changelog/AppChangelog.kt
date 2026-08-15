@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.16.8",
+            date = "2026-08-15",
+            fixed = listOf(
+                "连点换壁纸不再叠一堆「已换一张」，底栏不会被挡住",
+            ),
+        ),
+        Entry(
             version = "1.16.7",
             date = "2026-08-15",
             added = listOf(

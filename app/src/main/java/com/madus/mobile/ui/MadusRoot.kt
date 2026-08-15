@@ -33,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -297,15 +298,20 @@ fun MadusRoot(
         if (onRecommend) vm.onEnterRecommend()
     }
 
+    suspend fun flashSnack(msg: String) {
+        snackbar.currentSnackbarData?.dismiss()
+        snackbar.showSnackbar(message = msg, duration = SnackbarDuration.Short)
+    }
+
     LaunchedEffect(collect.toast) {
         val msg = collect.toast ?: return@LaunchedEffect
-        snackbar.showSnackbar(msg)
+        flashSnack(msg)
         vm.clearCollectToast()
     }
 
     LaunchedEffect(toast) {
         val msg = toast ?: return@LaunchedEffect
-        snackbar.showSnackbar(msg)
+        flashSnack(msg)
         vm.clearToast()
     }
 
@@ -334,7 +340,24 @@ fun MadusRoot(
         containerColor = if (liquid) androidx.compose.ui.graphics.Color.Transparent
         else MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = {
+            val snackLift = if (liquid) {
+                LiquidChromeMetrics.contentBottom(
+                    showMini = playback.current != null &&
+                        !onRecommend &&
+                        route != Routes.NOW_PLAYING &&
+                        route != Routes.FULLSCREEN_VIDEO,
+                ) - LiquidChromeMetrics.contentExtra
+            } else {
+                0.dp
+            }
+            SnackbarHost(
+                snackbar,
+                modifier = Modifier
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(bottom = snackLift),
+            )
+        },
         bottomBar = {
             if (!liquid && (showTabChrome || showPlaylistMini)) {
                 Column(
@@ -659,10 +682,7 @@ fun MadusRoot(
                         onOpenBiliLogin = { vm.requestLogin(MusicSourceType.BILIBILI) },
                         onLogoutBili = {
                             vm.requestLogout(MusicSourceType.BILIBILI)
-                            scope.launch {
-                                snackbar.currentSnackbarData?.dismiss()
-                                snackbar.showSnackbar("已退出")
-                            }
+                            scope.launch { flashSnack("已退出") }
                         },
                         onOpenSettings = {
                             nav.navigate(Routes.SETTINGS) { launchSingleTop = true }
@@ -671,10 +691,7 @@ fun MadusRoot(
                             nav.navigate(Routes.ABOUT_EASTER_EGG) { launchSingleTop = true }
                         },
                         onAboutSystemToast = { msg ->
-                            scope.launch {
-                                snackbar.currentSnackbarData?.dismiss()
-                                snackbar.showSnackbar(msg)
-                            }
+                            scope.launch { flashSnack(msg) }
                         },
                         onToolClick = { key ->
                             when (key) {
@@ -692,7 +709,7 @@ fun MadusRoot(
                                 "changelog" -> nav.navigate(Routes.CHANGELOG) { launchSingleTop = true }
                                 else -> scope.launch {
                                     when (key) {
-                                        "local" -> snackbar.showSnackbar("本地文件扫描 · 后续版本")
+                                        "local" -> scope.launch { flashSnack("本地文件扫描 · 后续版本") }
                                         else -> { /* about 已在 MeScreen 内部处理，不再每次弹窗 */ }
                                     }
                                 }
@@ -860,19 +877,19 @@ fun MadusRoot(
                         onPinWallpaper = {
                             scope.launch {
                                 MadusApp.instance.themePrefs.pinCurrentWallpaper()
-                                snackbar.showSnackbar("已固定这张壁纸")
+                                flashSnack("已固定这张壁纸")
                             }
                         },
                         onRollWallpaper = {
                             scope.launch {
                                 val ok = MadusApp.instance.themePrefs.rollNewDailyWallpaper()
-                                snackbar.showSnackbar(if (ok) "已换一张" else "换图失败，稍后再试")
+                                if (!ok) flashSnack("换图失败，稍后再试")
                             }
                         },
                         onDownloadWallpaper = {
                             scope.launch {
                                 val ok = MadusApp.instance.themePrefs.saveCurrentWallpaperToGallery()
-                                snackbar.showSnackbar(if (ok) "已存到相册" else "保存失败")
+                                flashSnack(if (ok) "已存到相册" else "保存失败")
                             }
                         },
                         onVideoMode = vm::setVideoMode,
