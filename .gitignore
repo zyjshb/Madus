@@ -54,3 +54,8 @@ outputs/
 *.bak
 
 scripts/gh-login-*.txt
+
+# Local AI / session memory — never push
+docs/HANDOFF_NEXT_CHAT.md
+docs/CODEX_WORKER.md
+docs/TASK_HUMMING_REWRITE.md
