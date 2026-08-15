@@ -211,6 +211,33 @@ class RecommendationReRankerTest {
         assertEquals(8, output.map { it.id }.toSet().size)
     }
 
+    @Test
+    fun blockedIdBvidAndAuthorNeverPicked() {
+        val hidden = candidate(
+            Track(id = "hid", title = "nope", artist = "up-x", bvid = "BV1hid", ownerMid = "99"),
+            999.0,
+        )
+        val sameUp = candidate(
+            Track(id = "same-up", title = "also", artist = "other", bvid = "BV2", ownerMid = "99"),
+            998.0,
+        )
+        val mutedName = candidate(track("muted-name", 3, "up-x"), 997.0)
+        val ok = candidate(track("ok", 36, "fresh-up"), 10.0)
+
+        val output = reranker.rerank(
+            listOf(hidden, sameUp, mutedName, ok),
+            FeedContext(
+                limit = 4,
+                blockedIds = setOf("hid"),
+                blockedBvids = setOf("BV1hid"),
+                blockedAuthorIds = setOf("99"),
+                mutedAuthors = setOf("up-x"),
+            ),
+        )
+
+        assertEquals(listOf("ok"), output.map { it.id })
+    }
+
     private fun track(id: String, categoryId: Int, artist: String): Track =
         Track(id = id, title = "title-$id", artist = artist, categoryId = categoryId)
 

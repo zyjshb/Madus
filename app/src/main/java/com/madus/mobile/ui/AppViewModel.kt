@@ -1281,6 +1281,7 @@ class AppViewModel(
             addAll(sessionSeenIds)
             addAll(queueIds)
         }
+        val blocks = recBlocks()
         val context = FeedContext(
             nowMs = now,
             limit = 2,
@@ -1291,9 +1292,13 @@ class AppViewModel(
             mutedAuthors = mutedAuthorsOf(state, now),
             sourceId = "recommend",
             realtimeTopicQuota = realtimeQuota(event, now),
-        )
+        ).withBlocks(blocks)
         val scored = related
-            .filter { it.id !in existing && (it.bvid.isNotBlank() || it.id.startsWith("BV")) }
+            .filter {
+                it.id !in existing &&
+                    !isBlocked(it, blocks) &&
+                    (it.bvid.isNotBlank() || it.id.startsWith("BV"))
+            }
             .map { recommendationEngine.scoreCandidate(it, profileOf(it), state, "realtime-related", context) }
             .filter { it.score > 0.2 }
         if (scored.isEmpty()) return
@@ -1336,6 +1341,7 @@ class AppViewModel(
         val state = recommendationEngine.buildInterestState(events, now)
         val headIds = head.mapTo(hashSetOf()) { it.id }
         val played = sessionSeenIds.toSet()
+        val blocks = recBlocks()
         val context = FeedContext(
             nowMs = now,
             limit = (rest.size + 12).coerceIn(12, 28),
@@ -1345,10 +1351,10 @@ class AppViewModel(
             mutedTopics = mutedTopicsOf(state, now),
             mutedAuthors = mutedAuthorsOf(state, now),
             sourceId = "recommend",
-        )
+        ).withBlocks(blocks)
         val pool = linkedMapOf<String, ScoredTrack>()
         fun put(t: Track, source: String) {
-            if (t.id in headIds || t.id in played) return
+            if (t.id in headIds || t.id in played || isBlocked(t, blocks)) return
             val p = ContentProfileParser.profileFromTrack(t)
             val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
             val prev = pool[t.id]
@@ -1438,7 +1444,9 @@ class AppViewModel(
 
     private fun mutedTopicsOf(state: InterestState, nowMs: Long): Set<String> =
         state.mutedTopics
-            .filter { (key, until) -> until > nowMs && !key.startsWith("author:") }
+            .filter { (key, until) ->
+                until > nowMs && !key.startsWith("author:") && !key.startsWith("upid:")
+            }
             .keys
 
     private fun mutedAuthorsOf(state: InterestState, nowMs: Long): Set<String> =
@@ -1447,6 +1455,66 @@ class AppViewModel(
             .keys
             .map { it.removePrefix("author:") }
             .toSet()
+
+    private data class RecBlocks(
+        val ids: Set<String>,
+        val bvids: Set<String>,
+        val authorIds: Set<String>,
+        val authors: Set<String>,
+        val topics: Set<String>,
+    )
+
+    private suspend fun recBlocks(): RecBlocks {
+        val hidden = runCatching { notInterestedStore.tracks() }.getOrDefault(emptyList())
+        val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
+        val now = System.currentTimeMillis()
+        val state = recommendationEngine.buildInterestState(events, now)
+        val ids = linkedSetOf<String>()
+        val bvids = linkedSetOf<String>()
+        val authorIds = linkedSetOf<String>()
+        hidden.forEach { t ->
+            ids.add(t.id)
+            if (t.bvid.isNotBlank()) bvids.add(t.bvid)
+            if (t.ownerMid.isNotBlank()) authorIds.add(t.ownerMid)
+        }
+        events.filter { it.type == RecommendationEventType.NOT_INTERESTED }.forEach { ev ->
+            ids.add(ev.trackId)
+            if (ev.bvid.isNotBlank()) bvids.add(ev.bvid)
+            ev.topicKeys.forEach { key ->
+                if (key.startsWith("upid:")) authorIds.add(key.removePrefix("upid:"))
+            }
+        }
+        return RecBlocks(
+            ids = ids,
+            bvids = bvids,
+            authorIds = authorIds,
+            authors = mutedAuthorsOf(state, now),
+            topics = mutedTopicsOf(state, now),
+        )
+    }
+
+    private fun isBlocked(track: Track, blocks: RecBlocks): Boolean {
+        if (track.id in blocks.ids) return true
+        if (track.bvid.isNotBlank() && track.bvid in blocks.bvids) return true
+        if (track.ownerMid.isNotBlank() && track.ownerMid in blocks.authorIds) return true
+        val author = track.artist.trim().lowercase()
+        if (author.isNotBlank() &&
+            !author.equals("bilibili", ignoreCase = true) &&
+            author in blocks.authors
+        ) {
+            return true
+        }
+        return false
+    }
+
+    private fun FeedContext.withBlocks(blocks: RecBlocks): FeedContext = copy(
+        sessionSeenIds = sessionSeenIds + blocks.ids,
+        mutedTopics = blocks.topics,
+        mutedAuthors = blocks.authors,
+        blockedIds = blocks.ids,
+        blockedBvids = blocks.bvids,
+        blockedAuthorIds = blocks.authorIds,
+    )
 
     private fun topicsOverlap(a: Track?, b: Track): Boolean {
         if (a == null) return false
@@ -3613,32 +3681,38 @@ class AppViewModel(
         val t = track ?: return
         viewModelScope.launch {
             val p = profileOf(t, fetchRemote = true)
+            val mid = p.authorId?.takeIf { it.isNotBlank() } ?: t.ownerMid
+            val stored = t.copy(ownerMid = mid)
+            val topics = p.topicKeys.toMutableSet()
+            if (mid.isNotBlank()) topics.add("upid:$mid")
             val event = RecommendationEvent(
                 trackId = t.id,
                 bvid = t.bvid,
                 type = RecommendationEventType.NOT_INTERESTED,
                 occurredAtMs = System.currentTimeMillis(),
                 sourceId = _recommend.value.sourceId,
-                topicKeys = p.topicKeys,
+                topicKeys = topics,
                 authorKey = p.authorKey,
             )
             runCatching { recommendationEventStore.record(event) }
-            runCatching { notInterestedStore.add(t) }
+            runCatching { notInterestedStore.add(stored) }
             sessionSeenIds.add(t.id)
-            lastNotInterested = t
+            lastNotInterested = stored
             lastNotInterestedWasPlaying = playback.value.current?.id == t.id
             lastNotInterestedAt = System.currentTimeMillis()
-            pruneUpcomingAfterNotInterested(t)
+            val historySize = pruneUpcomingAfterNotInterested(stored)
             val playingThis = lastNotInterestedWasPlaying
+            if (isForYouQueue()) {
+                runCatching { ensureInfiniteFeed(force = true, minAdd = 12) }
+            }
             if (playingThis) {
-                if (pendingQueue.isNotEmpty()) {
+                if (isForYouQueue() && historySize < pendingQueue.size) {
+                    playIndex(historySize, startPos = 0L)
+                } else if (pendingQueue.isNotEmpty()) {
                     advanceToNext(userInitiated = true, recordSkipFast = false)
                 } else {
                     player.dispatch(PlayerCommand.Pause)
                 }
-            }
-            if (isForYouQueue()) {
-                runCatching { ensureInfiniteFeed() }
             }
             refreshNotInterestedUi()
             _actionToast.value = ActionToast(
@@ -3658,7 +3732,7 @@ class AppViewModel(
         }
     }
 
-    /** 撤销不喜欢：这首和同类/UP 重新能进推荐。刚切走的 15 秒内会播回来。 */
+    /** 撤销不喜欢：这首和这个 UP 重新能进推荐。刚切走的几秒内会播回来。 */
     fun undoNotInterested(track: Track? = lastNotInterested) {
         val t = track ?: return
         viewModelScope.launch {
@@ -3667,7 +3741,8 @@ class AppViewModel(
             sessionSeenIds.remove(t.id)
             val replay = lastNotInterestedWasPlaying &&
                 lastNotInterested?.id == t.id &&
-                System.currentTimeMillis() - lastNotInterestedAt < 15_000L
+                System.currentTimeMillis() - lastNotInterestedAt <
+                RecommendationTuning.UNDO_NOT_INTERESTED_MS
             if (lastNotInterested?.id == t.id) {
                 lastNotInterested = null
                 lastNotInterestedWasPlaying = false
@@ -3708,26 +3783,21 @@ class AppViewModel(
         _me.update { it.copy(hiddenCount = list.size) }
     }
 
-    private suspend fun pruneUpcomingAfterNotInterested(t: Track) {
-        if (pendingQueue.isEmpty()) return
-        val now = System.currentTimeMillis()
-        val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
-        val state = recommendationEngine.buildInterestState(events, now)
-        val mutedTopics = mutedTopicsOf(state, now)
-        val mutedAuthors = mutedAuthorsOf(state, now)
-        val keep = (pendingIndex + 1).coerceAtMost(pendingQueue.size)
-        val head = pendingQueue.take(keep)
-        val rest = pendingQueue.drop(keep).filter { item ->
-            if (item.id == t.id) return@filter false
-            val ip = ContentProfileParser.profileFromTrack(item)
-            val author = ip.authorKey
-            if (author != null && author in mutedAuthors) return@filter false
-            if (ip.topicKeys.any { it != "unknown" && it in mutedTopics }) return@filter false
-            true
+    /** @return 留下的历史条数（不含被砍掉的当前和后续） */
+    private suspend fun pruneUpcomingAfterNotInterested(t: Track): Int {
+        if (pendingQueue.isEmpty()) return 0
+        val blocks = recBlocks()
+        val head = if (isForYouQueue()) {
+            // 后面本来就是 related 串出来的，整段丢掉，避免下一首还是同类
+            pendingQueue.take(pendingIndex).filter { !isBlocked(it, blocks) && it.id != t.id }
+        } else {
+            pendingQueue.filter { !isBlocked(it, blocks) && it.id != t.id }
         }
-        pendingQueue = head + rest
+        pendingQueue = head
+        pendingIndex = (head.size - 1).coerceAtLeast(0)
         _queueTracks.value = pendingQueue
         _recommend.update { it.copy(feed = pendingQueue) }
+        return head.size
     }
 
     private fun notifyPlaybackNotification() {
@@ -4904,7 +4974,7 @@ class AppViewModel(
         val freshLikeSeeds = liked.filter { it.id in recentLikeIds }.take(8)
         val freshFavSeeds = favSeeds.take(8)
         val freshSeedIds = (freshLikeSeeds + freshFavSeeds).mapTo(hashSetOf<String>()) { it.id }
-        val seeds = buildList {
+        val rawSeeds = buildList {
             addAll(freshLikeSeeds.sortedBy { (it.id.hashCode() xor hourSalt).toUInt() })
             addAll(freshFavSeeds.sortedBy { (it.id.hashCode() xor hourSalt).toUInt() })
             addAll(liked.filterNot { it.id in freshSeedIds }.take(24))
@@ -4914,14 +4984,19 @@ class AppViewModel(
             addAll(history.take(16))
         }.distinctBy { it.id }
             .filter { it.bvid.isNotBlank() || it.id.startsWith("BV") }
-            .sortedBy { (it.id.hashCode() xor daySalt).toUInt() }
-            .take(22)
 
         val now = System.currentTimeMillis()
         val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
         val state = recommendationEngine.buildInterestState(events, now)
         val profiles = runCatching { contentProfileStore.all() }.getOrDefault(emptyList())
             .associateBy { it.key }
+        val blocks = recBlocks()
+        exclude.addAll(blocks.ids)
+        val seeds = rawSeeds
+            .filter { !isBlocked(it, blocks) }
+            .sortedBy { (it.id.hashCode() xor daySalt).toUInt() }
+            .take(22)
+        val cleanArtists = interestArtists.filter { it.trim().lowercase() !in blocks.authors }
         val context = FeedContext(
             nowMs = now,
             limit = limit.coerceAtLeast(24),
@@ -4931,11 +5006,11 @@ class AppViewModel(
             mutedTopics = mutedTopicsOf(state, now),
             mutedAuthors = mutedAuthorsOf(state, now),
             sourceId = "recommend",
-        )
+        ).withBlocks(blocks)
         val scoredPool = linkedMapOf<String, ScoredTrack>()
 
         fun offer(t: Track, source: String, bonus: Double = 0.0) {
-            if (t.id in exclude) return
+            if (t.id in exclude || isBlocked(t, blocks)) return
             val p = profiles[profileKey(t)] ?: ContentProfileParser.profileFromTrack(t, now)
             val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
             val hourlyJitter = ((t.id.hashCode() xor hourSalt).toUInt() % 80u).toDouble() / 100.0
@@ -4963,7 +5038,7 @@ class AppViewModel(
         }
 
         // 2) 作者向搜索（常听的 UP）
-        for (artist in interestArtists.take(8)) {
+        for (artist in cleanArtists.take(8)) {
             if (scoredPool.size >= limit * 5) break
             val hits = runCatching {
                 registry.get(MusicSourceType.BILIBILI)?.search(artist, limit = 12).orEmpty()
@@ -5041,6 +5116,8 @@ class AppViewModel(
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val existing = pendingQueue.map { it.id }.toHashSet()
                 existing.addAll(sessionSeenIds)
+                val blocks = recBlocks()
+                existing.addAll(blocks.ids)
                 val likedInteractions = runCatching { likedStore.interactions() }.getOrDefault(emptyList())
                 val liked = likedInteractions.map { it.track }
                 val recent = sessionRecent.asReversed().distinctBy { it.id }
@@ -5060,6 +5137,7 @@ class AppViewModel(
                     .drop((pendingIndex - 2).coerceAtLeast(0))
                     .take(if (thrift) 2 else 6)
                     .reversed()
+                    .filter { !isBlocked(it, blocks) }
 
                 val now = System.currentTimeMillis()
                 val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
@@ -5075,10 +5153,10 @@ class AppViewModel(
                     mutedTopics = mutedTopicsOf(state, now),
                     mutedAuthors = mutedAuthorsOf(state, now),
                     sourceId = "recommend",
-                )
+                ).withBlocks(blocks)
                 val batch = linkedMapOf<String, ScoredTrack>()
                 fun putNew(t: Track, source: String, bonus: Double = 0.0) {
-                    if (t.id in existing) return
+                    if (t.id in existing || isBlocked(t, blocks)) return
                     val p = profiles[profileKey(t)] ?: ContentProfileParser.profileFromTrack(t, now)
                     val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
                     val bumped = if (bonus == 0.0) sc else sc.copy(score = sc.score + bonus)
@@ -5087,6 +5165,7 @@ class AppViewModel(
                 }
 
                 for (seed in freshLikeSeeds) {
+                    if (isBlocked(seed, blocks)) continue
                     val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
                     if (bv.isBlank()) continue
                     runCatching {
@@ -5117,6 +5196,7 @@ class AppViewModel(
                     val artists = (liked + recent + localSample)
                         .map { it.artist.trim() }
                         .filter { it.isNotBlank() && it != "Bilibili" }
+                        .filter { it.lowercase() !in blocks.authors }
                         .distinct()
                         .shuffled()
                         .take(4)

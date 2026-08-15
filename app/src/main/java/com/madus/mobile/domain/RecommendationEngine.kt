@@ -86,8 +86,14 @@ class RecommendationEngine {
             val age = nowMs - event.occurredAtMs
             if (age < 0L || age > RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS) continue
             val until = event.occurredAtMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
-            event.topicKeys.filter { it != "unknown" }.forEach {
-                muted[it] = maxOf(muted[it] ?: 0L, until)
+            event.topicKeys.forEach { topic ->
+                if (topic.isBlank() || topic == "unknown") return@forEach
+                if (topic.startsWith("upid:")) {
+                    muted[topic] = maxOf(muted[topic] ?: 0L, until)
+                    return@forEach
+                }
+                if (topic in RecommendationTuning.BROAD_TOPICS) return@forEach
+                muted[topic] = maxOf(muted[topic] ?: 0L, until)
             }
             event.authorKey?.let {
                 muted["author:$it"] = maxOf(muted["author:$it"] ?: 0L, until)

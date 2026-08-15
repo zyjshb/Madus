@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.17.5` / versionCode `294`  
-**提交：** `0f2dd89`  
-**正式包：** `and/apk/Madus-1.17.5.apk`  
+**当前版本：** `1.17.6` / versionCode `295`  
+**提交：** （发版后填）  
+**正式包：** `and/apk/Madus-1.17.6.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -259,6 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
+| **1.17.6** | 不喜欢提示缩短；硬挡这首/这个 UP | 发版中 |
 | **1.17.5** `0f2dd89` | 简约回到纸底墨线 | **已传** |
 | **1.17.4** `f951538` | 不喜欢可撤销；首页 iOS 26 货架 | **已传** |
 | **1.17.3** `113d564` | 电台主控去掉重复不喜欢；首页 2×2 改细栏 | **已传** |
@@ -279,10 +280,10 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.17.5**  
-- 包：`apk/Madus-1.17.5.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.5  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.5  
+- 双仓最新：**1.17.6**  
+- 包：`apk/Madus-1.17.6.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.6  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.6  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  
@@ -334,6 +335,6 @@ scripts/publish-gitee-release.ps1
 
 **已知还可能嫌差：** 主题只有十来个粗类；本机规则不是抖音全站模型。再优化先问体感再改。
 
-**不喜欢（1.17.0 / 1.17.4）：** `markNotInterested` 写 `NOT_INTERESTED` + `NotInterestedStore` 快照。主题/UP 冷却 7 天，正在播就切下一首。入口：**上滑菜单 / 短视频长按**（菜单在已屏蔽时显示「取消不喜欢」）。不要再塞进电台主控。点完出 snackbar「好，少推这类 · 撤销」；15 秒内撤销会把刚切走的歌播回来。以后去 **我的 → 不喜欢** 取消。点喜欢也会自动清掉这首的不喜欢。通知栏爱心走 `PlaybackService.ACTION_LIKE`。
+**不喜欢（1.17.6）：** 写事件 + `NotInterestedStore`。硬挡这首 id/bvid 和这个 UP（名字 + mid）7 天。**不要**用一首不喜欢封掉整个 `music`/`anime`（太粗，related 又常常没分区，等于没挡）。电台无限流点完会**丢掉后面整段 related 串**，再换源续刷，避免下一首还是同类。snackbar 用 `Short`（约 4 秒），撤销窗口 6 秒。入口：上滑菜单 / 短视频长按。我的 → 不喜欢 可取消。点喜欢也会清掉这首。
 
 **首页（1.17.4）：** iOS 26 Listen Now：大标题左、头像右，胶囊筛选，横向封面货架，最近列表。**不要再加快捷宫格/细栏**（碍眼）。「我的喜欢」是歌单货架第一张；B站收藏是自己那排货架；「全部」进曲库 / 收藏夹列表。

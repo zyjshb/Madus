@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.5：简约回到纸底墨线
-        versionCode = 294
-        versionName = "1.17.5"
+        // 1.17.6：不喜欢提示缩短；推荐硬挡这首和这个 UP
+        versionCode = 295
+        versionName = "1.17.6"
         vectorDrawables.useSupportLibrary = true
     }
 

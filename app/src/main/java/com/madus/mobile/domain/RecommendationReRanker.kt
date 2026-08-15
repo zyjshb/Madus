@@ -50,8 +50,18 @@ class RecommendationReRanker {
         return picked.map { it.track } to picked
     }
 
-    private fun violatesHard(candidate: ScoredTrack, context: FeedContext): Boolean =
-        candidate.track.id in context.sessionSeenIds || candidate.track.id in context.queueIds
+    private fun violatesHard(candidate: ScoredTrack, context: FeedContext): Boolean {
+        val t = candidate.track
+        if (t.id in context.sessionSeenIds || t.id in context.queueIds) return true
+        if (t.id in context.blockedIds) return true
+        if (t.bvid.isNotBlank() && t.bvid in context.blockedBvids) return true
+        if (t.ownerMid.isNotBlank() && t.ownerMid in context.blockedAuthorIds) return true
+        val author = candidate.authorKey ?: authorOf(t)
+        if (author != null && author in context.mutedAuthors) return true
+        val topics = candidate.topicKeys.ifEmpty { topicsOf(t) }
+        if (topics.any { it in context.mutedTopics }) return true
+        return false
+    }
 
     private fun canPick(
         candidate: ScoredTrack,
@@ -65,8 +75,6 @@ class RecommendationReRanker {
         val window6 = picked.takeLast(6)
         val author = candidate.authorKey ?: authorOf(candidate.track)
         val topics = candidate.topicKeys.ifEmpty { topicsOf(candidate.track) }
-        if (topics.any { it in context.mutedTopics }) return false
-        if (author != null && author in context.mutedAuthors) return false
 
         val authorLimit = when {
             relaxation >= 2 -> Int.MAX_VALUE

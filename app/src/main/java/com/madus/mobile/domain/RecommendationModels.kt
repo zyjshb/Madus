@@ -72,6 +72,9 @@ data class FeedContext(
     val recentQueue: List<Track> = emptyList(),
     val mutedTopics: Set<String> = emptySet(),
     val mutedAuthors: Set<String> = emptySet(),
+    val blockedIds: Set<String> = emptySet(),
+    val blockedBvids: Set<String> = emptySet(),
+    val blockedAuthorIds: Set<String> = emptySet(),
     val sourceId: String = "recommend",
     val realtimeTopicQuota: Map<String, Int> = emptyMap(),
 )
@@ -83,6 +86,10 @@ object RecommendationTuning {
     const val LONG_TERM_TTL_MS = 30 * 24 * 60 * 60 * 1000L
     const val TOPIC_COOLDOWN_MS = 30 * 60 * 1000L
     const val NOT_INTERESTED_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000L
+    /** snackbar 大约 4 秒，撤销窗口略长一点 */
+    const val UNDO_NOT_INTERESTED_MS = 6_000L
+    /** 一首不喜欢不该封掉整个音乐/动画区 */
+    val BROAD_TOPICS = setOf("music", "anime", "life", "gaming", "unknown")
     const val EVENT_LIMIT = 1000
     const val PROFILE_LIMIT = 400
     const val PROFILE_TTL_MS = 7 * 24 * 60 * 60 * 1000L

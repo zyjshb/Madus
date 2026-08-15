@@ -324,7 +324,7 @@ fun MadusRoot(
         val result = snackbar.showSnackbar(
             message = t.message,
             actionLabel = t.actionLabel,
-            duration = SnackbarDuration.Long,
+            duration = SnackbarDuration.Short,
         )
         if (result == SnackbarResult.ActionPerformed &&
             t.actionId == AppViewModel.ACTION_UNDO_NOT_INTERESTED
