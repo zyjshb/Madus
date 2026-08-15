@@ -1162,11 +1162,11 @@ class AppViewModel(
             playback.value.current?.isVideoStream == true
 
     /**
-     * 切到相邻一条时的起点。
-     * 视频上下滑：读会话/最近记忆续播。
-     * 听歌切歌：一律从头，避免第一首落在 >3s 后「上一首」被当成重头播当前。
+     * 切到相邻一条：读会话/最近记忆续播。
+     * 听歌「上一首」在当前曲 >3s 时仍是重头播当前（见 previous），
+     * 再按一次才回到上一首，那时必须带记忆，不能再写死 0。
      */
-    private fun startPosForNeighborSwitch(): Long = if (isVideoPlayback()) -1L else 0L
+    private fun startPosForNeighborSwitch(): Long = -1L
 
     /** 播放进度信号：WATCH_50 / WATCH_90，每曲每种只记一次。 */
     private fun startRecommendationSignalLoop() {
@@ -2380,7 +2380,6 @@ class AppViewModel(
 
         val mode = _playMode.value
         val atEnd = pendingIndex + 1 >= pendingQueue.size
-        // 听歌切歌从头播；视频上下滑读记忆，滑回来接着看。
         val switchStart = startPosForNeighborSwitch()
         when {
             !atEnd -> {

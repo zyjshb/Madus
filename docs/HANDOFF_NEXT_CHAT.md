@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.17.7` / versionCode `296`  
-**提交：** `bbdebf0`  
-**正式包：** `and/apk/Madus-1.17.7.apk`  
+**当前版本：** `1.17.8` / versionCode `297`  
+**提交：** （发版后填）  
+**正式包：** `and/apk/Madus-1.17.8.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -164,7 +164,7 @@ ui/MadusRoot.kt              # hazeSource、showMiniNow、onOpenMini
 | **推荐刷新** | 见 §12。只有**真正播过**才进 `sessionSeenIds`；点赞重排后续队列 |
 | **听歌默认音质** | **较高**（High / qn=80）+ 音效 **精听**。旧「标准+原声」一次性迁过去。省流仍可选 |
 | **迷你条点击** | **简约和画境都回推荐电台**。不要再把画境改去 `NOW_PLAYING` |
-| **视频上下滑** | 滑走再滑回从 `sessionPositions` 续播；听歌切歌仍从头 |
+| **视频上下滑 / 听歌切歌** | 滑走或切走再回来从 `sessionPositions` 续播。听歌「上一首」在当前曲 >3s 仍是重头播当前，再按一次回上一首并续播 |
 | **评论图** | 可点全屏放大，多图左右翻（`CommentsSheet`） |
 | **改完即发** | 修完 bug 自动升版打正式包推双仓（用户说「先别传」时暂停） |
 
@@ -246,7 +246,7 @@ scripts/publish-gitee-release.ps1
 - 换图标后部分启动器会缓存旧图 → 用户侧卸载重装或清启动器缓存  
 - **Gitee `/releases/latest` 偶发滞后**，PATCH `make_latest` 会 406；新包必须扫列表取最高版本  
 - **1.14.40 旧包**：只信 Gitee `/latest`。发版脚本会校验；`/latest` 跟上就能应用内升，滞后才手装  
-- **听歌切歌** `startPos=0`；**视频上下滑** `startPos=-1` 读记忆。别再给视频写死从头  
+- **切歌续播** `startPosForNeighborSwitch()` 一律 `-1` 读记忆。禁止再给听歌写死 `startPos=0`（1.17.8 修过：写 0 会把已存进度盖掉）。不喜欢切走仍可从头 |
 - **sessionSeenIds** 只能在 `playIndex` 里加。禁止进 feed / 续刷 / 软插入时整表标记已看（1.14.48 修过，回退推荐又会废）  
 - 画境字色：透明底必须自己提供 `LocalContentColor`，只改 `colorScheme.onBackground` 不够  
 - 画境换图：Coil 缓存键要带 stamp/mtime  
@@ -259,6 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
+| **1.17.8** | 切歌再切回来续播 | 发版中 |
 | **1.17.7** `bbdebf0` | 提示 1 秒；音乐全屏不喜欢；连点不崩；细类少推 | **已传** |
 | **1.17.6** `2f70046` | 不喜欢提示缩短；硬挡这首/这个 UP | **已传** |
 | **1.17.5** `0f2dd89` | 简约回到纸底墨线 | **已传** |
@@ -281,10 +282,10 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.17.7**  
-- 包：`apk/Madus-1.17.7.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.7  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.7  
+- 双仓最新：**1.17.8**  
+- 包：`apk/Madus-1.17.8.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.8  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.8  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  

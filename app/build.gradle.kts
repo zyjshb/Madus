@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.7：提示 1 秒；音乐全屏不喜欢；连点不崩；细类同类少推
-        versionCode = 296
-        versionName = "1.17.7"
+        // 1.17.8：切歌再切回来续播
+        versionCode = 297
+        versionName = "1.17.8"
         vectorDrawables.useSupportLibrary = true
     }
 
