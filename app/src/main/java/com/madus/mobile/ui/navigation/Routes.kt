@@ -23,6 +23,8 @@ object Routes {
     const val PLAYBACK_PREFS = "playback_prefs"
     /** 缓存列表管理 */
     const val CACHE_MANAGER = "cache_manager"
+    /** 不喜欢的歌，可取消 */
+    const val NOT_INTERESTED = "not_interested"
     /** 视频模式全屏 */
     const val FULLSCREEN_VIDEO = "fullscreen_video"
     /** 检查更新页（展示版本，用户选择是否升级） */

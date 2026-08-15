@@ -2,9 +2,9 @@
 
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
-**当前版本：** `1.17.3` / versionCode `292`  
-**提交：** `113d564`  
-**正式包：** `and/apk/Madus-1.17.3.apk`  
+**当前版本：** `1.17.4` / versionCode `293`  
+**提交：** （发版后填）  
+**正式包：** `and/apk/Madus-1.17.4.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
 
@@ -259,6 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
+| **1.17.4** | 不喜欢可撤销；首页 iOS 26 货架 | 发版中 |
 | **1.17.3** `113d564` | 电台主控去掉重复不喜欢；首页 2×2 改细栏 | **已传** |
 | **1.17.2** `0e6a8c1` | 去掉歌词 | **已传** |  
 | **1.17.1** `ac3e12a` | B 站字幕当歌词（已撤回） | 已传 |  
@@ -277,10 +278,10 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.17.3**  
-- 包：`apk/Madus-1.17.3.apk`  
-- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.3  
-  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.3  
+- 双仓最新：**1.17.4**  
+- 包：`apk/Madus-1.17.4.apk`  
+- 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.4  
+  备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.4  
 - 用户要求：**改完直接传**，不要再问；说「先别传」才停  
 - 默认主题仍是简约；画境在 我的 → 主题  
 - 未入库：见 §8 杂项列表  
@@ -332,6 +333,6 @@ scripts/publish-gitee-release.ps1
 
 **已知还可能嫌差：** 主题只有十来个粗类；本机规则不是抖音全站模型。再优化先问体感再改。
 
-**不喜欢（1.17.0 / 1.17.3）：** `markNotInterested` 写 `NOT_INTERESTED`，当前会话过滤这首，主题/UP 冷却 7 天，正在播就切下一首。入口：**上滑菜单 / 短视频长按**。不要再塞进电台主控（1.17.3 拿掉了爱心旁那颗，六个键会挤歪，还跟上滑菜单重复）。通知栏爱心走 `PlaybackService.ACTION_LIKE`，折叠三键是播放、下一首、喜欢。
+**不喜欢（1.17.0 / 1.17.4）：** `markNotInterested` 写 `NOT_INTERESTED` + `NotInterestedStore` 快照。主题/UP 冷却 7 天，正在播就切下一首。入口：**上滑菜单 / 短视频长按**（菜单在已屏蔽时显示「取消不喜欢」）。不要再塞进电台主控。点完出 snackbar「好，少推这类 · 撤销」；15 秒内撤销会把刚切走的歌播回来。以后去 **我的 → 不喜欢** 取消。点喜欢也会自动清掉这首的不喜欢。通知栏爱心走 `PlaybackService.ACTION_LIKE`。
 
-**首页快捷栏（1.17.3）：** 原先 2×2 宫格（我的喜欢 / 我的歌单 / B站收藏 / 最近播放）改成一条 46dp 细栏「喜欢 / 歌单 / 收藏 / 最近」。入口都在，货架（我的歌单横滑、B站收藏横滑）也不动。别再加回四块大卡。
+**首页（1.17.4）：** iOS 26 Listen Now：大标题左、头像右，胶囊筛选，横向封面货架，最近列表。**不要再加快捷宫格/细栏**（碍眼）。「我的喜欢」是歌单货架第一张；B站收藏是自己那排货架；「全部」进曲库 / 收藏夹列表。

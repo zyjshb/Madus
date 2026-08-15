@@ -117,6 +117,7 @@ import kotlin.math.roundToInt
 fun NowPlayingScreen(
     playback: PlaybackState,
     liked: Boolean = false,
+    notInterested: Boolean = false,
     onBack: () -> Unit,
     onToggle: () -> Unit,
     onNext: () -> Unit,
@@ -156,6 +157,7 @@ fun NowPlayingScreen(
         DouyinStyleVideoMode(
             playback = playback,
             liked = liked,
+            notInterested = notInterested,
             gestureMode = gestureMode,
             onBack = onBack,
             onToggle = onToggle,
@@ -211,6 +213,7 @@ fun NowPlayingScreen(
 private fun DouyinStyleVideoMode(
     playback: PlaybackState,
     liked: Boolean,
+    notInterested: Boolean = false,
     gestureMode: VideoGestureMode,
     onBack: () -> Unit,
     onToggle: () -> Unit,
@@ -744,7 +747,7 @@ private fun DouyinStyleVideoMode(
                     showMoreMenu = false
                     onToggleLike()
                 }
-                MoreMenuRow("不喜欢") {
+                MoreMenuRow(if (notInterested) "取消不喜欢" else "不喜欢") {
                     showMoreMenu = false
                     onNotInterested()
                 }

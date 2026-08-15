@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.4",
+            date = "2026-08-15",
+            added = listOf(
+                "不小心点了「不喜欢」可以马上撤销，也可以在「我的」里取消",
+            ),
+            changed = listOf(
+                "首页改成 iOS 26 那种大标题 + 封面货架，拿掉挡视线的快捷栏",
+            ),
+        ),
+        Entry(
             version = "1.17.3",
             date = "2026-08-15",
             changed = listOf(

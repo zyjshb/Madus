@@ -31,6 +31,16 @@ class RecommendationEventStore(private val context: Context) {
         )
     }
 
+    /** 撤销「不喜欢」：清掉这首的负反馈事件。 */
+    suspend fun removeNotInterested(trackId: String, bvid: String = "") {
+        val all = readInternal()
+        val next = all.filterNot {
+            it.type == RecommendationEventType.NOT_INTERESTED &&
+                (it.trackId == trackId || (bvid.isNotBlank() && it.bvid == bvid))
+        }
+        if (next.size != all.size) save(next)
+    }
+
     /** 最新在前。 */
     suspend fun events(): List<RecommendationEvent> = readInternal().asReversed()
 

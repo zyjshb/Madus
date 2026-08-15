@@ -14,6 +14,7 @@ import com.madus.mobile.data.ContentProfileStore
 import com.madus.mobile.data.LegalPrefs
 import com.madus.mobile.data.LikedStore
 import com.madus.mobile.data.LocalPlaylistStore
+import com.madus.mobile.data.NotInterestedStore
 import com.madus.mobile.data.PlayerPrefs
 import com.madus.mobile.data.PlaylistCoverStore
 import com.madus.mobile.data.RecommendationEventStore
@@ -50,6 +51,8 @@ class MadusApp : Application() {
     lateinit var recentStore: RecentStore
         private set
     lateinit var likedStore: LikedStore
+        private set
+    lateinit var notInterestedStore: NotInterestedStore
         private set
     lateinit var playlistCoverStore: PlaylistCoverStore
         private set
@@ -134,6 +137,7 @@ class MadusApp : Application() {
         localPlaylistStore = LocalPlaylistStore(this)
         recentStore = RecentStore(this)
         likedStore = LikedStore(this)
+        notInterestedStore = NotInterestedStore(this)
         playlistCoverStore = PlaylistCoverStore(this)
         themePrefs = ThemePrefs(this)
         playerPrefs = PlayerPrefs(this)

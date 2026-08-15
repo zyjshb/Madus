@@ -101,6 +101,7 @@ import kotlin.math.roundToInt
 fun FullscreenVideoScreen(
     playback: PlaybackState,
     liked: Boolean = false,
+    notInterested: Boolean = false,
     qualityLabel: String = "标准",
     gestureMode: VideoGestureMode = VideoGestureMode.DOUYIN,
     onBack: () -> Unit,
@@ -787,7 +788,7 @@ fun FullscreenVideoScreen(
                     showSettings = false
                     onToggleLike()
                 }
-                SettingsRow("不喜欢") {
+                SettingsRow(if (notInterested) "取消不喜欢" else "不喜欢") {
                     showSettings = false
                     onNotInterested()
                 }

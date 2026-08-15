@@ -61,6 +61,18 @@ class RecommendationEngineTest {
     }
 
     @Test
+    fun removingNotInterestedEventClearsMute() {
+        val nowMs = 1_800_000_000_000L
+        val events = listOf(
+            event("nope-1", RecommendationEventType.NOT_INTERESTED, nowMs, setOf("music"), "up-x"),
+        )
+        val muted = engine.buildInterestState(events, nowMs)
+        val cleared = engine.buildInterestState(emptyList(), nowMs)
+        assertTrue(muted.mutedTopics.isNotEmpty())
+        assertTrue(cleared.mutedTopics.isEmpty())
+    }
+
+    @Test
     fun realtimeAffinityHasLargestPositiveWeight() {
         val nowMs = 1_800_000_000_000L
         val track = musicTrack()

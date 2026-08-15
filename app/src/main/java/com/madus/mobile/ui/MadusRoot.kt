@@ -33,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -93,6 +94,7 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import com.madus.mobile.ui.screens.LibraryScreen
 import com.madus.mobile.ui.screens.MeScreen
+import com.madus.mobile.ui.screens.NotInterestedScreen
 import com.madus.mobile.ui.screens.NowPlayingScreen
 import com.madus.mobile.ui.screens.PlaylistDetailScreen
 import com.madus.mobile.ui.screens.QueueScreen
@@ -165,6 +167,8 @@ fun MadusRoot(
     val trackReplace by vm.trackReplace.collectAsStateWithLifecycle()
     val biliRecognize by vm.biliRecognize.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
+    val actionToast by vm.actionToast.collectAsStateWithLifecycle()
+    val notInterestedTracks by vm.notInterestedTracks.collectAsStateWithLifecycle()
     val longPlayHint by vm.longPlayHint.collectAsStateWithLifecycle()
     val playerSettings by vm.playerSettings.collectAsStateWithLifecycle()
     val sleepRemainingMs by vm.sleepRemainingMs.collectAsStateWithLifecycle()
@@ -312,6 +316,22 @@ fun MadusRoot(
         val msg = toast ?: return@LaunchedEffect
         flashSnack(msg)
         vm.clearToast()
+    }
+
+    LaunchedEffect(actionToast) {
+        val t = actionToast ?: return@LaunchedEffect
+        snackbar.currentSnackbarData?.dismiss()
+        val result = snackbar.showSnackbar(
+            message = t.message,
+            actionLabel = t.actionLabel,
+            duration = SnackbarDuration.Long,
+        )
+        if (result == SnackbarResult.ActionPerformed &&
+            t.actionId == AppViewModel.ACTION_UNDO_NOT_INTERESTED
+        ) {
+            vm.undoNotInterested()
+        }
+        vm.clearActionToast()
     }
 
     fun selectRootTab(tab: RootTab) {
@@ -531,6 +551,7 @@ fun MadusRoot(
                                 vm.setRecommendSegment(com.madus.mobile.ui.RecommendSegment.Recent)
                             }
                         },
+                        onOpenLibrary = { selectRootTab(RootTab.Library) },
                         onOpenBiliList = {
                             nav.navigate(Routes.BILI_FAVS) { launchSingleTop = true }
                         },
@@ -582,7 +603,7 @@ fun MadusRoot(
                         onNext = vm::next,
                         onPrevious = vm::previous,
                         onToggleLike = vm::toggleLikeCurrent,
-                        onNotInterested = { vm.markNotInterested() },
+                        onNotInterested = { vm.toggleNotInterested() },
                         onPlayTrack = { track, queue ->
                             // 推荐页「最近」分段：有限列表循环，勿继承 recommend 无限流
                             if (recommend.segment == com.madus.mobile.ui.RecommendSegment.Recent) {
@@ -708,6 +729,7 @@ fun MadusRoot(
                                     nav.navigate(Routes.CACHE_MANAGER) { launchSingleTop = true }
                                 }
                                 "import" -> vm.openImportPlaylistSheet()
+                                "hidden" -> nav.navigate(Routes.NOT_INTERESTED) { launchSingleTop = true }
                                 "update" -> nav.navigate(Routes.UPDATE) {
                                     launchSingleTop = true
                                     // 已在栈顶则不重复压入
@@ -797,6 +819,21 @@ fun MadusRoot(
                         onOpenCacheManager = {
                             vm.refreshCacheManager()
                             nav.navigate(Routes.CACHE_MANAGER) { launchSingleTop = true }
+                        },
+                    )
+                }
+                composable(Routes.NOT_INTERESTED) {
+                    NotInterestedScreen(
+                        tracks = notInterestedTracks,
+                        onBack = { nav.popBackStack() },
+                        onUndo = { vm.undoNotInterested(it) },
+                        onPlay = { track ->
+                            playAndOpen(
+                                track,
+                                listOf(track),
+                                sourceLabel = "不喜欢",
+                                sourceId = "not-interested",
+                            )
                         },
                     )
                 }
@@ -1079,6 +1116,7 @@ fun MadusRoot(
                         NowPlayingScreen(
                             playback = playback,
                             liked = playback.current?.id?.let { recommend.likedIds.contains(it) } == true,
+                            notInterested = playback.current?.id?.let { recommend.notInterestedIds.contains(it) } == true,
                             onBack = {
                                 immersiveSearchOpen = false
                                 showShortGuide = false
@@ -1089,7 +1127,7 @@ fun MadusRoot(
                             onPrevious = vm::previous,
                             onSeek = vm::seek,
                             onToggleLike = vm::toggleLikeCurrent,
-                            onNotInterested = { vm.markNotInterested() },
+                            onNotInterested = { vm.toggleNotInterested() },
                             onOpenQueue = {
                                 nav.navigate(Routes.QUEUE) { launchSingleTop = true }
                             },
@@ -1192,6 +1230,7 @@ fun MadusRoot(
                     FullscreenVideoScreen(
                         playback = playback,
                         liked = playback.current?.id?.let { recommend.likedIds.contains(it) } == true,
+                        notInterested = playback.current?.id?.let { recommend.notInterestedIds.contains(it) } == true,
                         qualityLabel = playerSettings.quality.label,
                         gestureMode = playerSettings.gestureMode,
                         onBack = { nav.popBackStack() },
@@ -1200,7 +1239,7 @@ fun MadusRoot(
                         onPrevious = vm::previous,
                         onSeek = vm::seek,
                         onToggleLike = vm::toggleLikeCurrent,
-                        onNotInterested = { vm.markNotInterested() },
+                        onNotInterested = { vm.toggleNotInterested() },
                         onComments = { vm.openComments() },
                         onShare = { shareCurrent() },
                         onCollect = { vm.openCollectSheet(null, openBiliTab = false) },

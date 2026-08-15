@@ -11,6 +11,7 @@ import com.madus.mobile.data.ContentProfileStore
 import com.madus.mobile.data.ExternalPlaylistImporter
 import com.madus.mobile.data.LikedStore
 import com.madus.mobile.data.LocalPlaylistStore
+import com.madus.mobile.data.NotInterestedStore
 import com.madus.mobile.data.PlayerPrefs
 import com.madus.mobile.data.PlayerSettings
 import com.madus.mobile.data.PlaylistCoverStore
@@ -124,6 +125,7 @@ data class RecommendUiState(
     val recent: List<Track> = emptyList(),
     val segment: RecommendSegment = RecommendSegment.Feed,
     val likedIds: Set<String> = emptySet(),
+    val notInterestedIds: Set<String> = emptySet(),
     /** 默认关：避免一进推荐就播演示/陌生曲 */
     val autoPlayOnEnter: Boolean = false,
     val isLoading: Boolean = false,
@@ -147,6 +149,7 @@ data class MeUiState(
     val designNote: String = "",
     val autoPlayOnEnterRecommend: Boolean = false,
     val likedCount: Int = 0,
+    val hiddenCount: Int = 0,
     val playlistCount: Int = 0,
     val recentCount: Int = 0,
     val cacheSizeLabel: String = "0B",
@@ -313,6 +316,7 @@ class AppViewModel(
     private val localPl: LocalPlaylistStore = MadusApp.instance.localPlaylistStore,
     private val recentStore: RecentStore = MadusApp.instance.recentStore,
     private val likedStore: LikedStore = MadusApp.instance.likedStore,
+    private val notInterestedStore: NotInterestedStore = MadusApp.instance.notInterestedStore,
     private val coverStore: PlaylistCoverStore = MadusApp.instance.playlistCoverStore,
     private val playerPrefs: PlayerPrefs = MadusApp.instance.playerPrefs,
     private val trackCache: TrackCacheStore = MadusApp.instance.trackCacheStore,
@@ -415,6 +419,24 @@ class AppViewModel(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
+    /** 带按钮的 toast，目前只给「不喜欢 · 撤销」用。 */
+    data class ActionToast(
+        val message: String,
+        val actionLabel: String,
+        val actionId: String,
+        val token: Long = System.nanoTime(),
+    )
+
+    private val _actionToast = MutableStateFlow<ActionToast?>(null)
+    val actionToast: StateFlow<ActionToast?> = _actionToast.asStateFlow()
+
+    private val _notInterestedTracks = MutableStateFlow<List<Track>>(emptyList())
+    val notInterestedTracks: StateFlow<List<Track>> = _notInterestedTracks.asStateFlow()
+
+    private var lastNotInterested: Track? = null
+    private var lastNotInterestedWasPlaying: Boolean = false
+    private var lastNotInterestedAt: Long = 0L
+
     /**
      * 超长曲（循环 BGM 等）听太久时的轻提示，非阻塞。
      * null = 不显示。
@@ -497,6 +519,7 @@ class AppViewModel(
                 val ids = likedStore.ids()
                 _recommend.update { it.copy(likedIds = ids) }
             }
+            refreshNotInterestedUi()
             refreshHome()
             loadRecommendFeed(autoStart = false)
             refreshCacheStats()
@@ -508,6 +531,10 @@ class AppViewModel(
 
     fun clearToast() {
         _toast.value = null
+    }
+
+    fun clearActionToast() {
+        _actionToast.value = null
     }
 
     fun dismissLongPlayHint() {
@@ -3544,7 +3571,10 @@ class AppViewModel(
         val track = playback.value.current ?: return
         viewModelScope.launch {
             val nowLiked = likedStore.toggle(track)
-            if (nowLiked) recordEvent(track, RecommendationEventType.LIKE)
+            if (nowLiked) {
+                recordEvent(track, RecommendationEventType.LIKE)
+                clearHiddenOnLike(track)
+            }
             MadusApp.instance.currentTrackLiked = nowLiked
             _recommend.update { s ->
                 val next = s.likedIds.toMutableSet()
@@ -3561,7 +3591,10 @@ class AppViewModel(
     fun toggleLikeTrack(track: Track) {
         viewModelScope.launch {
             val nowLiked = likedStore.toggle(track)
-            if (nowLiked) recordEvent(track, RecommendationEventType.LIKE)
+            if (nowLiked) {
+                recordEvent(track, RecommendationEventType.LIKE)
+                clearHiddenOnLike(track)
+            }
             _recommend.update { s ->
                 val next = s.likedIds.toMutableSet()
                 if (nowLiked) next.add(track.id) else next.remove(track.id)
@@ -3590,9 +3623,13 @@ class AppViewModel(
                 authorKey = p.authorKey,
             )
             runCatching { recommendationEventStore.record(event) }
+            runCatching { notInterestedStore.add(t) }
             sessionSeenIds.add(t.id)
+            lastNotInterested = t
+            lastNotInterestedWasPlaying = playback.value.current?.id == t.id
+            lastNotInterestedAt = System.currentTimeMillis()
             pruneUpcomingAfterNotInterested(t)
-            val playingThis = playback.value.current?.id == t.id
+            val playingThis = lastNotInterestedWasPlaying
             if (playingThis) {
                 if (pendingQueue.isNotEmpty()) {
                     advanceToNext(userInitiated = true, recordSkipFast = false)
@@ -3603,8 +3640,72 @@ class AppViewModel(
             if (isForYouQueue()) {
                 runCatching { ensureInfiniteFeed() }
             }
-            _toast.value = "好，少推这类"
+            refreshNotInterestedUi()
+            _actionToast.value = ActionToast(
+                message = "好，少推这类",
+                actionLabel = "撤销",
+                actionId = ACTION_UNDO_NOT_INTERESTED,
+            )
         }
+    }
+
+    fun toggleNotInterested(track: Track? = playback.value.current) {
+        val t = track ?: return
+        viewModelScope.launch {
+            val hidden = _recommend.value.notInterestedIds.contains(t.id) ||
+                runCatching { notInterestedStore.contains(t.id) }.getOrDefault(false)
+            if (hidden) undoNotInterested(t) else markNotInterested(t)
+        }
+    }
+
+    /** 撤销不喜欢：这首和同类/UP 重新能进推荐。刚切走的 15 秒内会播回来。 */
+    fun undoNotInterested(track: Track? = lastNotInterested) {
+        val t = track ?: return
+        viewModelScope.launch {
+            runCatching { recommendationEventStore.removeNotInterested(t.id, t.bvid) }
+            runCatching { notInterestedStore.remove(t.id, t.bvid) }
+            sessionSeenIds.remove(t.id)
+            val replay = lastNotInterestedWasPlaying &&
+                lastNotInterested?.id == t.id &&
+                System.currentTimeMillis() - lastNotInterestedAt < 15_000L
+            if (lastNotInterested?.id == t.id) {
+                lastNotInterested = null
+                lastNotInterestedWasPlaying = false
+            }
+            refreshNotInterestedUi()
+            if (replay) restoreDislikedTrack(t)
+            _toast.value = "已取消不喜欢"
+        }
+    }
+
+    private suspend fun restoreDislikedTrack(t: Track) {
+        val q = pendingQueue.toMutableList()
+        val existing = q.indexOfFirst { it.id == t.id }
+        if (existing >= 0) {
+            playIndex(existing, startPos = 0L)
+            return
+        }
+        val insertAt = pendingIndex.coerceIn(0, q.size)
+        q.add(insertAt, t)
+        pendingQueue = q
+        _queueTracks.value = pendingQueue
+        _recommend.update { it.copy(feed = pendingQueue) }
+        playIndex(insertAt, startPos = 0L)
+    }
+
+    private suspend fun clearHiddenOnLike(track: Track) {
+        runCatching { recommendationEventStore.removeNotInterested(track.id, track.bvid) }
+        runCatching { notInterestedStore.remove(track.id, track.bvid) }
+        sessionSeenIds.remove(track.id)
+        refreshNotInterestedUi()
+    }
+
+    private suspend fun refreshNotInterestedUi() {
+        val list = runCatching { notInterestedStore.tracks() }.getOrDefault(emptyList())
+        _notInterestedTracks.value = list
+        val ids = list.map { it.id }.toSet()
+        _recommend.update { it.copy(notInterestedIds = ids) }
+        _me.update { it.copy(hiddenCount = list.size) }
     }
 
     private suspend fun pruneUpcomingAfterNotInterested(t: Track) {
@@ -3661,10 +3762,12 @@ class AppViewModel(
         refreshSessions()
         viewModelScope.launch {
             val liked = runCatching { likedStore.tracks().size }.getOrDefault(0)
+            val hidden = runCatching { notInterestedStore.tracks().size }.getOrDefault(0)
             val pl = runCatching { localPl.listNonEmpty().size }.getOrDefault(0)
             _me.update {
                 it.copy(
                     likedCount = liked,
+                    hiddenCount = hidden,
                     playlistCount = pl + 1,
                     recentCount = sessionRecent.distinctBy { t -> t.id }.size,
                     appVersion = com.madus.mobile.BuildConfig.VERSION_NAME,
@@ -5280,6 +5383,7 @@ class AppViewModel(
     }
 
     companion object {
+        const val ACTION_UNDO_NOT_INTERESTED = "undo_not_interested"
         private const val HOUR_MS = 60L * 60L * 1000L
         private val REALTIME_FEEDBACK_TYPES = setOf(
             RecommendationEventType.LIKE,

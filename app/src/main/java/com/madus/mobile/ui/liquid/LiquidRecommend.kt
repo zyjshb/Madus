@@ -204,7 +204,14 @@ fun LiquidRecommendScreen(
             actions = listOf(
                 LiquidSheetAction("全屏", enabled = has) { onFullscreen(); onImmersive() },
                 LiquidSheetAction("收藏", enabled = has) { onCollectCurrent() },
-                LiquidSheetAction("不喜欢", enabled = has) { onNotInterested() },
+                LiquidSheetAction(
+                    title = if (track != null && state.notInterestedIds.contains(track.id)) {
+                        "取消不喜欢"
+                    } else {
+                        "不喜欢"
+                    },
+                    enabled = has,
+                ) { onNotInterested() },
                 LiquidSheetAction("评论", enabled = has) { onComments() },
                 LiquidSheetAction(
                     title = if (videoMode) "封面" else "视频",

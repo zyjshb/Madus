@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.3：电台主控去掉重复不喜欢；首页快捷栏收成一条
-        versionCode = 292
-        versionName = "1.17.3"
+        // 1.17.4：不喜欢可撤销；首页改 iOS 26 货架
+        versionCode = 293
+        versionName = "1.17.4"
         vectorDrawables.useSupportLibrary = true
     }
 

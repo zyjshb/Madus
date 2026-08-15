@@ -22,10 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,23 +34,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.madus.mobile.data.LikedStore
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.madus.mobile.domain.Playlist
 import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.HomeUiState
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.MadusImageLoader
-import com.madus.mobile.ui.components.SectionTitle
 import com.madus.mobile.ui.components.TrackRow
 import com.madus.mobile.ui.components.normalizeCoverUrl
 import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
+import com.madus.mobile.ui.theme.LiquidType
 import com.madus.mobile.ui.theme.isLiquidTheme
 
 private enum class HomeChip(val label: String) {
@@ -64,11 +60,12 @@ private enum class HomeChip(val label: String) {
     Recent("最近"),
 }
 
+private val HomeCoverSize = 156.dp
+
 /**
- * Spotify-style Home A：
- * 问候顶栏 → chips → 一条快捷栏 → 横滑歌单/B站 → 最近列表
- *
- * 快捷栏是 2×2 宫格的折中：喜欢/收藏还在，但不再四块大卡挡封面货架。
+ * iOS 26 / Apple Music Listen Now：
+ * 大标题 + 头像 → 胶囊筛选 → 横向封面货架 → 最近列表。
+ * 不再放快捷宫格/细栏，喜欢和 B 站收藏走货架本身。
  */
 @Composable
 fun HomeScreen(
@@ -80,6 +77,7 @@ fun HomeScreen(
     onClearRecent: () -> Unit = {},
     onOpenMe: () -> Unit = {},
     onOpenRecentTab: () -> Unit = {},
+    onOpenLibrary: () -> Unit = {},
     onOpenBiliList: () -> Unit = {},
     onOpenRadio: () -> Unit = {},
     onOpenBiliLogin: () -> Unit = {},
@@ -91,51 +89,54 @@ fun HomeScreen(
     val chips = HomeChip.entries
     val selected = chips[chip.coerceIn(0, chips.lastIndex)]
 
-    val liked = state.localPlaylists.firstOrNull { it.id == LikedStore.LIKED_ID }
-    val otherLocals = state.localPlaylists.filter { it.id != LikedStore.LIKED_ID }
     val bili = state.playlists
     val recent = state.recent
+    val liquid = isLiquidTheme()
 
     val showLibrary = selected == HomeChip.All || selected == HomeChip.Library
-    val showBili = (selected == HomeChip.All || selected == HomeChip.Bili) && bili.isNotEmpty()
+    val showBili = selected == HomeChip.All || selected == HomeChip.Bili
     val showRecent = selected == HomeChip.All || selected == HomeChip.Recent
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
     ) {
-        // 顶栏：头像 + 问候
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .padding(top = 6.dp, bottom = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    text = state.greeting,
+                    style = if (liquid) {
+                        LiquidType.largeTitle
+                    } else {
+                        MaterialTheme.typography.displaySmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = (-0.4).sp,
+                        )
+                    },
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.width(12.dp))
                 HomeAvatar(
                     avatarUrl = state.avatarUrl,
                     onClick = onOpenMe,
                 )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = state.greeting,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
         }
 
-        // Chips
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 22.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 chips.forEachIndexed { i, c ->
@@ -148,74 +149,79 @@ fun HomeScreen(
             }
         }
 
-        // 一条快捷栏：入口还在，不再用 2×2 大卡挡货架
-        item {
-            QuickStrip(
-                onOpenLiked = { liked?.let(onOpenPlaylist) },
-                onOpenLibrary = {
-                    (otherLocals.firstOrNull() ?: liked)?.let(onOpenPlaylist)
-                },
-                onOpenBili = onOpenBiliList,
-                onOpenRecent = onOpenRecentTab,
-            )
-            Spacer(Modifier.height(20.dp))
-        }
-
-        // 我的歌单横滑
         if (showLibrary && state.localPlaylists.isNotEmpty()) {
             item {
-                SectionTitle(text = "我的歌单")
-                Spacer(Modifier.height(10.dp))
+                HomeSection(
+                    title = "我的歌单",
+                    action = "全部",
+                    onAction = onOpenLibrary,
+                )
+                Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     state.localPlaylists.forEach { pl ->
                         CoverPlaylistCard(playlist = pl, onClick = { onOpenPlaylist(pl) })
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(28.dp))
             }
         }
 
-        // B站收藏横滑
         if (showBili) {
             item {
-                SectionTitle(text = "B站收藏")
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    bili.forEach { pl ->
-                        CoverPlaylistCard(playlist = pl, onClick = { onOpenPlaylist(pl) })
+                if (bili.isNotEmpty()) {
+                    HomeSection(
+                        title = "B站收藏",
+                        action = "全部",
+                        onAction = onOpenBiliList,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        bili.forEach { pl ->
+                            CoverPlaylistCard(playlist = pl, onClick = { onOpenPlaylist(pl) })
+                        }
                     }
+                    Spacer(Modifier.height(28.dp))
+                } else if (selected == HomeChip.Bili) {
+                    HomeSection(title = "B站收藏")
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = if (state.biliLoggedIn) {
+                            "还没有收藏夹"
+                        } else {
+                            "登录后，收藏夹会出现在这里"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .then(
+                                if (!state.biliLoggedIn) {
+                                    Modifier.clickable(onClick = onOpenBiliLogin)
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    )
+                    Spacer(Modifier.height(28.dp))
                 }
-                Spacer(Modifier.height(24.dp))
             }
         }
 
-        // 最近播放
         if (showRecent) {
             item {
-                SectionTitle(
-                    text = "最近播放",
-                    action = if (recent.isNotEmpty()) {
-                        {
-                            Text(
-                                text = "清空",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .clickable(onClick = onClearRecent)
-                                    .padding(4.dp),
-                            )
-                        }
-                    } else null,
+                HomeSection(
+                    title = "最近播放",
+                    action = if (recent.isNotEmpty()) "清空" else null,
+                    onAction = if (recent.isNotEmpty()) onClearRecent else null,
                 )
                 Spacer(Modifier.height(8.dp))
                 if (recent.isEmpty()) {
@@ -239,8 +245,41 @@ fun HomeScreen(
         item {
             Spacer(
                 Modifier.height(
-                    if (isLiquidTheme()) LocalLiquidChromeBottom.current else 88.dp,
+                    if (liquid) LocalLiquidChromeBottom.current else 88.dp,
                 ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeSection(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = if (isLiquidTheme()) {
+                LiquidType.title3
+            } else {
+                MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+            },
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.weight(1f),
+        )
+        if (!action.isNullOrBlank() && onAction != null) {
+            Text(
+                text = action,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clickable(onClick = onAction)
+                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
             )
         }
     }
@@ -252,111 +291,26 @@ private fun HomeChipPill(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val bg = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surface
-    val fg = if (selected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onBackground
+    val shape = RoundedCornerShape(999.dp)
+    val bg = when {
+        selected -> MaterialTheme.colorScheme.onBackground
+        isLiquidTheme() -> androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    }
+    val fg = if (selected) {
+        MaterialTheme.colorScheme.background
+    } else {
+        MaterialTheme.colorScheme.onBackground
+    }
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
+            .clip(shape)
             .background(bg)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 7.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
     }
-}
-
-@Composable
-private fun QuickStrip(
-    onOpenLiked: () -> Unit,
-    onOpenLibrary: () -> Unit,
-    onOpenBili: () -> Unit,
-    onOpenRecent: () -> Unit,
-) {
-    val shape = RoundedCornerShape(if (isLiquidTheme()) 12.dp else 6.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(46.dp)
-            .clip(shape)
-            .then(
-                if (isLiquidTheme()) {
-                    Modifier.background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.22f))
-                } else {
-                    Modifier
-                },
-            )
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        QuickStripItem(
-            title = "喜欢",
-            icon = Icons.Filled.Favorite,
-            onClick = onOpenLiked,
-            modifier = Modifier.weight(1f),
-        )
-        QuickStripDivider()
-        QuickStripItem(
-            title = "歌单",
-            icon = Icons.Outlined.LibraryMusic,
-            onClick = onOpenLibrary,
-            modifier = Modifier.weight(1f),
-        )
-        QuickStripDivider()
-        QuickStripItem(
-            title = "收藏",
-            icon = Icons.Outlined.Folder,
-            onClick = onOpenBili,
-            modifier = Modifier.weight(1f),
-        )
-        QuickStripDivider()
-        QuickStripItem(
-            title = "最近",
-            icon = Icons.Outlined.History,
-            onClick = onOpenRecent,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun QuickStripItem(
-    title: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxSize()
-            .clickable(onClick = onClick),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = title,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.onBackground,
-        )
-        Spacer(Modifier.width(5.dp))
-        Text(
-            title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun QuickStripDivider() {
-    Box(
-        modifier = Modifier
-            .width(1.dp)
-            .height(18.dp)
-            .background(MaterialTheme.colorScheme.outline),
-    )
 }
 
 @Composable
@@ -371,7 +325,13 @@ private fun HomeAvatar(
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            .then(
+                if (isLiquidTheme()) {
+                    Modifier.background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.14f))
+                } else {
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                },
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -392,7 +352,7 @@ private fun HomeAvatar(
             Icon(
                 Icons.Outlined.Person,
                 contentDescription = "我的",
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
                 tint = MaterialTheme.colorScheme.onBackground,
             )
         }
@@ -406,10 +366,10 @@ private fun CoverPlaylistCard(
 ) {
     Column(
         modifier = Modifier
-            .width(140.dp)
+            .width(HomeCoverSize)
             .clickable(onClick = onClick),
     ) {
-        CoverArt(coverUrl = playlist.coverUrl, size = 140.dp)
+        CoverArt(coverUrl = playlist.coverUrl, size = HomeCoverSize)
         Spacer(Modifier.height(8.dp))
         Text(
             text = playlist.title,

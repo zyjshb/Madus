@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
@@ -187,6 +188,21 @@ fun MeScreen(
                     StatCell("最近", state.recentCount.toString(), Icons.Outlined.History)
                     StatCell("账号", loggedInCount.toString(), Icons.Outlined.Person)
                 }
+            }
+        }
+
+        item {
+            LineFrame(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
+                MeNavRow(
+                    icon = Icons.Outlined.ThumbDown,
+                    title = "不喜欢",
+                    subtitle = if (state.hiddenCount > 0) {
+                        "${state.hiddenCount} 首 · 点错了可取消"
+                    } else {
+                        "点错过的歌可以在这里取消"
+                    },
+                    onClick = { onToolClick("hidden") },
+                )
             }
         }
 

@@ -554,10 +554,14 @@ private fun RadioPanel(
                     )
                     SecondaryAction(
                         icon = Icons.Outlined.ThumbDown,
-                        label = "不喜欢",
+                        label = if (track != null && state.notInterestedIds.contains(track.id)) {
+                            "取消不喜欢"
+                        } else {
+                            "不喜欢"
+                        },
                         onClick = onNotInterested,
                         enabled = track != null,
-                        contentDescription = "不喜欢，少推这类",
+                        contentDescription = "不喜欢，少推这类；点错过可再点取消",
                     )
                     SecondaryAction(
                         icon = Icons.Default.Share,
