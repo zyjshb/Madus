@@ -3,7 +3,7 @@
 **日期：** 2026-08-15  
 **目录：** `Mineradio-main/and/`（包名 `com.madus.mobile`）  
 **当前版本：** `1.17.2` / versionCode `291`  
-**提交：** （发版后填）  
+**提交：** `0e6a8c1`  
 **正式包：** `and/apk/Madus-1.17.2.apk`  
 **GitHub：** https://github.com/zyjshb/Madus  
 **Gitee：** https://gitee.com/dikoklhf/madus
@@ -259,7 +259,7 @@ scripts/publish-gitee-release.ps1
 
 | 版本 | 内容 | 是否上传 |
 |------|------|----------|
-| **1.17.2** | 去掉歌词 | 待传 |  
+| **1.17.2** `0e6a8c1` | 去掉歌词 | **已传** |  
 | **1.17.1** `ac3e12a` | B 站字幕当歌词（已撤回） | 已传 |  
 | **1.17.0** `3bb9b2d` | 不喜欢 + 通知栏点赞 | **已传** |  
 | **1.16.9** `c53e875` | iOS 手感：进页侧滑、Tab 淡入、按压缩放 | **已传** |  
@@ -276,7 +276,7 @@ scripts/publish-gitee-release.ps1
 
 ## 10. 关机前状态（2026-08-15）
 
-- 双仓最新：**1.17.2**（发版后填）  
+- 双仓最新：**1.17.2**（`0e6a8c1`）  
 - 包：`apk/Madus-1.17.2.apk`  
 - 下载：https://gitee.com/dikoklhf/madus/releases/tag/v1.17.2  
   备用：https://github.com/zyjshb/Madus/releases/tag/v1.17.2  
