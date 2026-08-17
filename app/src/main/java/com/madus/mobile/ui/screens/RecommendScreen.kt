@@ -612,10 +612,10 @@ private fun RadioPanel(
                     )
                     SecondaryAction(
                         icon = Icons.Default.AutoAwesome,
-                        label = if (state.isRefreshing) "换一批" else "推荐",
+                        label = "推荐",
                         onClick = onRefreshRadio,
-                        active = state.isRefreshing,
-                        contentDescription = "换一批推荐",
+                        enabled = !state.isRefreshing,
+                        contentDescription = "下一首推荐",
                     )
                     SecondaryAction(
                         icon = Icons.Default.Radio,

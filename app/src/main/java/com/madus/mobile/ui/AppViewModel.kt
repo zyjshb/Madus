@@ -489,6 +489,8 @@ class AppViewModel(
     /** 「为你推荐」起播单飞：避免连点重建 feed、按钮二次闪现 */
     private var recommendStartJob: Job? = null
     private var recommendClearLoadingJob: Job? = null
+    /** 菜单「推荐」换一首：进行中再点无效 */
+    private var recommendSkipJob: Job? = null
 
     init {
         // 曲终 → 下一首
@@ -5279,25 +5281,43 @@ class AppViewModel(
      * 已在播推荐时不重拉，避免连点把主控锁死。
      */
     fun startRecommendIfReady() {
-        startForYouRecommend(silent = false, forceRefresh = false)
+        startForYouRecommend(silent = false)
     }
 
-    /** 菜单里的「推荐」：播放中也能换一批。 */
+    /** 菜单「推荐」：只换一首；切完前再点无效。 */
     fun refreshForYouRecommend() {
-        startForYouRecommend(silent = false, forceRefresh = true)
+        if (recommendSkipJob?.isActive == true) return
+        if (!isForYouQueue() || playback.value.current == null) {
+            startRecommendIfReady()
+            return
+        }
+        recommendSkipJob = viewModelScope.launch {
+            _recommend.update { it.copy(isRefreshing = true) }
+            val before = playback.value.current?.id
+            try {
+                advanceToNext(userInitiated = true)
+                val deadline = System.currentTimeMillis() + 6_000L
+                while (isActive && System.currentTimeMillis() < deadline) {
+                    val now = playback.value.current?.id
+                    if (now != null && now != before) break
+                    delay(80)
+                }
+            } finally {
+                _recommend.update { it.copy(isRefreshing = false) }
+            }
+        }
     }
 
     /**
      * 切入「为你推荐」无限流。
-     * @param forceRefresh 用户点换一批：即使正在播也重拉。
      */
-    fun startForYouRecommend(silent: Boolean = false, forceRefresh: Boolean = false) {
+    fun startForYouRecommend(silent: Boolean = false) {
         val pb = playback.value
         val alreadyOnAir = isForYouQueue() &&
             pb.current != null &&
             (pb.isPlaying || pb.isLoading)
-        if (!forceRefresh && alreadyOnAir) return
-        if (!forceRefresh && recommendStartJob?.isActive == true) return
+        if (alreadyOnAir) return
+        if (recommendStartJob?.isActive == true) return
 
         recommendStartJob?.cancel()
         recommendClearLoadingJob?.cancel()
@@ -5308,12 +5328,9 @@ class AppViewModel(
                     it.copy(
                         isLoading = !keepControls,
                         isStartingPlayback = !keepControls,
-                        isRefreshing = forceRefresh && keepControls,
+                        isRefreshing = false,
                         segment = RecommendSegment.Feed,
                     )
-                }
-                if (forceRefresh && keepControls && !silent) {
-                    _toast.value = "换一批"
                 }
 
                 val likedInteractions = runCatching { likedStore.interactions() }.getOrDefault(emptyList())
@@ -5324,8 +5341,7 @@ class AppViewModel(
                     it.likedAtMs >= System.currentTimeMillis() - 15 * 60_000L
                 }
                 val reuse = _recommend.value.feed.takeIf {
-                    !forceRefresh &&
-                        it.isNotEmpty() &&
+                    it.isNotEmpty() &&
                         _recommend.value.sourceId == "recommend" &&
                         !veryFreshLike
                 }
@@ -5344,7 +5360,7 @@ class AppViewModel(
                                 recent = recent,
                                 localSample = localSample,
                                 limit = 40,
-                                excludeExtra = seenExcludeForRebuild(forceRefresh),
+                                excludeExtra = seenExcludeForRebuild(refresh = false),
                                 recentLikeIds = recentLikeIds,
                             )
                         }
@@ -5380,7 +5396,7 @@ class AppViewModel(
                         feed = built,
                         isLoading = false,
                         isStartingPlayback = !keepControls,
-                        isRefreshing = forceRefresh && keepControls,
+                        isRefreshing = false,
                         sourceLabel = "为你推荐",
                         sourceId = "recommend",
                         segment = RecommendSegment.Feed,
@@ -5408,7 +5424,7 @@ class AppViewModel(
                 _recommend.update {
                     it.copy(isLoading = false, isStartingPlayback = false, isRefreshing = false)
                 }
-                if (!silent) _toast.value = "换一批失败"
+                if (!silent) _toast.value = "起播失败"
             }
         }
     }
