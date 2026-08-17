@@ -268,11 +268,12 @@ class PlayerEngine(context: Context) {
     fun setSleepTimerMinutes(minutes: Int) {
         sleepJob?.cancel()
         sleepJob = null
-        if (minutes <= 0) {
+        val sanitized = SleepTimer.sanitize(minutes)
+        if (sanitized <= 0) {
             _sleepRemainingMs.value = 0L
             return
         }
-        val total = minutes * 60_000L
+        val total = sanitized * 60_000L
         _sleepRemainingMs.value = total
         sleepJob = scope.launch {
             var left = total

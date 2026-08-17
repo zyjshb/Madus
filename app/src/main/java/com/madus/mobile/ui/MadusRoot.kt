@@ -173,6 +173,7 @@ fun MadusRoot(
     val playerSettings by vm.playerSettings.collectAsStateWithLifecycle()
     val sleepRemainingMs by vm.sleepRemainingMs.collectAsStateWithLifecycle()
     val sleepSelectedMinutes by vm.sleepSelectedMinutes.collectAsStateWithLifecycle()
+    val sleepCustomMinutes by vm.sleepCustomMinutes.collectAsStateWithLifecycle()
     val cacheManager by vm.cacheManager.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -1409,6 +1410,7 @@ fun MadusRoot(
             SleepTimerSheet(
                 activeMinutes = sleepSelectedMinutes.takeIf { it > 0 },
                 remainingLabel = sleepLabel,
+                lastCustomMinutes = sleepCustomMinutes.takeIf { it > 0 },
                 onSelectMinutes = vm::setSleepTimer,
                 onDismiss = { showSleepPicker = false },
             )

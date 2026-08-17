@@ -1,6 +1,7 @@
 package com.madus.mobile.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,9 +9,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -19,14 +24,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.data.AudioQuality
+import com.madus.mobile.player.SleepTimer
 
 /**
  * 主流音乐 App 做法：半高 BottomSheet 单选列表（网易云/QQ/Spotify 定时同类）。
@@ -92,6 +108,7 @@ fun QualityPickerSheet(
 fun SleepTimerSheet(
     activeMinutes: Int?,
     remainingLabel: String?,
+    lastCustomMinutes: Int? = null,
     onSelectMinutes: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -103,6 +120,25 @@ fun SleepTimerSheet(
         45 to "45 分钟",
         60 to "60 分钟",
     )
+    val customActive = SleepTimer.isCustom(activeMinutes ?: 0)
+    val remembered = lastCustomMinutes?.takeIf { SleepTimer.isCustom(it) }
+    var showCustomInput by remember { mutableStateOf(false) }
+    var customText by remember {
+        mutableStateOf((if (customActive) activeMinutes else remembered)?.toString().orEmpty())
+    }
+    var customError by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
+    fun confirmCustom() {
+        val parsed = SleepTimer.parseCustom(customText)
+        if (parsed == null) {
+            customError = true
+            return
+        }
+        onSelectMinutes(parsed)
+        onDismiss()
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -114,6 +150,7 @@ fun SleepTimerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 8.dp)
                 .padding(bottom = 28.dp),
         ) {
@@ -156,6 +193,99 @@ fun SleepTimerSheet(
                     },
                 )
             }
+            OptionRow(
+                title = "自定义",
+                subtitle = when {
+                    customActive -> "${activeMinutes} 分钟"
+                    remembered != null -> "上次 ${remembered} 分钟"
+                    else -> "自己填分钟"
+                },
+                selected = customActive && !showCustomInput,
+                onClick = {
+                    showCustomInput = true
+                    customError = false
+                },
+            )
+            if (showCustomInput) {
+                CustomMinutesRow(
+                    value = customText,
+                    error = customError,
+                    focusRequester = focusRequester,
+                    onValueChange = {
+                        customText = it.filter(Char::isDigit).take(3)
+                        customError = false
+                    },
+                    onConfirm = ::confirmCustom,
+                )
+                LaunchedEffect(Unit) {
+                    runCatching { focusRequester.requestFocus() }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomMinutesRow(
+    value: String,
+    error: Boolean,
+    focusRequester: FocusRequester,
+    onValueChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val border = if (error) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.outline
+    }
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { onConfirm() }),
+                modifier = Modifier
+                    .width(88.dp)
+                    .focusRequester(focusRequester)
+                    .border(1.dp, border, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                decorationBox = { inner ->
+                    if (value.isEmpty()) {
+                        Text(
+                            "90",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    inner()
+                },
+            )
+            Text(
+                text = "分钟",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 10.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onConfirm) {
+                Text("确定")
+            }
+        }
+        if (error) {
+            Text(
+                text = "填 ${SleepTimer.CUSTOM_MIN}–${SleepTimer.CUSTOM_MAX} 的分钟",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
     }
 }

@@ -38,6 +38,7 @@ import com.madus.mobile.domain.ScoredTrack
 import com.madus.mobile.domain.Track
 import com.madus.mobile.domain.TrackFilters
 import com.madus.mobile.player.PlayerController
+import com.madus.mobile.player.SleepTimer
 import com.madus.mobile.player.StreamCache
 import com.madus.mobile.source.MusicSource
 import com.madus.mobile.source.SourceRegistry
@@ -527,6 +528,9 @@ class AppViewModel(
             refreshHome()
             loadRecommendFeed(autoStart = false)
             refreshCacheStats()
+            _sleepCustomMinutes.value = runCatching {
+                playerPrefs.lastSleepCustomMinutes.first()
+            }.getOrDefault(0)
         }
         startPositionPersistLoop()
         startRecommendationSignalLoop()
@@ -717,10 +721,21 @@ class AppViewModel(
     /** 用户上次选择的定时分钟；0=关 */
     val sleepSelectedMinutes: StateFlow<Int> = _sleepSelectedMinutes.asStateFlow()
 
+    private val _sleepCustomMinutes = MutableStateFlow(0)
+    /** 上次自定义分钟，便于下次预填 */
+    val sleepCustomMinutes: StateFlow<Int> = _sleepCustomMinutes.asStateFlow()
+
     fun setSleepTimer(minutes: Int) {
-        _sleepSelectedMinutes.value = minutes.coerceAtLeast(0)
-        player.setSleepTimerMinutes(minutes)
-        _toast.value = if (minutes <= 0) "已取消定时关闭" else "将在 ${minutes} 分钟后暂停"
+        val m = SleepTimer.sanitize(minutes)
+        _sleepSelectedMinutes.value = m
+        if (SleepTimer.isCustom(m)) {
+            _sleepCustomMinutes.value = m
+            viewModelScope.launch {
+                runCatching { playerPrefs.setLastSleepCustomMinutes(m) }
+            }
+        }
+        player.setSleepTimerMinutes(m)
+        _toast.value = if (m <= 0) "已取消定时关闭" else "将在 ${m} 分钟后暂停"
     }
 
     private val _cacheManager = MutableStateFlow(CacheManagerUiState())

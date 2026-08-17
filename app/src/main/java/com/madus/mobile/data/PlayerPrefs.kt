@@ -3,6 +3,7 @@ package com.madus.mobile.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -181,6 +182,7 @@ class PlayerPrefs(private val context: Context) {
     private val keyGameMixAudio = booleanPreferencesKey("game_mix_audio")
     private val keyGameLiteMode = booleanPreferencesKey("game_lite_mode")
     private val keyNetworkIntensity = stringPreferencesKey("network_intensity")
+    private val keySleepCustomMinutes = intPreferencesKey("sleep_custom_minutes")
     /** 各操作模式是否看过专属指引（按 mode.id 存） */
     private fun guideModeKey(mode: VideoGestureMode) =
         booleanPreferencesKey("short_video_guide_${mode.id}_v2")
@@ -276,5 +278,15 @@ class PlayerPrefs(private val context: Context) {
 
     suspend fun setGestureMode(mode: VideoGestureMode) {
         context.playerPrefsStore.edit { it[keyGestureMode] = mode.id }
+    }
+
+    val lastSleepCustomMinutes: Flow<Int> = context.playerPrefsStore.data.map { prefs ->
+        prefs[keySleepCustomMinutes] ?: 0
+    }
+
+    suspend fun setLastSleepCustomMinutes(minutes: Int) {
+        context.playerPrefsStore.edit {
+            it[keySleepCustomMinutes] = minutes.coerceAtLeast(0)
+        }
     }
 }
