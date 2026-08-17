@@ -110,6 +110,7 @@ fun RecommendScreen(
     onCache: () -> Unit = {},
     onRelatedRadio: () -> Unit = {},
     onStartRadio: () -> Unit = {},
+    onRefreshRadio: () -> Unit = {},
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -169,6 +170,7 @@ fun RecommendScreen(
                 onCache = onCache,
                 onRelatedRadio = onRelatedRadio,
                 onStartRadio = onStartRadio,
+                onRefreshRadio = onRefreshRadio,
                 onLogin = onLogin,
                 onQualityClick = onQualityClick,
                 onSleepClick = onSleepClick,
@@ -254,6 +256,7 @@ private fun RadioPanel(
     onCache: () -> Unit = {},
     onRelatedRadio: () -> Unit = {},
     onStartRadio: () -> Unit = {},
+    onRefreshRadio: () -> Unit = {},
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -473,7 +476,8 @@ private fun RadioPanel(
                     .clip(CircleShape)
                     .border(1.5.dp, MaterialTheme.colorScheme.onBackground, CircleShape)
                     .clickable(
-                        enabled = !state.isStartingPlayback && !state.isLoading,
+                        enabled = track != null ||
+                            (!state.isStartingPlayback && !state.isLoading && state.feed.isNotEmpty()),
                         onClick = {
                             when {
                                 track != null -> onToggle()
@@ -608,9 +612,10 @@ private fun RadioPanel(
                     )
                     SecondaryAction(
                         icon = Icons.Default.AutoAwesome,
-                        label = "推荐",
-                        onClick = onStartRadio,
-                        contentDescription = "为你推荐",
+                        label = if (state.isRefreshing) "换一批" else "推荐",
+                        onClick = onRefreshRadio,
+                        active = state.isRefreshing,
+                        contentDescription = "换一批推荐",
                     )
                     SecondaryAction(
                         icon = Icons.Default.Radio,

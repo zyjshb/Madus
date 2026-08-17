@@ -156,6 +156,25 @@ class RecommendationEngineTest {
         assertEquals(RecommendationTuning.W_NEGATIVE, cooling.score - normal.score, 1e-9)
     }
 
+    @Test
+    fun popularOffInterestScoresBelowRelatedLike() {
+        val nowMs = 1_800_000_000_000L
+        val music = musicTrack()
+        val gaming = Track(
+            id = "game-track",
+            title = "Game Title",
+            artist = "up-game",
+            categoryId = 4,
+        )
+        val context = FeedContext(nowMs = nowMs)
+        val likedMusic = InterestState(hourlyTopics = mapOf("music" to 1.0))
+
+        val related = engine.scoreCandidate(music, null, likedMusic, "related-like", context)
+        val popularOff = engine.scoreCandidate(gaming, null, likedMusic, "popular", context)
+
+        assertTrue("画像外热门不该压过喜欢的 related", related.score > popularOff.score)
+    }
+
     private fun musicTrack(): Track =
         Track(id = "music-track", title = "Music Title", artist = "singer-a", categoryId = 3)
 

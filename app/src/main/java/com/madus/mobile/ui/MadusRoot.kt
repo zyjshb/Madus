@@ -656,6 +656,7 @@ fun MadusRoot(
                         onCache = vm::cacheCurrentTrack,
                         onRelatedRadio = vm::playRelatedRadio,
                         onStartRadio = vm::startRecommendIfReady,
+                        onRefreshRadio = vm::refreshForYouRecommend,
                         onLogin = { vm.requestLogin(MusicSourceType.BILIBILI) },
                         onQualityClick = { showQualityPicker = true },
                         onSleepClick = { showSleepPicker = true },

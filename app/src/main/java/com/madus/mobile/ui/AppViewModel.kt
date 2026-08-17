@@ -133,6 +133,8 @@ data class RecommendUiState(
     val isLoading: Boolean = false,
     /** 已生成推荐但播放器尚未挂上当前曲；短暂隐藏“播放”按钮，超时自动恢复 */
     val isStartingPlayback: Boolean = false,
+    /** 播放中换一批，不影响主控暂停/播放 */
+    val isRefreshing: Boolean = false,
     /** Label of current play context (推荐 / 歌单名). */
     val sourceLabel: String = "推荐电台",
     val sourceId: String = "recommend",
@@ -4883,7 +4885,7 @@ class AppViewModel(
                         recent = recent,
                         localSample = localSample,
                         limit = 40,
-                        excludeExtra = sessionSeenIds,
+                        excludeExtra = seenExcludeForRebuild(refresh = false),
                         recentLikeIds = likedInteractions
                             .filter { it.likedAtMs >= System.currentTimeMillis() - HOUR_MS }
                             .mapTo(linkedSetOf<String>()) { it.track.id },
@@ -4973,13 +4975,14 @@ class AppViewModel(
                 if (t.length in 2..16) add(t.take(12))
                 Regex("[\\u4e00-\\u9fff]{2,8}").findAll(t).take(2).forEach { add(it.value) }
             }
-        }.filter { it.length in 2..12 }
+        }.filter { it.length in 4..12 }
+            .filter { it !in KEYWORD_STOP }
             .groupingBy { it }
             .eachCount()
             .entries
             .sortedByDescending { it.value }
             .map { it.key }
-            .take(8)
+            .take(6)
 
         val history = runCatching { biliApi.watchHistory(20) }.getOrDefault(emptyList())
         // 收藏夹抽样：学习用户「真收藏」的歌
@@ -5037,7 +5040,7 @@ class AppViewModel(
             if (t.id in exclude || isBlocked(t, blocks)) return
             val p = profiles[profileKey(t)] ?: ContentProfileParser.profileFromTrack(t, now)
             val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
-            val hourlyJitter = ((t.id.hashCode() xor hourSalt).toUInt() % 80u).toDouble() / 100.0
+            val hourlyJitter = ((t.id.hashCode() xor hourSalt).toUInt() % 15u).toDouble() / 100.0
             val withJitter = sc.copy(score = sc.score + hourlyJitter + bonus)
             val prev = scoredPool[t.id]
             if (prev == null || withJitter.score > prev.score) scoredPool[t.id] = withJitter
@@ -5273,36 +5276,46 @@ class AppViewModel(
 
     /**
      * 推荐台「播放 为你推荐」/ 冷启动开播。
-     * 已有推荐 feed 时直接起播，避免每次连点都重建列表导致二次闪按钮。
+     * 已在播推荐时不重拉，避免连点把主控锁死。
      */
     fun startRecommendIfReady() {
-        startForYouRecommend(silent = false)
+        startForYouRecommend(silent = false, forceRefresh = false)
+    }
+
+    /** 菜单里的「推荐」：播放中也能换一批。 */
+    fun refreshForYouRecommend() {
+        startForYouRecommend(silent = false, forceRefresh = true)
     }
 
     /**
-     * 强制切入「为你推荐」无限流并开播（可从歌单/清空列表无缝接上）。
+     * 切入「为你推荐」无限流。
+     * @param forceRefresh 用户点换一批：即使正在播也重拉。
      */
-    fun startForYouRecommend(silent: Boolean = false) {
-        // 已在起播中：忽略连点（不要再闪「播放」或重拉 feed）
-        if (recommendStartJob?.isActive == true) return
-        val alreadyPlayingForYou = isForYouQueue() &&
-            playback.value.current != null &&
-            (playback.value.isPlaying || playback.value.isLoading)
-        if (alreadyPlayingForYou) return
+    fun startForYouRecommend(silent: Boolean = false, forceRefresh: Boolean = false) {
+        val pb = playback.value
+        val alreadyOnAir = isForYouQueue() &&
+            pb.current != null &&
+            (pb.isPlaying || pb.isLoading)
+        if (!forceRefresh && alreadyOnAir) return
+        if (!forceRefresh && recommendStartJob?.isActive == true) return
 
         recommendStartJob?.cancel()
         recommendClearLoadingJob?.cancel()
         recommendStartJob = viewModelScope.launch {
+            val keepControls = playback.value.current != null
             try {
                 _recommend.update {
                     it.copy(
-                        isLoading = true,
-                        isStartingPlayback = true,
+                        isLoading = !keepControls,
+                        isStartingPlayback = !keepControls,
+                        isRefreshing = forceRefresh && keepControls,
                         segment = RecommendSegment.Feed,
                     )
                 }
+                if (forceRefresh && keepControls && !silent) {
+                    _toast.value = "换一批"
+                }
 
-                // 有近 15 分钟新赞就重算，别抱着启动时那批旧列表
                 val likedInteractions = runCatching { likedStore.interactions() }.getOrDefault(emptyList())
                 val recentLikeIds = likedInteractions
                     .filter { it.likedAtMs >= System.currentTimeMillis() - HOUR_MS }
@@ -5311,7 +5324,8 @@ class AppViewModel(
                     it.likedAtMs >= System.currentTimeMillis() - 15 * 60_000L
                 }
                 val reuse = _recommend.value.feed.takeIf {
-                    it.isNotEmpty() &&
+                    !forceRefresh &&
+                        it.isNotEmpty() &&
                         _recommend.value.sourceId == "recommend" &&
                         !veryFreshLike
                 }
@@ -5330,7 +5344,7 @@ class AppViewModel(
                                 recent = recent,
                                 localSample = localSample,
                                 limit = 40,
-                                excludeExtra = sessionSeenIds,
+                                excludeExtra = seenExcludeForRebuild(forceRefresh),
                                 recentLikeIds = recentLikeIds,
                             )
                         }
@@ -5346,15 +5360,16 @@ class AppViewModel(
                             feed = emptyList(),
                             isLoading = false,
                             isStartingPlayback = false,
+                            isRefreshing = false,
                             sourceLabel = if (!loggedIn) "请先登录" else "推荐电台",
                             sourceId = if (!loggedIn) "need_login" else "recommend",
                         )
                     }
                     if (!silent) {
                         _toast.value = if (!loggedIn) {
-                            "请先登录 B 站，再听推荐电台"
+                            "请先登录 B 站"
                         } else {
-                            "暂无推荐内容，去搜索点赞一些你想看的视频吧"
+                            "暂无推荐"
                         }
                     }
                     return@launch
@@ -5364,34 +5379,52 @@ class AppViewModel(
                     it.copy(
                         feed = built,
                         isLoading = false,
-                        isStartingPlayback = true,
+                        isStartingPlayback = !keepControls,
+                        isRefreshing = forceRefresh && keepControls,
                         sourceLabel = "为你推荐",
                         sourceId = "recommend",
                         segment = RecommendSegment.Feed,
                     )
                 }
-                // 立刻占位当前曲，避免 UI 仍显示「未在播放」+ 播放按钮回弹
-                // （取流完成前 isStartingPlayback 仍保持 true）
                 player.prepareTrack(
                     built.first(),
                     asVideo = MadusApp.instance.videoModeEnabled,
                 )
                 startRecommendQueue(built)
-                // 在本 Job 内等到真正可播，期间 isActive=true 可挡住连点
-                awaitRecommendPlaybackSettled()
+                if (keepControls) {
+                    _recommend.update {
+                        it.copy(isLoading = false, isStartingPlayback = false, isRefreshing = false)
+                    }
+                } else {
+                    awaitRecommendPlaybackSettled()
+                }
             } catch (e: CancellationException) {
                 _recommend.update {
-                    it.copy(isLoading = false, isStartingPlayback = false)
+                    it.copy(isLoading = false, isStartingPlayback = false, isRefreshing = false)
                 }
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("AppViewModel", "startForYouRecommend: ${e.message}")
                 _recommend.update {
-                    it.copy(isLoading = false, isStartingPlayback = false)
+                    it.copy(isLoading = false, isStartingPlayback = false, isRefreshing = false)
                 }
-                if (!silent) _toast.value = "起播失败，请再试一次"
+                if (!silent) _toast.value = "换一批失败"
             }
         }
+    }
+
+    /** 重建列表只避开刚听过的，别把整晚听过的全挡掉（挡光了就只剩热门乱源）。 */
+    private fun seenExcludeForRebuild(refresh: Boolean): Set<String> {
+        val cap = if (refresh) 16 else 40
+        val out = linkedSetOf<String>()
+        val seen = sessionSeenIds.toList()
+        if (seen.size > cap) {
+            out.addAll(seen.takeLast(cap))
+        } else {
+            out.addAll(seen)
+        }
+        playback.value.current?.id?.let { out.add(it) }
+        return out
     }
 
     private fun startRecommendQueue(feed: List<Track>) {
@@ -5428,7 +5461,7 @@ class AppViewModel(
             delay(120L) // 取消时会抛 CancellationException
         }
         _recommend.update {
-            it.copy(isLoading = false, isStartingPlayback = false)
+            it.copy(isLoading = false, isStartingPlayback = false, isRefreshing = false)
         }
     }
 
@@ -5497,6 +5530,10 @@ class AppViewModel(
         )
         /** UP 投稿分页，与收藏夹一致 */
         private const val UP_PAGE_SIZE = 40
+        private val KEYWORD_STOP = setOf(
+            "官方", "高清", "完整", "高音质", "中文", "英文", "日文", "歌曲", "视频",
+            "字幕", "动态", "歌词", "官方版", "正式版", "超清", "现场", "完整版",
+        )
 
         fun factory(): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

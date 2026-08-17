@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // 1.17.9：上一首直接切上一条，不再先重载当前
-        versionCode = 300
-        versionName = "1.17.11"
+        versionCode = 301
+        versionName = "1.17.12"
         vectorDrawables.useSupportLibrary = true
     }
 

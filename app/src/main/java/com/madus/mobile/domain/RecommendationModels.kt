@@ -114,4 +114,6 @@ object RecommendationTuning {
     const val W_NEGATIVE = -2.5
     const val W_FATIGUE = -1.5
     const val W_REPEAT = -1.2
+    /** 用户已有兴趣时，和画像完全不沾边的热门/首页要压下去 */
+    const val W_MISMATCH = -1.6
 }

@@ -141,11 +141,22 @@ class RecommendationEngine {
 
         val fresh = track.id !in context.sessionSeenIds && track.id !in context.queueIds
         val freshness = if (fresh) 1.0 else 0.0
+        val interestTopics = state.realtimeTopics.keys +
+            state.hourlyTopics.keys +
+            state.longTermTopics.keys
+        val matchesInterest = interestTopics.isEmpty() || topics.any { it in interestTopics }
         val novelty = when {
+            !matchesInterest && interestTopics.isNotEmpty() -> 0.0
             state.longTermTopics.isNotEmpty() &&
                 topics.none { state.longTermTopics.containsKey(it) } -> 0.8
             state.longTermTopics.isEmpty() && (source == "popular" || source == "explore") -> 0.5
             else -> 0.0
+        }
+        val mismatch = when {
+            interestTopics.isEmpty() || matchesInterest -> 0.0
+            source == "related-like" || source == "realtime-related" || source == "related" -> 0.0
+            source == "liked" || source == "local" || source == "history" -> 0.0
+            else -> 1.0
         }
 
         val negativePenalty = topics.count { topic ->
@@ -180,7 +191,8 @@ class RecommendationEngine {
             RecommendationTuning.W_NOVELTY * novelty +
             RecommendationTuning.W_NEGATIVE * negativePenalty +
             RecommendationTuning.W_FATIGUE * fatiguePenalty +
-            RecommendationTuning.W_REPEAT * repeatPenalty
+            RecommendationTuning.W_REPEAT * repeatPenalty +
+            RecommendationTuning.W_MISMATCH * mismatch
 
         val reason = buildString {
             append("src=").append(source)
@@ -190,6 +202,7 @@ class RecommendationEngine {
             if (negativePenalty > 0.0) append(",neg=").append(format(negativePenalty))
             if (fatiguePenalty > 0.0) append(",fatigue=").append(format(fatiguePenalty))
             if (repeatPenalty > 0.0) append(",repeat=").append(format(repeatPenalty))
+            if (mismatch > 0.0) append(",mis=").append(format(mismatch))
         }
 
         return ScoredTrack(
