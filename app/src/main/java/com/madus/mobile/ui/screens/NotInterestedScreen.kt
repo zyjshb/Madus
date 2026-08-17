@@ -63,12 +63,7 @@ fun NotInterestedScreen(
         }
 
         if (tracks.isEmpty()) {
-            Text(
-                text = "点错过的歌会出现在这里，取消后会重新进推荐。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-            )
+            Spacer(Modifier.height(16.dp))
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),

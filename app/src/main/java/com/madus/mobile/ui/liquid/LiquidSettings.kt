@@ -80,7 +80,6 @@ fun LiquidSettingsScreen(
         item {
             LiquidPageHeader(
                 title = "主题",
-                subtitle = "简约是线稿。画境是壁纸上的玻璃。",
                 onBack = onBack,
             )
         }
@@ -92,7 +91,6 @@ fun LiquidSettingsScreen(
             ) {
                 ThemePreviewCard(
                     title = "简约",
-                    subtitle = "现在这套",
                     selected = settings.visualTheme == VisualTheme.Classic,
                     onClick = { onVisualTheme(VisualTheme.Classic) },
                     modifier = Modifier.weight(1f),
@@ -100,7 +98,6 @@ fun LiquidSettingsScreen(
                 )
                 ThemePreviewCard(
                     title = "画境",
-                    subtitle = "壁纸 + 玻璃",
                     selected = settings.visualTheme == VisualTheme.Canvas,
                     onClick = { onVisualTheme(VisualTheme.Canvas) },
                     modifier = Modifier.weight(1f),
@@ -118,10 +115,6 @@ fun LiquidSettingsScreen(
                         AppearanceMode.entries.forEachIndexed { i, mode ->
                             LiquidNavRow(
                                 title = mode.label,
-                                subtitle = when (mode) {
-                                    AppearanceMode.LineSketch -> "近直角 · 细描边"
-                                    AppearanceMode.SoftGlass -> "大圆角 · 轻透"
-                                },
                                 onClick = { onAppearance(mode) },
                                 trailing = {
                                     if (settings.appearance == mode) Text("●", color = tokens.accent)
@@ -153,7 +146,6 @@ fun LiquidSettingsScreen(
                     InsetGroup {
                         LiquidNavRow(
                             title = "每日随机",
-                            subtitle = "每天从 t.alcy.cc 换一张竖图",
                             onClick = { onWallpaperMode(WallpaperMode.Daily) },
                             trailing = {
                                 if (settings.wallpaperMode == WallpaperMode.Daily) Text("●", color = tokens.accent)
@@ -162,7 +154,6 @@ fun LiquidSettingsScreen(
                         InsetDivider.text()
                         LiquidNavRow(
                             title = "固定这张",
-                            subtitle = "一直用现在这张",
                             onClick = onPinWallpaper,
                             trailing = {
                                 if (settings.wallpaperMode == WallpaperMode.Pinned) Text("●", color = tokens.accent)
@@ -171,13 +162,12 @@ fun LiquidSettingsScreen(
                     }
                     Spacer(Modifier.height(10.dp))
                     InsetGroup {
-                        LiquidNavRow("换一张", "再抽一张今日图", onClick = onRollWallpaper)
+                        LiquidNavRow("换一张", onClick = onRollWallpaper)
                         InsetDivider.text()
-                        LiquidNavRow("下载这张", "存到相册 / Madus", onClick = onDownloadWallpaper)
+                        LiquidNavRow("下载这张", onClick = onDownloadWallpaper)
                         InsetDivider.text()
                         LiquidNavRow(
                             title = "从相册选择",
-                            subtitle = "自己挑一张",
                             onClick = { pick.launch("image/*") },
                             trailing = {
                                 if (settings.wallpaperMode == WallpaperMode.Custom) Text("●", color = tokens.accent)
@@ -189,7 +179,6 @@ fun LiquidSettingsScreen(
                     InsetGroup {
                         LiquidNavRow(
                             title = "跟随壁纸",
-                            subtitle = "强调色从图里抽",
                             onClick = { onFollowWallpaperColor(true) },
                             trailing = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -208,7 +197,6 @@ fun LiquidSettingsScreen(
                         InsetDivider.text()
                         LiquidNavRow(
                             title = "香槟金",
-                            subtitle = "不跟图走",
                             onClick = { onFollowWallpaperColor(false) },
                             trailing = {
                                 if (!settings.followWallpaperColor) Text("●", color = tokens.accent)
@@ -268,11 +256,6 @@ fun LiquidSettingsScreen(
                                     activeTrackColor = tokens.accent,
                                 ),
                             )
-                            Text(
-                                "通透看得到后面。着色带强调色。",
-                                style = LiquidType.caption,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                             Spacer(Modifier.height(10.dp))
                             GlassSurface(
                                 modifier = Modifier
@@ -315,7 +298,6 @@ fun LiquidSettingsScreen(
 @Composable
 private fun ThemePreviewCard(
     title: String,
-    subtitle: String,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -339,7 +321,6 @@ private fun ThemePreviewCard(
         ) { preview() }
         Spacer(Modifier.height(10.dp))
         Text(title, style = LiquidType.headline, color = MaterialTheme.colorScheme.onSurface)
-        Text(subtitle, style = LiquidType.footnote, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

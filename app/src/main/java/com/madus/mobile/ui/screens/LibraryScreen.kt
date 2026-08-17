@@ -199,7 +199,7 @@ fun LibraryScreen(
             item {
                 EmptyCreateCard(
                     title = "还没有本地歌单",
-                    subtitle = "点右上角新建，或播放时收藏到歌单",
+                    subtitle = "",
                     onClick = {
                         createName = ""
                         showCreate = true
@@ -241,7 +241,7 @@ fun LibraryScreen(
             item {
                 EmptyCreateCard(
                     title = "登录 B 站同步收藏",
-                    subtitle = "收藏夹会显示在这里，一键听整夹",
+                    subtitle = "",
                     icon = Icons.Outlined.Folder,
                     actionLabel = "去登录",
                     onClick = onLoginBili,
@@ -472,12 +472,14 @@ private fun EmptyCreateCard(
             Spacer(Modifier.width(10.dp))
             Text(title, style = MaterialTheme.typography.titleMedium)
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (subtitle.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(Modifier.height(10.dp))
         Text(
             actionLabel,

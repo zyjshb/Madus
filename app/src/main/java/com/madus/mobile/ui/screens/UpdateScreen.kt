@@ -277,7 +277,6 @@ fun UpdateScreen(
         if (liquid) {
             LiquidPageHeader(
                 title = "检查更新",
-                subtitle = "由你决定是否升级",
                 onBack = onBack,
             )
         } else {
@@ -288,14 +287,7 @@ fun UpdateScreen(
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                 }
-                Column {
-                    Text("检查更新", style = MaterialTheme.typography.headlineMedium)
-                    Text(
-                        "由你决定是否升级",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
+                Text("检查更新", style = MaterialTheme.typography.headlineMedium)
             }
         }
         Column(

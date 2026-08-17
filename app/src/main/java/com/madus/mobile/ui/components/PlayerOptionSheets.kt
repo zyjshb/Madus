@@ -76,22 +76,11 @@ fun QualityPickerSheet(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Text(
-                text = "下一首起生效 · 过高可能因稿件限制自动降级",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 0.dp),
-            )
             Spacer(Modifier.height(8.dp))
             AudioQuality.entries.forEach { q ->
                 OptionRow(
                     title = q.label,
-                    subtitle = when (q) {
-                        AudioQuality.DataSaver -> "更省流量"
-                        AudioQuality.Standard -> "平衡 · 以前默认，偏糊"
-                        AudioQuality.High -> "推荐 · 高码率音频"
-                        AudioQuality.Highest -> "能多高要多高，更费流"
-                    },
+                    subtitle = null,
                     selected = current == q,
                     onClick = {
                         onSelect(q)
@@ -162,15 +151,7 @@ fun SleepTimerSheet(
             )
             if (!remainingLabel.isNullOrBlank()) {
                 Text(
-                    text = "剩余 $remainingLabel 后暂停播放",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                Spacer(Modifier.height(4.dp))
-            } else {
-                Text(
-                    text = "到时自动暂停，适合睡前听歌",
+                    text = "剩余 $remainingLabel",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -197,8 +178,8 @@ fun SleepTimerSheet(
                 title = "自定义",
                 subtitle = when {
                     customActive -> "${activeMinutes} 分钟"
-                    remembered != null -> "上次 ${remembered} 分钟"
-                    else -> "自己填分钟"
+                    remembered != null -> "${remembered} 分钟"
+                    else -> null
                 },
                 selected = customActive && !showCustomInput,
                 onClick = {
@@ -257,16 +238,6 @@ private fun CustomMinutesRow(
                     .focusRequester(focusRequester)
                     .border(1.dp, border, RoundedCornerShape(4.dp))
                     .padding(horizontal = 12.dp, vertical = 10.dp),
-                decorationBox = { inner ->
-                    if (value.isEmpty()) {
-                        Text(
-                            "90",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    inner()
-                },
             )
             Text(
                 text = "分钟",
@@ -281,7 +252,7 @@ private fun CustomMinutesRow(
         }
         if (error) {
             Text(
-                text = "填 ${SleepTimer.CUSTOM_MIN}–${SleepTimer.CUSTOM_MAX} 的分钟",
+                text = "${SleepTimer.CUSTOM_MIN}–${SleepTimer.CUSTOM_MAX}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 6.dp),

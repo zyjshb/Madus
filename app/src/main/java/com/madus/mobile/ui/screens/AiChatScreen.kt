@@ -548,7 +548,7 @@ private fun AttachPanel(
             iconBg = Color(0xFF2D6A4F).copy(alpha = 0.18f),
             iconTint = Color(0xFF2D6A4F),
             title = "哼唱 / 录音",
-            subtitle = if (canHum) "讯飞/ACRCloud · 最长 15 秒" else "未配置 · 先填哼唱识别 Key",
+            subtitle = if (canHum) "最长 15 秒" else "未配置",
             onClick = onRecord,
         )
         Spacer(Modifier.height(8.dp))
@@ -558,7 +558,7 @@ private fun AttachPanel(
                 iconBg = Color(0xFF6B3FA0).copy(alpha = 0.15f),
                 iconTint = Color(0xFF6B3FA0),
                 title = "视频识歌",
-                subtitle = "上传本地视频，大模型识别音轨/BGM",
+                subtitle = "上传视频",
                 onClick = onVideo,
             )
             Spacer(Modifier.height(8.dp))
@@ -569,7 +569,7 @@ private fun AttachPanel(
                 iconBg = Color(0xFF1D4E89).copy(alpha = 0.15f),
                 iconTint = Color(0xFF1D4E89),
                 title = "图片",
-                subtitle = "歌词/听歌 App 截图，大模型识别",
+                subtitle = "截图",
                 onClick = onImage,
             )
         }
@@ -882,7 +882,7 @@ private fun HistoryPanel(
             if (items.isEmpty()) {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    "还没有历史。搜过歌后会自动保存在这里。",
+                    "还没有历史",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

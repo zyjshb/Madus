@@ -113,7 +113,7 @@ fun CollectSheet(
             if (maybeSeries) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "整部合集${seriesHint?.let { "（$it）" } ?: ""}：本地歌单无需登录；同步 B 站需登录",
+                    text = seriesHint?.let { "整部合集 · $it" } ?: "整部合集",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -213,7 +213,7 @@ private fun LocalCollectPage(
 ) {
     if (!creating) {
         LineButton(
-            text = if (maybeSeries) "+ 新建本地歌单（可整部合集）" else "+ 新建本地歌单并加入",
+            text = if (maybeSeries) "+ 新建本地歌单" else "+ 新建本地歌单",
             onClick = { onCreatingChange(true) },
             filled = true,
             modifier = Modifier.fillMaxWidth(),
@@ -221,16 +221,10 @@ private fun LocalCollectPage(
         if (maybeSeries) {
             Spacer(Modifier.height(8.dp))
             LineButton(
-                text = "一键新建并收藏整部合集（无需登录）",
+                text = "整部合集进本地歌单",
                 filled = true,
                 onClick = { onCreateSeriesAndAdd("合集") },
                 modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "无需登录 B 站：整部合集可进本地歌单。下方也可选已有歌单「整部合集」。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.height(12.dp))

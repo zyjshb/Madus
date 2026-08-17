@@ -118,23 +118,17 @@ private fun ConfigHubPage(
             .padding(20.dp),
     ) {
         ConfigTopBar(title = "AI 模型配置", onBack = onBack)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "先选配置方式，再填写 API。Key 只保存在本机加密存储，费用由你的云账号结算。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         Spacer(Modifier.height(24.dp))
 
         ModeCard(
             title = "简单模式",
-            subtitle = "选厂商 → 普通/超强 → 可改模型名 → 填 API Key\n自动带好网址和协议，适合大多数人",
+            subtitle = "选厂商，填 Key",
             onClick = onSimple,
         )
         Spacer(Modifier.height(12.dp))
         ModeCard(
             title = "自定义模式",
-            subtitle = "自己填 Base URL、协议、模型名、能力开关\n适合中转站、代理或官方未列出的接口",
+            subtitle = "自己填接口",
             onClick = onCustom,
         )
         Spacer(Modifier.height(12.dp))
@@ -144,7 +138,7 @@ private fun ConfigHubPage(
                 "已配置：讯飞 ${if (humCfg.xunfeiConfigured) humCfg.appId else "未填"} · " +
                     "ACR ${if (humCfg.acrConfigured) hummingStore.maskedAcrAccessKey() else "未填"}"
             } else {
-                "填写讯飞，或再填 ACRCloud 增强识别"
+                "讯飞 / ACRCloud"
             },
             onClick = onHumming,
         )
@@ -207,7 +201,7 @@ private fun ModeCard(
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "进入 →",
+            "进入",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -273,11 +267,13 @@ private fun SimpleConfigPage(
                     .padding(12.dp),
             ) {
                 Text(p.displayName, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    p.hint,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (p.hint.isNotBlank()) {
+                    Text(
+                        p.hint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     "URL ${p.baseUrl}",
                     style = MaterialTheme.typography.labelSmall,

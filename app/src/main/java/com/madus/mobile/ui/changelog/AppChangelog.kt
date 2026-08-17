@@ -29,10 +29,17 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.11",
+            date = "2026-08-17",
+            changed = listOf(
+                "去掉界面里的说明腔",
+            ),
+        ),
+        Entry(
             version = "1.17.10",
             date = "2026-08-17",
             added = listOf(
-                "定时关闭可以自己填分钟，不再只能选 15 / 30 / 45 / 60",
+                "定时关闭可自定义分钟",
             ),
         ),
         Entry(

@@ -196,11 +196,7 @@ fun MeScreen(
                 MeNavRow(
                     icon = Icons.Outlined.ThumbDown,
                     title = "不喜欢",
-                    subtitle = if (state.hiddenCount > 0) {
-                        "${state.hiddenCount} 首 · 点错了可取消"
-                    } else {
-                        "点错过的歌可以在这里取消"
-                    },
+                    subtitle = if (state.hiddenCount > 0) "${state.hiddenCount} 首" else "",
                     onClick = { onToolClick("hidden") },
                 )
             }
@@ -268,7 +264,7 @@ fun MeScreen(
                     subtitle = if (bili?.isLoggedIn == true) {
                         "已登录 · ${bili.displayName.ifBlank { "B站用户" }}"
                     } else {
-                        "未登录 · 登录后同步收藏"
+                        "未登录"
                     },
                     onClick = onOpenBiliLogin,
                     trailing = {
@@ -290,7 +286,7 @@ fun MeScreen(
                 MeNavRow(
                     icon = Icons.Outlined.Settings,
                     title = "外观设置",
-                    subtitle = "形态与主题色",
+                    subtitle = "",
                     onClick = onOpenSettings,
                 )
             }
@@ -471,13 +467,15 @@ private fun MeNavRow(
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (trailing != null) {
             trailing()

@@ -561,7 +561,7 @@ private fun RadioPanel(
                         },
                         onClick = onNotInterested,
                         enabled = track != null,
-                        contentDescription = "不喜欢，少推这类；点错过可再点取消",
+                        contentDescription = "不喜欢",
                     )
                     SecondaryAction(
                         icon = Icons.Default.Share,

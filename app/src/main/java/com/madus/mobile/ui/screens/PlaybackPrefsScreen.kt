@@ -56,7 +56,6 @@ fun PlaybackPrefsScreen(
         if (isLiquidTheme()) {
             LiquidPageHeader(
                 title = "播放",
-                subtitle = "音质 / 定时在播放页点",
                 onBack = onBack,
             )
         } else {
@@ -67,14 +66,7 @@ fun PlaybackPrefsScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
-            Column {
-                Text("播放设置", style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    text = "音质 / 定时请在播放页点选",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text("播放设置", style = MaterialTheme.typography.headlineMedium)
         }
         }
 
@@ -84,12 +76,6 @@ fun PlaybackPrefsScreen(
         ) {
             item {
                 SectionTitle(text = "网络使用")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "只调预取和后台续刷，不关点播/切歌/歌单。打游戏卡网选「最省」。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 NetworkIntensity.entries.forEach { level ->
                     SelectRow(
@@ -104,12 +90,6 @@ fun PlaybackPrefsScreen(
 
             item {
                 SectionTitle(text = "边听缓存")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "关闭后纯在线播放，不写磁盘。「最省」档即使开启也不会后台写盘。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
@@ -122,7 +102,7 @@ fun PlaybackPrefsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("自动边听缓存", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            if (playerSettings.autoCache) "已开启" else "已关闭 · 推荐轻量",
+                            if (playerSettings.autoCache) "已开启" else "已关闭",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -136,12 +116,6 @@ fun PlaybackPrefsScreen(
 
             item {
                 SectionTitle(text = "打游戏时听歌")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "游戏音效常会抢焦点；开启后不因此暂停。抢网请到上方选「最省」。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
@@ -154,11 +128,7 @@ fun PlaybackPrefsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("打游戏时继续播放", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            if (playerSettings.gameMixAudio) {
-                                "已开启 · 忽略游戏音效抢焦点"
-                            } else {
-                                "已关闭 · 按系统焦点可能暂停"
-                            },
+                            if (playerSettings.gameMixAudio) "已开启" else "已关闭",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -186,16 +156,10 @@ fun PlaybackPrefsScreen(
 
             item {
                 SectionTitle(text = "缓存管理")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "当前约 $cacheLabel。可查看已缓存歌曲并逐首删除。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 SelectRow(
                     title = "打开缓存管理",
-                    subtitle = "查看 / 删除缓存内容",
+                    subtitle = cacheLabel,
                     selected = false,
                     onClick = onOpenCacheManager,
                 )
@@ -231,11 +195,13 @@ private fun SelectRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (selected) {
             Text("●", color = MaterialTheme.colorScheme.primary)

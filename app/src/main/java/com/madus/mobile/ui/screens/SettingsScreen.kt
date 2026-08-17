@@ -107,21 +107,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item {
-                Text(
-                    text = "音乐/视频模式：推荐页上滑菜单里切换。音质与音效：「我的 → 播放设置」。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            item {
                 SectionTitle(text = "短视频操作模式")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "对照抖音 / B站 / 快手的手势习惯。影响清屏与横屏全屏的单击、长按与控件显隐。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 VideoGestureMode.entries.forEach { mode ->
                     SelectRow(
@@ -136,20 +122,11 @@ fun SettingsScreen(
 
             item {
                 SectionTitle(text = "主题")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "简约是现在这套。画境会铺壁纸、整页另排。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 VisualTheme.entries.forEach { theme ->
                     SelectRow(
                         title = theme.label,
-                        subtitle = when (theme) {
-                            VisualTheme.Classic -> "纸色底、墨线框，手账线稿"
-                            VisualTheme.Canvas -> "壁纸 + 玻璃，首页到设置都另排"
-                        },
+                        subtitle = "",
                         selected = settings.visualTheme == theme,
                         onClick = { onVisualTheme(theme) },
                     )
@@ -159,20 +136,11 @@ fun SettingsScreen(
 
             item {
                 SectionTitle(text = "外观形态")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "只作用于简约主题。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 AppearanceMode.entries.forEach { mode ->
                     SelectRow(
                         title = mode.label,
-                        subtitle = when (mode) {
-                            AppearanceMode.LineSketch -> "近直角 · 1px 描边 · 纸感（默认）"
-                            AppearanceMode.SoftGlass -> "大圆角 · 轻透面板 · 圆滑玻璃"
-                        },
+                        subtitle = "",
                         selected = settings.appearance == mode,
                         onClick = { onAppearance(mode) },
                     )
@@ -182,12 +150,6 @@ fun SettingsScreen(
 
             item {
                 SectionTitle(text = "主题色")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "线稿黑白为默认；深色墨黑为纯黑主体。其余参考 Catppuccin。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 ColorTheme.entries.forEach { theme ->
                     ColorThemeRow(
@@ -268,11 +230,13 @@ private fun SelectRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (selected) {
             Text("●", color = MaterialTheme.colorScheme.primary)

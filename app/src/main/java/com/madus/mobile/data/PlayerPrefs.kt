@@ -28,13 +28,13 @@ enum class AudioQuality(val id: String, val label: String, val qn: Int) {
  * 环境音效预设（系统 Equalizer 频段近似）。
  */
 enum class SoundFx(val id: String, val label: String, val subtitle: String) {
-    Studio("studio", "精听", "人声清楚 · 不轰"),
-    Flat("flat", "原声", "不改音色"),
-    Bass("bass", "低音增强", "鼓点更厚"),
-    Vocal("vocal", "人声突出", "中频抬升"),
-    Soft("soft", "柔和", "夜晚/耳机"),
-    Night("night", "夜听", "压高音、护耳"),
-    Live("live", "现场感", "稍亮、空间感"),
+    Studio("studio", "精听", ""),
+    Flat("flat", "原声", ""),
+    Bass("bass", "低音增强", ""),
+    Vocal("vocal", "人声突出", ""),
+    Soft("soft", "柔和", ""),
+    Night("night", "夜听", ""),
+    Live("live", "现场感", ""),
     ;
 
     companion object {
@@ -74,10 +74,10 @@ enum class NetworkIntensity(
     val label: String,
     val subtitle: String,
 ) {
-    MINIMAL("minimal", "最省", "基本能播 · 少预取 · 打游戏优先"),
-    BALANCED("balanced", "均衡", "日常听歌 · 预取下一首"),
-    SMOOTH("smooth", "流畅", "多预取 · 切歌更跟手"),
-    FULL("full", "充足", "尽量预取 · 推荐多补 · 不断播优先"),
+    MINIMAL("minimal", "最省", ""),
+    BALANCED("balanced", "均衡", ""),
+    SMOOTH("smooth", "流畅", ""),
+    FULL("full", "充足", ""),
     ;
 
     companion object {

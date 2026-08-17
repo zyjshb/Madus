@@ -577,7 +577,7 @@ class AppViewModel(
         viewModelScope.launch {
             playerPrefs.setQuality(q)
             MadusApp.instance.currentQualityQn = q.qn
-            _toast.value = "画质/音质：${q.label}（下一首生效）"
+            _toast.value = "音质：${q.label}"
         }
     }
 
@@ -623,7 +623,7 @@ class AppViewModel(
         viewModelScope.launch {
             playerPrefs.setAutoCache(enabled)
             player.setAutoCache(enabled)
-            _toast.value = if (enabled) "已开启边听缓存" else "已关闭边听缓存 · 纯在线播放"
+            _toast.value = if (enabled) "已开启边听缓存" else "已关闭边听缓存"
         }
     }
 
@@ -631,11 +631,7 @@ class AppViewModel(
         viewModelScope.launch {
             playerPrefs.setGameMixAudio(enabled)
             player.setGameMixAudio(enabled)
-            _toast.value = if (enabled) {
-                "打游戏时继续播放 · 已开"
-            } else {
-                "打游戏时继续播放 · 已关（会按系统音频焦点暂停）"
-            }
+            _toast.value = if (enabled) "打游戏时继续播放 · 已开" else "打游戏时继续播放 · 已关"
         }
     }
 
@@ -686,11 +682,7 @@ class AppViewModel(
         viewModelScope.launch {
             playerPrefs.setVideoMode(enabled)
             MadusApp.instance.videoModeEnabled = enabled
-            _toast.value = if (enabled) {
-                "已开启视频模式 · 可看画面"
-            } else {
-                "已关闭视频模式 · 纯音频听歌"
-            }
+            _toast.value = if (enabled) "已开启视频模式" else "已关闭视频模式"
             // 正在播则按新模式重解流
             val cur = playback.value.current ?: return@launch
             val pos = playback.value.positionMs
@@ -3333,7 +3325,7 @@ class AppViewModel(
                 items += PlaySourceItem(
                     id = pl.id,
                     title = pl.title,
-                    subtitle = "空歌单，先加几首歌",
+                    subtitle = "空",
                     kind = PlaySourceKind.LocalPlaylist,
                     playlist = pl.toPlaylist(),
                     enabled = false,
