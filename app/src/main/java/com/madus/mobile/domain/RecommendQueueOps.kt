@@ -37,7 +37,9 @@ object RecommendQueueOps {
                 }
                 true
             }
-            val next = history + upcoming
+            val seedKinds = cur?.let { ContentProfileParser.kindKeys(it) }.orEmpty()
+            val scattered = scatterDifferentKind(upcoming, seedKinds)
+            val next = history + scattered
             val playAt = if (upcoming.isNotEmpty()) history.size else -1
             return AfterNotInterested(next, playAt)
         }
@@ -58,6 +60,19 @@ object RecommendQueueOps {
         isForYou: Boolean,
         isBlocked: (Track) -> Boolean,
     ): List<Track> = afterNotInterested(queue, currentIndex, dislikedId, isForYou, isBlocked).queue
+
+    /** 下一首还按队列走；再后面插一条不同细类，避免连刷同一类。 */
+    fun scatterDifferentKind(upcoming: List<Track>, seedKinds: Set<String>): List<Track> {
+        if (upcoming.size < 3 || seedKinds.isEmpty()) return upcoming
+        val idx = upcoming.indexOfFirst { t ->
+            ContentProfileParser.kindKeys(t).none { it in seedKinds }
+        }
+        if (idx <= 1) return upcoming
+        val copy = upcoming.toMutableList()
+        val item = copy.removeAt(idx)
+        copy.add(1, item)
+        return copy
+    }
 
     fun hasPlayableNext(queueSize: Int, currentIndex: Int): Boolean =
         queueSize > 0 && currentIndex + 1 < queueSize

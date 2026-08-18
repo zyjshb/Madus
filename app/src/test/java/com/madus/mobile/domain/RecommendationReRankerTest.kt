@@ -249,6 +249,16 @@ class RecommendationReRankerTest {
     }
 
     @Test
+    fun doesNotStackThreeSameFineTopicWhenExploreExists() {
+        val covers = (0..3).map { i ->
+            candidate(Track(id = "c$i", title = "夜曲 翻唱 $i", artist = "up-$i"), 100.0 - i)
+        }
+        val game = candidate(Track(id = "g", title = "原神攻略", artist = "gamer"), 20.0)
+        val output = reranker.rerank(covers + game, FeedContext(limit = 4))
+        assertTrue("连续两条同类后应插入不同类", output.take(3).any { it.id == "g" })
+    }
+
+    @Test
     fun mutedTopicIsNotHardDropped() {
         val cover = candidate(
             Track(id = "cover-1", title = "翻唱", artist = "up-a", categoryId = 31),

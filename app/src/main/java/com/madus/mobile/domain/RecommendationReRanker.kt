@@ -92,6 +92,17 @@ class RecommendationReRanker {
         ) {
             return false
         }
+        if (relaxation == 0 && picked.size >= 2) {
+            val fine = topics.filter {
+                it != "unknown" && it !in RecommendationTuning.BROAD_TOPICS
+            }
+            if (fine.isNotEmpty()) {
+                val lastTwoShare = picked.takeLast(2).all { prev ->
+                    topicsOf(prev).any { t -> t in fine }
+                }
+                if (lastTwoShare) return false
+            }
+        }
 
         if (candidate.realtime) {
             if (picked.take(20).count { it.realtime } >= RecommendationTuning.MAX_REALTIME_IN_FIRST_20) {

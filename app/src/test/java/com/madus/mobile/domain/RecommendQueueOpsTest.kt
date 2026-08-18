@@ -42,6 +42,20 @@ class RecommendQueueOpsTest {
     }
 
     @Test
+    fun scatterPullsDifferentKindToSecondSlot() {
+        val upcoming = listOf(
+            Track(id = "c1", title = "翻唱A", artist = "a"),
+            Track(id = "c2", title = "翻唱B", artist = "b"),
+            Track(id = "g1", title = "原神攻略", artist = "c"),
+        )
+        val out = RecommendQueueOps.scatterDifferentKind(
+            upcoming,
+            ContentProfileParser.kindKeys(upcoming[0]),
+        )
+        assertEquals(listOf("c1", "g1", "c2"), out.map { it.id })
+    }
+
+    @Test
     fun playlistKeepsLaterUnblockedTracks() {
         val queue = listOf(t("a"), t("cur"), t("c"))
         val result = RecommendQueueOps.afterNotInterested(

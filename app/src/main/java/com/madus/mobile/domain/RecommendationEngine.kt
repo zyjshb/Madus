@@ -93,7 +93,8 @@ class RecommendationEngine {
                     return@forEach
                 }
                 if (topic in RecommendationTuning.BROAD_TOPICS) return@forEach
-                muted[topic] = maxOf(muted[topic] ?: 0L, until)
+                val topicUntil = event.occurredAtMs + RecommendationTuning.TOPIC_MUTE_AFTER_DISLIKE_MS
+                muted[topic] = maxOf(muted[topic] ?: 0L, topicUntil)
             }
             event.authorKey?.let {
                 muted["author:$it"] = maxOf(muted["author:$it"] ?: 0L, until)
@@ -154,6 +155,7 @@ class RecommendationEngine {
         }
         val mismatch = when {
             interestTopics.isEmpty() || matchesInterest -> 0.0
+            source == "popular" || source == "explore" -> 0.0
             source == "related-like" || source == "realtime-related" || source == "related" -> 0.0
             source == "liked" || source == "local" || source == "history" -> 0.0
             else -> 1.0

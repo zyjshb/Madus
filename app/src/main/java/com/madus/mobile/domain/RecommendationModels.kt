@@ -87,7 +87,10 @@ object RecommendationTuning {
     const val HOURLY_TTL_MS = 24 * 60 * 60 * 1000L
     const val LONG_TERM_TTL_MS = 30 * 24 * 60 * 60 * 1000L
     const val TOPIC_COOLDOWN_MS = 30 * 60 * 1000L
+    /** 这首 / 这个 UP 硬挡多久 */
     const val NOT_INTERESTED_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000L
+    /** 细类只降权一会儿，别封死一周（抖音：不感兴趣不再展这首，品类只控频） */
+    const val TOPIC_MUTE_AFTER_DISLIKE_MS = 2 * 60 * 60 * 1000L
     /** snackbar 大约 4 秒，撤销窗口略长一点 */
     const val UNDO_NOT_INTERESTED_MS = 6_000L
     /** 一首不喜欢不该封掉整个音乐/动画区 */

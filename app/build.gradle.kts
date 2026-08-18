@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.19：不喜欢只挡这首/这个UP，细类降权，不再掏空去播点赞
-        versionCode = 308
-        versionName = "1.17.19"
+        // 1.17.20：按抖音控频：细类冷却 2 小时、探索不扣分、同类不连着出
+        versionCode = 309
+        versionName = "1.17.20"
         vectorDrawables.useSupportLibrary = true
     }
 

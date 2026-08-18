@@ -80,7 +80,7 @@ class RecommendationEngineTest {
             ),
         )
         val state = engine.buildInterestState(events, nowMs)
-        val until = nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
+        val until = nowMs + RecommendationTuning.TOPIC_MUTE_AFTER_DISLIKE_MS
         assertEquals(until, state.mutedTopics.getValue("cover"))
         assertEquals(until, state.mutedTopics.getValue("kw:告白气球"))
     }
@@ -100,8 +100,12 @@ class RecommendationEngineTest {
         val state = engine.buildInterestState(events, nowMs)
         assertTrue("整区 music 不该被一首不喜欢封掉", "music" !in state.mutedTopics)
         assertEquals(
-            nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS,
+            nowMs + RecommendationTuning.TOPIC_MUTE_AFTER_DISLIKE_MS,
             state.mutedTopics.getValue("cover"),
+        )
+        assertEquals(
+            nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS,
+            state.mutedTopics.getValue("author:up-z"),
         )
     }
 
