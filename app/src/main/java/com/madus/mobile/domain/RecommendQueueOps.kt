@@ -20,16 +20,18 @@ object RecommendQueueOps {
         isBlocked: (Track) -> Boolean,
     ): AfterNotInterested {
         if (queue.isEmpty()) return AfterNotInterested(emptyList(), -1)
+        if (isForYou) {
+            // 后面是 related 串，整段丢掉，不然点不喜欢还在刷同一类
+            val history = queue.take(currentIndex.coerceIn(0, queue.size))
+                .filter { it.id != dislikedId && !isBlocked(it) }
+            return AfterNotInterested(history, -1)
+        }
         val keep = queue.mapIndexedNotNull { i, t ->
             if (t.id == dislikedId || isBlocked(t)) null else i to t
         }
         val kept = keep.map { it.second }
         if (kept.isEmpty()) return AfterNotInterested(emptyList(), -1)
         val playAt = keep.indexOfFirst { it.first > currentIndex }
-        if (!isForYou && playAt < 0 && kept.isNotEmpty()) {
-            // 歌单：后面没了就停在留下的最后一首之前，交给循环逻辑
-            return AfterNotInterested(kept, -1)
-        }
         return AfterNotInterested(kept, playAt)
     }
 

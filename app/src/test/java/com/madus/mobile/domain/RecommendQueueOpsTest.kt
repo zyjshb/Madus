@@ -8,45 +8,31 @@ import org.junit.Test
 class RecommendQueueOpsTest {
 
     @Test
-    fun forYouSkipsToFirstUnblockedUpcoming() {
-        val queue = listOf(t("a"), t("b"), t("cur"), t("same"), t("ok"))
+    fun forYouDropsWholeRelatedChain() {
+        val queue = listOf(t("a"), t("b"), t("cur"), t("rel1"), t("ok"))
         val result = RecommendQueueOps.afterNotInterested(
             queue = queue,
             currentIndex = 2,
             dislikedId = "cur",
             isForYou = true,
-            isBlocked = { it.id == "b" || it.id == "same" },
-        )
-        assertEquals(listOf("a", "ok"), result.queue.map { it.id })
-        assertEquals(1, result.playIndex)
-    }
-
-    @Test
-    fun forYouNoUpcomingNeedsFetch() {
-        val queue = listOf(t("a"), t("cur"), t("same"))
-        val result = RecommendQueueOps.afterNotInterested(
-            queue = queue,
-            currentIndex = 1,
-            dislikedId = "cur",
-            isForYou = true,
-            isBlocked = { it.id == "same" },
+            isBlocked = { it.id == "b" },
         )
         assertEquals(listOf("a"), result.queue.map { it.id })
         assertEquals(-1, result.playIndex)
     }
 
     @Test
-    fun forYouFirstTrackLeavesOnlyUnblockedTail() {
-        val queue = listOf(t("cur"), t("rel1"), t("ok"))
+    fun forYouFirstTrackLeavesEmptyQueue() {
+        val queue = listOf(t("cur"), t("rel1"), t("rel2"))
         val result = RecommendQueueOps.afterNotInterested(
             queue = queue,
             currentIndex = 0,
             dislikedId = "cur",
             isForYou = true,
-            isBlocked = { it.id == "rel1" },
+            isBlocked = { false },
         )
-        assertEquals(listOf("ok"), result.queue.map { it.id })
-        assertEquals(0, result.playIndex)
+        assertTrue(result.queue.isEmpty())
+        assertEquals(-1, result.playIndex)
     }
 
     @Test

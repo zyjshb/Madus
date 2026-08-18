@@ -248,6 +248,23 @@ class RecommendationReRankerTest {
         assertEquals(listOf("ok"), output.map { it.id })
     }
 
+    @Test
+    fun blockedCategoryIdNeverPicked() {
+        val cover = candidate(
+            Track(id = "cover-1", title = "翻唱", artist = "up-a", categoryId = 31),
+            900.0,
+        )
+        val other = candidate(
+            Track(id = "game-1", title = "游戏", artist = "up-b", categoryId = 4),
+            10.0,
+        )
+        val output = reranker.rerank(
+            listOf(cover, other),
+            FeedContext(limit = 4, blockedCategoryIds = setOf(31)),
+        )
+        assertEquals(listOf("game-1"), output.map { it.id })
+    }
+
     private fun track(id: String, categoryId: Int, artist: String): Track =
         Track(id = id, title = "title-$id", artist = artist, categoryId = categoryId)
 

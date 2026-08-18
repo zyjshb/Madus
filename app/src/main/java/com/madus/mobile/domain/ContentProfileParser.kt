@@ -134,6 +134,33 @@ object ContentProfileParser {
         return out
     }
 
+    fun tidKey(categoryId: Int): String? =
+        if (categoryId > 0) "tid:$categoryId" else null
+
+    fun zoneOf(track: Track): String? {
+        if (track.categoryId > 0) TID_TOPICS[track.categoryId]?.let { return it }
+        return profileFromTrack(track).topicKeys.firstOrNull {
+            it in RecommendationTuning.BROAD_TOPICS && it != "unknown"
+        }
+    }
+
+    /** 分区 tid + 细类（翻唱/古风…），不含 music/anime 这种大区。 */
+    fun kindKeys(track: Track): Set<String> {
+        val out = linkedSetOf<String>()
+        tidKey(track.categoryId)?.let { out.add(it) }
+        profileFromTrack(track).topicKeys.forEach { key ->
+            if (key != "unknown" && key !in RecommendationTuning.BROAD_TOPICS) out.add(key)
+        }
+        return out
+    }
+
+    fun sharesKind(seed: Track, other: Track): Boolean {
+        if (seed.categoryId > 0 && seed.categoryId == other.categoryId) return true
+        val a = kindKeys(seed)
+        if (a.isEmpty()) return false
+        return kindKeys(other).any { it in a }
+    }
+
     fun titlesOverlap(blockedKey: String, title: String): Boolean {
         val a = blockedKey.ifBlank { return false }
         val b = titleKey(title)

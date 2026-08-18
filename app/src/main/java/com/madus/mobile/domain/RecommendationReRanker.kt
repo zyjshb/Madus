@@ -61,6 +61,7 @@ class RecommendationReRanker {
         val topics = candidate.topicKeys.ifEmpty { topicsOf(t) }
         if (topics.any { it in context.mutedTopics }) return true
         if (context.blockedTitleKeys.any { ContentProfileParser.titlesOverlap(it, t.title) }) return true
+        if (t.categoryId > 0 && t.categoryId in context.blockedCategoryIds) return true
         return false
     }
 

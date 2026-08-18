@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.17：不喜欢立刻划走，下一首不再被补歌卡住
-        versionCode = 306
-        versionName = "1.17.17"
+        // 1.17.18：不喜欢丢掉 related 串并挡同分区，不再刷同一类
+        versionCode = 307
+        versionName = "1.17.18"
         vectorDrawables.useSupportLibrary = true
     }
 
