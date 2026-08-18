@@ -219,8 +219,8 @@ fun SearchScreen(
         }
 
         Spacer(Modifier.height(12.dp))
-        // 正在打字看联想时，先不挤旧结果，点选/提交后再出列表
-        if (!showSuggestions) {
+        // 联想只作补充，不能把视频列表藏掉（否则看起来像「只能搜出文字」）
+        if (state.results.isEmpty()) {
             state.message?.let {
                 Text(
                     text = it,
@@ -229,7 +229,9 @@ fun SearchScreen(
                 )
                 Spacer(Modifier.height(8.dp))
             }
-            if (state.results.isNotEmpty() && state.total > 0) {
+        }
+        if (state.results.isNotEmpty()) {
+            if (state.total > 0) {
                 Text(
                     text = if (state.hasMore || state.results.size < state.total) {
                         "已显示 ${state.results.size} / ${state.total.coerceAtLeast(state.results.size)}"

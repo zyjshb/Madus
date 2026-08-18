@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.21：搜索空结果互调会死循环；412 重签；解析分组结果
-        versionCode = 310
-        versionName = "1.17.21"
+        // 1.17.22：搜索联想不再盖住视频列表；封面/BV 多字段解析
+        versionCode = 311
+        versionName = "1.17.22"
         vectorDrawables.useSupportLibrary = true
     }
 

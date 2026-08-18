@@ -311,44 +311,67 @@ class BilibiliApi(
     }
 
     private fun parseSearchData(data: JSONObject): List<Track> {
-        val fromResult = when (val raw = data.opt("result")) {
-            is JSONArray -> parseSearchResultArray(raw)
-            else -> emptyList()
+        val buckets = mutableListOf<JSONArray>()
+        when (val raw = data.opt("result")) {
+            is JSONArray -> buckets.add(raw)
+            is JSONObject -> {
+                raw.optJSONArray("video")?.let { buckets.add(it) }
+                raw.optJSONArray("data")?.let { buckets.add(it) }
+            }
         }
-        if (fromResult.isNotEmpty()) return fromResult
-        val items = data.optJSONArray("items") ?: JSONArray()
-        val fromItems = parseSearchResultArray(items)
-        if (fromItems.isNotEmpty()) return fromItems
-        // 综合搜索：[{result_type:video, data:[...]}]
+        data.optJSONArray("items")?.let { buckets.add(it) }
+        val flat = buckets.flatMap { parseSearchResultArray(it) }
+        if (flat.isNotEmpty()) return flat.distinctBy { it.id }
         val grouped = data.optJSONArray("result") ?: return emptyList()
         return buildList {
             for (i in 0 until grouped.length()) {
                 val block = grouped.optJSONObject(i) ?: continue
-                val nested = block.optJSONArray("data") ?: continue
+                val kind = block.optString("result_type", block.optString("type", "video"))
+                if (kind.isNotBlank() && kind != "video") continue
+                val nested = block.optJSONArray("data")
+                    ?: block.optJSONArray("items")
+                    ?: continue
                 addAll(parseSearchResultArray(nested))
             }
-        }
+        }.distinctBy { it.id }
     }
 
     private fun parseSearchResultArray(result: JSONArray): List<Track> = buildList {
         for (i in 0 until result.length()) {
             val item = result.optJSONObject(i) ?: continue
-            // 综合搜索 result 可能混 bilibili_user 等
+            val nested = item.optJSONArray("data") ?: item.optJSONArray("items")
+            if (nested != null && item.optString("bvid").isBlank()) {
+                addAll(parseSearchResultArray(nested))
+                continue
+            }
             val type = item.optString("type", item.optString("result_type", "video"))
-            if (type.isNotBlank() && type != "video" && item.optString("bvid").isBlank()) continue
-            val bvid = item.optString("bvid", "")
-            if (bvid.isBlank()) continue
-            val title = stripHtml(item.optString("title", bvid))
-            val author = item.optString("author", "Bilibili")
+            if (type.isNotBlank() && type != "video" &&
+                type != "ketang" && item.optString("bvid").isBlank()
+            ) {
+                continue
+            }
+            val aid = item.opt("aid")?.toString()?.takeIf { it != "null" && it != "0" }.orEmpty()
+                .ifBlank { item.opt("id")?.toString()?.takeIf { it != "null" && it.all(Char::isDigit) }.orEmpty() }
+            val bvid = item.optString("bvid", "").ifBlank {
+                parseBvid(item.optString("arcurl", item.optString("uri", item.optString("url", "")))).orEmpty()
+            }
+            if (bvid.isBlank() && aid.isBlank()) continue
+            val title = stripHtml(item.optString("title", bvid.ifBlank { aid }))
+            val author = item.optString("author", item.optString("uname", "Bilibili"))
             val mid = item.opt("mid")?.toString()?.takeIf { it != "null" }.orEmpty()
-            val cover = normalizeUrl(item.optString("pic", ""))
+            val cover = normalizeUrl(
+                item.optString("pic").ifBlank {
+                    item.optString("cover").ifBlank { item.optString("cover_url") }
+                },
+            )
             val durationMs = parseDurationToMs(item.optString("duration", "0"))
             val pageCount = item.optInt("videos", 1).coerceAtLeast(1)
             val album = if (pageCount > 1) "合集·${pageCount}P" else "Bilibili"
             val displayTitle = if (pageCount > 1) "$title · ${pageCount}P" else title
+            val id = bvid.ifBlank { "av$aid" }
             add(
                 Track(
-                    id = bvid,
+                    id = id,
                     title = displayTitle,
                     artist = author,
                     album = album,
@@ -356,7 +379,7 @@ class BilibiliApi(
                     durationMs = durationMs,
                     source = MusicSourceType.BILIBILI,
                     bvid = bvid,
-                    aid = item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
+                    aid = aid,
                     ownerMid = mid,
                     pageCount = pageCount,
                     categoryId = item.optInt("typeid", item.optInt("tid", 0)),
