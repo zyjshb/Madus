@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.9：上一首直接切上一条，不再先重载当前
-        versionCode = 302
-        versionName = "1.17.13"
+        // 1.17.14：不喜欢后换源续刷，避免列表空、下一首/推荐没反应
+        versionCode = 303
+        versionName = "1.17.14"
         vectorDrawables.useSupportLibrary = true
     }
 
