@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.24：1.17.13 底子，只修搜索出视频
-        versionCode = 313
-        versionName = "1.17.24"
+        // 1.17.25：搜索先走能出结果的无签名接口
+        versionCode = 314
+        versionName = "1.17.25"
         vectorDrawables.useSupportLibrary = true
     }
 

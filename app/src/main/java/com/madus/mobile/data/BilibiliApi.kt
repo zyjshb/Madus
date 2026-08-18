@@ -192,56 +192,8 @@ class BilibiliApi(
         suspend fun fetchOnce(q: String, pageNo: Int, ord: String): SearchPage? {
             val referer =
                 "https://search.bilibili.com/all?keyword=${URLEncoder.encode(q, "UTF-8")}"
-            val params = linkedMapOf(
-                    "category_id" to "",
-                    "search_type" to "video",
-                    "ad_resource" to "5654",
-                    "__refresh__" to "true",
-                    "_extra" to "",
-                    "context" to "",
-                    "page" to pageNo.toString(),
-                    "page_size" to ps.toString(),
-                    "order" to ord,
-                    "duration" to "",
-                    "from_source" to "",
-                    "from_spmid" to "333.337",
-                    "platform" to "pc",
-                    "highlight" to "1",
-                    "single_column" to "0",
-                    "keyword" to q,
-                    "qv_id" to "",
-                    "source_tag" to "3",
-                    "gaia_vtoken" to "",
-                    "dynamic_offset" to "0",
-                    "web_location" to "1430654",
-                )
-            val wbi = runCatching {
-                val signed = signWbiQuery(params, cookie)
-                getJson(
-                    "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
-                    cookie,
-                    referer = referer,
-                )
-            }.getOrNull()
-            val wbiCode = wbi?.optInt("code", -1) ?: -1
-            if (wbiCode == -412 || wbiCode == 412 || wbiCode == -352) {
-                wbiMixinKey.set("")
-                wbiMixinAt.set(0L)
-                val retry = runCatching {
-                    val signed = signWbiQuery(params, cookie)
-                    getJson(
-                        "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
-                        cookie,
-                        referer = referer,
-                    )
-                }.getOrNull()
-                parseSearchJson(retry, pageNo, ps, q)?.let { return it }
-            } else {
-                parseSearchJson(wbi, pageNo, ps, q)?.let { return it }
-            }
-
-            // 2) 经典无签名
             val encoded = URLEncoder.encode(q, "UTF-8")
+            // 先走无签名：现在能直接出视频。WBI 空结果不能当成成功，否则永远落不到这里。
             val classic = runCatching {
                 getJson(
                     "https://api.bilibili.com/x/web-interface/search/type" +
@@ -250,7 +202,39 @@ class BilibiliApi(
                     referer = referer,
                 )
             }.getOrNull()
-            return parseSearchJson(classic, pageNo, ps, q)
+            parseSearchJson(classic, pageNo, ps, q)
+                ?.takeIf { it.tracks.isNotEmpty() }
+                ?.let { return it }
+
+            val params = linkedMapOf(
+                "search_type" to "video",
+                "keyword" to q,
+                "page" to pageNo.toString(),
+                "page_size" to ps.toString(),
+                "order" to ord,
+                "platform" to "pc",
+                "web_location" to "1430654",
+            )
+            val wbi = runCatching {
+                val signed = signWbiQuery(params, cookie)
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
+                    cookie,
+                    referer = referer,
+                )
+            }.getOrNull()
+            parseSearchJson(wbi, pageNo, ps, q)
+                ?.takeIf { it.tracks.isNotEmpty() }
+                ?.let { return it }
+
+            val allV2 = runCatching {
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/search/all/v2?keyword=$encoded&page=$pageNo",
+                    cookie,
+                    referer = referer,
+                )
+            }.getOrNull()
+            return parseSearchJson(allV2, pageNo, ps, q)?.takeIf { it.tracks.isNotEmpty() }
         }
 
         // 1) 原词 + 综合排序
@@ -296,6 +280,10 @@ class BilibiliApi(
         }
         val data = json.optJSONObject("data") ?: return null
         val tracks = parseSearchData(data)
+        if (tracks.isEmpty()) {
+            Log.w(TAG, "search code=0 but 0 videos")
+            return null
+        }
         val total = data.optInt("numResults", 0)
             .coerceAtLeast(data.optInt("numresults", 0))
         val numPages = data.optInt("numPages", 0)
