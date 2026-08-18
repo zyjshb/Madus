@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.25：搜索先走能出结果的无签名接口
-        versionCode = 314
-        versionName = "1.17.25"
+        // 1.17.26：只修操作（不喜欢划走、下一首/推荐、搜索），算法不动
+        versionCode = 315
+        versionName = "1.17.26"
         vectorDrawables.useSupportLibrary = true
     }
 
