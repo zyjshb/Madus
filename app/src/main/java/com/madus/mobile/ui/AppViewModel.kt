@@ -487,6 +487,7 @@ class AppViewModel(
     private val watchFired50 = linkedSetOf<String>()
     private val watchFired90 = linkedSetOf<String>()
     @Volatile private var expandingFeed: Boolean = false
+    private val expandMutex = Mutex()
     private var expandJob: Job? = null
     /** 「为你推荐」起播单飞：避免连点重建 feed、按钮二次闪现 */
     private var recommendStartJob: Job? = null
@@ -495,6 +496,7 @@ class AppViewModel(
     private var recommendSkipJob: Job? = null
     /** 不喜欢后换源续刷：进行中点下一首/推荐先等它播上 */
     private var refillAfterDislikeJob: Job? = null
+    private var refillDepth: Int = 0
 
     init {
         // 曲终 → 下一首
@@ -1058,20 +1060,23 @@ class AppViewModel(
             }
             _toast.value = "加载相关推荐…"
             val related = runCatching { biliApi.relatedTracks(bvid, 24) }.getOrDefault(emptyList())
-            if (related.isEmpty()) {
-                _toast.value = "暂无相关推荐"
+            val blocks = recBlocks()
+            val filtered = related.filter { it.id != cur?.id && !isBlocked(it, blocks) }
+            if (filtered.isEmpty()) {
+                _toast.value = "相关没有了，换一批推荐"
+                startForYouRecommend(silent = false, force = true)
                 return@launch
             }
-            val queue = listOfNotNull(cur) + related.filter { it.id != cur?.id }
+            val queue = listOfNotNull(cur) + filtered
             playTrack(
-                track = related.first(),
+                track = filtered.first(),
                 queue = queue,
                 loopAll = true,
                 resumeIfSame = false,
                 sourceLabel = "相关电台",
                 sourceId = "related-$bvid",
             )
-            _toast.value = "已切入相关电台 · ${related.size} 首"
+            _toast.value = "已切入相关电台 · ${filtered.size} 首"
         }
     }
 
@@ -2227,6 +2232,10 @@ class AppViewModel(
                     return
                 }
             }
+            if (isForYouQueue()) {
+                refillAndPlayAfterNotInterested()
+                return
+            }
             // 展示错误，停在当前（保持 index，勿乱跳）
             player.dispatch(PlayerCommand.PlayTrack(track, listOf(track), resolvedStart))
             return
@@ -2382,14 +2391,18 @@ class AppViewModel(
             return
         }
 
-        if (pendingQueue.isEmpty()) {
+        if (pendingQueue.isEmpty() ||
+            RecommendQueueOps.needsForYouRefill(isForYouQueue(), pendingQueue.size, pendingIndex)
+        ) {
             if (isForYouQueue()) {
                 refillAndPlayAfterNotInterested()
                 return
             }
-            // 切勿再 dispatch Next：空队列 + Ended 回调会与这里形成死循环导致卡死
-            player.dispatch(PlayerCommand.Pause)
-            return
+            if (pendingQueue.isEmpty()) {
+                // 切勿再 dispatch Next：空队列 + Ended 回调会与这里形成死循环导致卡死
+                player.dispatch(PlayerCommand.Pause)
+                return
+            }
         }
 
         val isForYou = isForYouQueue()
@@ -2407,22 +2420,8 @@ class AppViewModel(
                 if (isForYou) scheduleInfinitePrefetch()
             }
             isForYou -> {
-                // 见底：再强扩一次；绝不回到第一首（除非完全没新内容）
-                runCatching { ensureInfiniteFeed(force = true) }
-                if (pendingIndex + 1 < pendingQueue.size) {
-                    playIndex(pendingIndex + 1, startPos = switchStart)
-                    scheduleInfinitePrefetch()
-                } else {
-                    _toast.value = "正在加载更多推荐…"
-                    runCatching { ensureInfiniteFeed(force = true, minAdd = 12) }
-                    if (pendingIndex + 1 < pendingQueue.size) {
-                        playIndex(pendingIndex + 1, startPos = switchStart)
-                    } else {
-                        // 真没了才停，不循环
-                        player.dispatch(PlayerCommand.Pause)
-                        _toast.value = "暂时没有更多，稍后再刷"
-                    }
-                }
+                // 见底：换源续刷并开播，禁止只 toast 后停住
+                refillAndPlayAfterNotInterested()
             }
             mode == PlayModeLabel.LOOP || mode == PlayModeLabel.SHUFFLE -> {
                 playIndex(0, startPos = switchStart)
@@ -2498,7 +2497,9 @@ class AppViewModel(
             ensureService()
             persistCurrentPosition()
             if (pendingQueue.isEmpty()) {
-                // 空队列不要再 Previous，避免与引擎回调打架
+                if (isForYouQueue()) {
+                    refillAndPlayAfterNotInterested()
+                }
                 return@launch
             }
             // 用当前曲 id 校准 index；歌单有重复 id 时优先保留已对准的下标，
@@ -3632,6 +3633,8 @@ class AppViewModel(
         _toast.value = "「${cur.title}」无法播放，已跳过"
         if (pendingQueue.size > 1) {
             advanceToNext(userInitiated = true, recordSkipFast = false)
+        } else if (isForYouQueue()) {
+            refillAndPlayAfterNotInterested()
         }
     }
 
@@ -3651,10 +3654,18 @@ class AppViewModel(
             // 用户刚点歌 / 已有播放：不抢播
             if (suppressRecommendAutoPlay || pendingQueue.isNotEmpty() || playback.value.current != null) {
                 suppressRecommendAutoPlay = false
-                if (_recommend.value.feed.isEmpty()) loadRecommendFeed(autoStart = false)
+                if (_recommend.value.feed.isEmpty() &&
+                    recommendStartJob?.isActive != true &&
+                    refillAfterDislikeJob?.isActive != true
+                ) {
+                    loadRecommendFeed(autoStart = false)
+                }
                 return@launch
             }
-            if (_recommend.value.feed.isEmpty()) {
+            if (_recommend.value.feed.isEmpty() &&
+                recommendStartJob?.isActive != true &&
+                refillAfterDislikeJob?.isActive != true
+            ) {
                 loadRecommendFeed(autoStart = false)
             }
         }
@@ -3865,6 +3876,20 @@ class AppViewModel(
      * 队列空、续刷没补上时走整表重建，避免下一首/推荐空转。
      */
     private suspend fun refillAndPlayAfterNotInterested() {
+        if (refillDepth > 0) {
+            player.dispatch(PlayerCommand.Pause)
+            _toast.value = "暂时没有更多，稍后再刷"
+            return
+        }
+        refillDepth++
+        try {
+            refillAndPlayAfterNotInterestedBody()
+        } finally {
+            refillDepth--
+        }
+    }
+
+    private suspend fun refillAndPlayAfterNotInterestedBody() {
         expandJob?.cancel()
         expandJob = null
         expandingFeed = false
@@ -4975,7 +5000,7 @@ class AppViewModel(
         _queueTracks.value = emptyList()
         player.dispatch(PlayerCommand.Stop)
         // 立刻自动切入为你推荐（静默，无多余 toast）
-        startForYouRecommend(silent = true)
+        startForYouRecommend(silent = true, force = true)
     }
 
     fun sources(): List<MusicSource> = registry.all()
@@ -5314,11 +5339,24 @@ class AppViewModel(
         switchSource: Boolean = false,
     ) {
         if (!isForYouQueue() && !switchSource) return
-        if (expandingFeed) return
+        var held = expandMutex.tryLock()
+        if (!held) {
+            if (!force) return
+            expandMutex.lock()
+            held = true
+            val remainNow = pendingQueue.size - pendingIndex - 1
+            if (remainNow > 0 && !switchSource) {
+                expandMutex.unlock()
+                return
+            }
+        }
         val remain = pendingQueue.size - pendingIndex - 1
         val bgNow = MadusApp.instance.appInBackground || MadusApp.instance.gameLiteMode
         val thrift = thriftNet || bgNow
-        if (!force && remain > if (thrift) 2 else 10) return
+        if (!force && remain > if (thrift) 2 else 10) {
+            expandMutex.unlock()
+            return
+        }
         expandingFeed = true
         try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -5456,6 +5494,7 @@ class AppViewModel(
             }
         } finally {
             expandingFeed = false
+            if (held) expandMutex.unlock()
         }
     }
 
@@ -5464,7 +5503,8 @@ class AppViewModel(
      * 已在播推荐时不重拉，避免连点把主控锁死。
      */
     fun startRecommendIfReady() {
-        startForYouRecommend(silent = false)
+        val empty = pendingQueue.isEmpty() && _recommend.value.feed.isEmpty()
+        startForYouRecommend(silent = false, force = empty)
     }
 
     /** 菜单「推荐」：只换一首；切完前再点无效。没下一首时换源续刷，不要空等。 */
@@ -5509,15 +5549,19 @@ class AppViewModel(
     /**
      * 切入「为你推荐」无限流。
      */
-    fun startForYouRecommend(silent: Boolean = false) {
+    fun startForYouRecommend(silent: Boolean = false, force: Boolean = false) {
         val pb = playback.value
-        val alreadyOnAir = isForYouQueue() &&
+        val alreadyOnAir = !force &&
+            isForYouQueue() &&
             pendingQueue.isNotEmpty() &&
             RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex) &&
             pb.current != null &&
             (pb.isPlaying || pb.isLoading)
         if (alreadyOnAir) return
-        if (recommendStartJob?.isActive == true) return
+        if (recommendStartJob?.isActive == true) {
+            if (!force) return
+            recommendStartJob?.cancel()
+        }
 
         recommendStartJob?.cancel()
         recommendClearLoadingJob?.cancel()

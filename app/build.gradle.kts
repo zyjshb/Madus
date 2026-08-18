@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.15：为你推荐先快速出歌，首页 rcmd 补 WBI
-        versionCode = 304
-        versionName = "1.17.15"
+        // 1.17.16：见底/坏链/清空队列也换源续刷，不再空转
+        versionCode = 305
+        versionName = "1.17.16"
         vectorDrawables.useSupportLibrary = true
     }
 

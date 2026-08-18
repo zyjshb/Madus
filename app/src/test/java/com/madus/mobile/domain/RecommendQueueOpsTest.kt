@@ -54,5 +54,13 @@ class RecommendQueueOpsTest {
         assertTrue(RecommendQueueOps.hasPlayableNext(3, 1))
     }
 
+    @Test
+    fun forYouNeedsRefillWhenEmptyOrAtEnd() {
+        assertTrue(RecommendQueueOps.needsForYouRefill(true, 0, 0))
+        assertTrue(RecommendQueueOps.needsForYouRefill(true, 3, 2))
+        assertFalse(RecommendQueueOps.needsForYouRefill(true, 3, 1))
+        assertFalse(RecommendQueueOps.needsForYouRefill(false, 0, 0))
+    }
+
     private fun t(id: String) = Track(id = id, title = id, artist = "up")
 }

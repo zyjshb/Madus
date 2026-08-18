@@ -2267,7 +2267,7 @@ class BilibiliApi(
      * 游客可听的「热门」流（全站，非音乐区）。
      */
     suspend fun popularTracks(limit: Int = 24): List<Track> = withContext(Dispatchers.IO) {
-        val cookie = mergedCookie()
+        val cookie = mergedCookieWithSystem()
         val url =
             "https://api.bilibili.com/x/web-interface/popular?" +
                 "ps=${limit.coerceIn(8, 40)}&pn=1"
@@ -2284,7 +2284,7 @@ class BilibiliApi(
 
     /** 分区排行（rid 可选；默认 0=全站若可用，3=音乐）。游客可用。 */
     suspend fun rankingTracks(rid: Int = 3, limit: Int = 24): List<Track> = withContext(Dispatchers.IO) {
-        val cookie = mergedCookie()
+        val cookie = mergedCookieWithSystem()
         val url =
             "https://api.bilibili.com/x/web-interface/ranking/v2?" +
                 "rid=$rid&type=all"
@@ -2493,11 +2493,20 @@ class BilibiliApi(
     /** 相关推荐（B 站官方 related），用作轻量「电台/相似」。 */
     suspend fun relatedTracks(bvid: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
         if (bvid.isBlank()) return@withContext emptyList()
-        val cookie = mergedCookie()
-        val url =
-            "https://api.bilibili.com/x/web-interface/archive/related?bvid=${URLEncoder.encode(bvid, "UTF-8")}"
-        val json = getJson(url, cookie)
-        if (json.optInt("code", -1) != 0) return@withContext emptyList()
+        val cookie = mergedCookieWithSystem()
+        val encoded = URLEncoder.encode(bvid, "UTF-8")
+        val unsigned =
+            "https://api.bilibili.com/x/web-interface/archive/related?bvid=$encoded"
+        val json = runCatching { getJson(unsigned, cookie) }.getOrNull()
+            ?.takeIf { it.optInt("code", -1) == 0 }
+            ?: runCatching {
+                val signed = signWbiQuery(mapOf("bvid" to bvid), cookie)
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/archive/related?$signed",
+                    cookie,
+                )
+            }.getOrNull()
+        if (json == null || json.optInt("code", -1) != 0) return@withContext emptyList()
         val list = json.optJSONArray("data") ?: return@withContext emptyList()
         buildList {
             for (i in 0 until list.length()) {

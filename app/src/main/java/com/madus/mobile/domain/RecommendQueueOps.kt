@@ -24,4 +24,8 @@ object RecommendQueueOps {
 
     fun hasPlayableNext(queueSize: Int, currentIndex: Int): Boolean =
         queueSize > 0 && currentIndex + 1 < queueSize
+
+    /** 电台见底或队列被掏空时，必须换源续刷，不能只暂停。 */
+    fun needsForYouRefill(isForYou: Boolean, queueSize: Int, currentIndex: Int): Boolean =
+        isForYou && !hasPlayableNext(queueSize, currentIndex)
 }
