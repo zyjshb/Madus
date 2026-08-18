@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.20：按抖音控频：细类冷却 2 小时、探索不扣分、同类不连着出
-        versionCode = 309
-        versionName = "1.17.20"
+        // 1.17.21：搜索空结果互调会死循环；412 重签；解析分组结果
+        versionCode = 310
+        versionName = "1.17.21"
         vectorDrawables.useSupportLibrary = true
     }
 

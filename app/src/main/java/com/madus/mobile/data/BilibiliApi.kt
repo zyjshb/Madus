@@ -5,6 +5,7 @@ import com.madus.mobile.domain.MusicSourceType
 import com.madus.mobile.domain.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -145,15 +146,6 @@ class BilibiliApi(
                 }
             }
         }
-        // 兜底：若 suggest 空，用搜索前几条标题当联想
-        if (out.isEmpty() && t.length >= 2) {
-            runCatching {
-                search(t, limit = 6).forEach { tr ->
-                    if (out.size >= limit) return@forEach
-                    out.add(tr.title)
-                }
-            }
-        }
         out.toList()
     }
 
@@ -201,49 +193,58 @@ class BilibiliApi(
         suspend fun fetchOnce(q: String, pageNo: Int, ord: String): SearchPage? {
             val referer =
                 "https://search.bilibili.com/all?keyword=${URLEncoder.encode(q, "UTF-8")}"
-            // 1) WBI（与网页一致，翻页不易 412）
-            val wbi = runCatching {
-                val params = linkedMapOf(
-                    "category_id" to "",
-                    "search_type" to "video",
-                    "ad_resource" to "5654",
-                    "__refresh__" to "true",
-                    "_extra" to "",
-                    "context" to "",
-                    "page" to pageNo.toString(),
-                    "page_size" to ps.toString(),
-                    "order" to ord,
-                    "duration" to "",
-                    "from_source" to "",
-                    "from_spmid" to "333.337",
-                    "platform" to "pc",
-                    "highlight" to "1",
-                    "single_column" to "0",
-                    "keyword" to q,
-                    "qv_id" to "",
-                    "source_tag" to "3",
-                    "gaia_vtoken" to "",
-                    "dynamic_offset" to "0",
-                    "web_location" to "1430654",
-                )
+            val params = linkedMapOf(
+                "category_id" to "",
+                "search_type" to "video",
+                "ad_resource" to "5654",
+                "__refresh__" to "true",
+                "_extra" to "",
+                "context" to "",
+                "page" to pageNo.toString(),
+                "page_size" to ps.toString(),
+                "order" to ord,
+                "duration" to "",
+                "from_source" to "",
+                "from_spmid" to "333.337",
+                "platform" to "pc",
+                "highlight" to "1",
+                "single_column" to "0",
+                "keyword" to q,
+                "qv_id" to "",
+                "source_tag" to "3",
+                "gaia_vtoken" to "",
+                "dynamic_offset" to "0",
+                "web_location" to "1430654",
+            )
+            suspend fun wbiOnce(): JSONObject? = runCatching {
                 val signed = signWbiQuery(params, cookie)
-                getJson(
-                    "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
-                    cookie,
-                    referer = referer,
-                )
+                withTimeoutOrNull(8_000) {
+                    getJson(
+                        "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
+                        cookie,
+                        referer = referer,
+                    )
+                }
             }.getOrNull()
+
+            var wbi = wbiOnce()
+            val wbiCode = wbi?.optInt("code", -1) ?: -1
+            if (wbiCode == -412 || wbiCode == 412 || wbiCode == -352) {
+                invalidateWbi()
+                wbi = wbiOnce()
+            }
             parseSearchJson(wbi, pageNo, ps, q)?.let { return it }
 
-            // 2) 经典无签名
             val encoded = URLEncoder.encode(q, "UTF-8")
             val classic = runCatching {
-                getJson(
-                    "https://api.bilibili.com/x/web-interface/search/type" +
-                        "?search_type=video&keyword=$encoded&page=$pageNo&page_size=$ps&order=$ord",
-                    cookie,
-                    referer = referer,
-                )
+                withTimeoutOrNull(8_000) {
+                    getJson(
+                        "https://api.bilibili.com/x/web-interface/search/type" +
+                            "?search_type=video&keyword=$encoded&page=$pageNo&page_size=$ps&order=$ord",
+                        cookie,
+                        referer = referer,
+                    )
+                }
             }.getOrNull()
             return parseSearchJson(classic, pageNo, ps, q)
         }
@@ -290,8 +291,7 @@ class BilibiliApi(
             return null
         }
         val data = json.optJSONObject("data") ?: return null
-        val result = data.optJSONArray("result") ?: JSONArray()
-        val tracks = parseSearchResultArray(result)
+        val tracks = parseSearchData(data)
         val total = data.optInt("numResults", 0)
             .coerceAtLeast(data.optInt("numresults", 0))
         val numPages = data.optInt("numPages", 0)
@@ -308,6 +308,26 @@ class BilibiliApi(
             total = total,
             keywordUsed = keywordUsed,
         )
+    }
+
+    private fun parseSearchData(data: JSONObject): List<Track> {
+        val fromResult = when (val raw = data.opt("result")) {
+            is JSONArray -> parseSearchResultArray(raw)
+            else -> emptyList()
+        }
+        if (fromResult.isNotEmpty()) return fromResult
+        val items = data.optJSONArray("items") ?: JSONArray()
+        val fromItems = parseSearchResultArray(items)
+        if (fromItems.isNotEmpty()) return fromItems
+        // 综合搜索：[{result_type:video, data:[...]}]
+        val grouped = data.optJSONArray("result") ?: return emptyList()
+        return buildList {
+            for (i in 0 until grouped.length()) {
+                val block = grouped.optJSONObject(i) ?: continue
+                val nested = block.optJSONArray("data") ?: continue
+                addAll(parseSearchResultArray(nested))
+            }
+        }
     }
 
     private fun parseSearchResultArray(result: JSONArray): List<Track> = buildList {
@@ -1609,6 +1629,11 @@ class BilibiliApi(
         }
         val wrid = md5Hex(raw + mixin)
         return "$query&w_rid=$wrid"
+    }
+
+    private fun invalidateWbi() {
+        wbiMixinKey.set("")
+        wbiMixinAt.set(0L)
     }
 
     private suspend fun ensureWbiMixin(cookie: String): String {
