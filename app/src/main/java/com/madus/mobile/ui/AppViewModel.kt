@@ -497,6 +497,8 @@ class AppViewModel(
     /** 不喜欢后换源续刷：进行中点下一首/推荐先等它播上 */
     private var refillAfterDislikeJob: Job? = null
     private var refillDepth: Int = 0
+    /** 连点切歌 / 不喜欢划走时，旧的取流结果不许盖住新点的那首 */
+    private var playGeneration: Int = 0
 
     init {
         // 曲终 → 下一首
@@ -2183,6 +2185,7 @@ class AppViewModel(
         skipDelta: Int = 1,
     ) {
         if (pendingQueue.isEmpty()) return
+        val gen = ++playGeneration
         val i = index.coerceIn(0, pendingQueue.lastIndex)
         pendingIndex = i
         val track = pendingQueue[i]
@@ -2191,10 +2194,8 @@ class AppViewModel(
         } else {
             resumePositionOf(track.id, track.durationMs)
         }
-        // 听歌：先把封面/标题切过去并显示加载，避免还停在上一首像卡住
-        if (!isVideoPlayback()) {
-            player.prepareTrack(track, asVideo = false)
-        }
+        // 听歌/视频都先切封面标题，不喜欢后才像划走，不会还停在旧曲
+        player.prepareTrack(track, asVideo = isVideoPlayback())
         // 先占前台服务（服务内立刻 startForeground），取流期间进程不被杀
         ensureService()
         // 熄屏/弱网：多试几次 + 允许用预取 CDN，避免「暂无可播地址」连环跳
@@ -2212,6 +2213,7 @@ class AppViewModel(
             delay(1400)
             resolved = resolveOne(track, forceRefresh = true)
         }
+        if (gen != playGeneration) return
         if (resolved == null || resolved.streamUrl.isNullOrBlank()) {
             // 有限次跳过坏链：方向与调用方一致（上一首失败继续往前找，不是往后跳）
             if (skipBudget > 0 && pendingQueue.size > 1) {
@@ -2262,6 +2264,7 @@ class AppViewModel(
         val playTrack = pendingQueue[i]
         _queueTracks.value = pendingQueue
         applyPlayModeToPlayer()
+        if (gen != playGeneration) return
         // 先起播，再二次 ensure（MediaSession 能拿到当前曲元数据）
         player.dispatch(PlayerCommand.PlayTrack(playTrack, listOf(playTrack), resolvedStart))
         ensureService()
@@ -2387,7 +2390,10 @@ class AppViewModel(
         if (userInitiated && recordSkipFast) maybeRecordSkipFast()
 
         if (refillAfterDislikeJob?.isActive == true) {
-            refillAfterDislikeJob?.join()
+            // 不喜欢正在换歌：有下一首就切，绝不 join 卡死下一首按钮
+            if (RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex)) {
+                playIndex(pendingIndex + 1, startPos = startPosForNeighborSwitch())
+            }
             return
         }
 
@@ -3724,6 +3730,7 @@ class AppViewModel(
         viewModelScope.launch {
             if (!markNotInterestedLock.tryLock()) return@launch
             var refillPlay = false
+            var playAt = -1
             try {
                 val p = ContentProfileParser.profileFromTrack(t)
                 val mid = p.authorId?.takeIf { it.isNotBlank() } ?: t.ownerMid
@@ -3751,37 +3758,55 @@ class AppViewModel(
                 expandJob?.cancel()
                 expandJob = null
                 expandingFeed = false
-                pruneUpcomingAfterNotInterested(stored, publish = !forYou)
+                val pruned = pruneUpcomingAfterNotInterested(stored, publish = true)
                 val playingThis = lastNotInterestedWasPlaying
+                var alreadyPlayingNext = false
                 if (playingThis) {
-                    if (forYou) {
+                    if (pruned.playIndex >= 0) {
+                        playAt = pruned.playIndex
+                        alreadyPlayingNext = true
+                        refillPlay = forYou
+                    } else if (forYou) {
+                        val local = pickInstantSwitchTrack(stored.id)
+                        if (local != null) {
+                            pendingQueue = pendingQueue + local
+                            pendingIndex = pendingQueue.lastIndex
+                            playAt = pendingIndex
+                            _queueTracks.value = pendingQueue
+                            _recommend.update { it.copy(feed = pendingQueue) }
+                            alreadyPlayingNext = true
+                        }
                         refillPlay = true
                     } else if (pendingQueue.isNotEmpty()) {
-                        advanceToNext(userInitiated = true, recordSkipFast = false)
-                    } else {
-                        player.dispatch(PlayerCommand.Pause)
+                        playAt = -2
+                    }
+                    // 马上停掉不喜欢的，封面先切到下一首
+                    player.dispatch(PlayerCommand.Pause)
+                    pendingQueue.getOrNull(playAt)?.let {
+                        player.prepareTrack(it, asVideo = isVideoPlayback())
                     }
                 } else if (forYou) {
-                    runCatching { ensureInfiniteFeed(force = true, minAdd = 8, switchSource = true) }
-                    if (!RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex)) {
-                        runCatching { appendRebuiltRecommend(12) }
-                    }
-                    publishRecommendQueue()
+                    refillPlay = true
                 }
                 refreshNotInterestedUi()
                 _actionToast.value = ActionToast(
                     message = "好，少推这类",
                     holdMs = 1_100L,
                 )
+                if (refillPlay) {
+                    val keepPlaying = alreadyPlayingNext
+                    refillAfterDislikeJob?.cancel()
+                    refillAfterDislikeJob = viewModelScope.launch {
+                        topUpAfterNotInterested(alreadyPlaying = keepPlaying)
+                    }
+                }
             } finally {
                 markNotInterestedLock.unlock()
             }
-            if (refillPlay) {
-                refillAfterDislikeJob?.cancel()
-                refillAfterDislikeJob = viewModelScope.launch {
-                    refillAndPlayAfterNotInterested()
-                }
-                refillAfterDislikeJob?.join()
+            if (playAt >= 0) {
+                playIndex(playAt, startPos = 0L)
+            } else if (playAt == -2) {
+                advanceToNext(userInitiated = true, recordSkipFast = false)
             }
         }
     }
@@ -3848,27 +3873,67 @@ class AppViewModel(
         _me.update { it.copy(hiddenCount = list.size) }
     }
 
-    /** @return 留下的历史条数（不含被砍掉的当前和后续） */
+    /** 裁掉不喜欢的和被挡的，留下还能马上播的下一首。 */
     private suspend fun pruneUpcomingAfterNotInterested(
         t: Track,
         publish: Boolean = true,
-    ): Int {
-        if (pendingQueue.isEmpty()) return 0
+    ): RecommendQueueOps.AfterNotInterested {
+        if (pendingQueue.isEmpty()) return RecommendQueueOps.AfterNotInterested(emptyList(), -1)
         val blocks = recBlocks()
-        val head = RecommendQueueOps.historyAfterNotInterested(
+        val result = RecommendQueueOps.afterNotInterested(
             queue = pendingQueue,
             currentIndex = pendingIndex,
             dislikedId = t.id,
             isForYou = isForYouQueue(),
             isBlocked = { isBlocked(it, blocks) },
         )
-        pendingQueue = head
-        pendingIndex = (head.size - 1).coerceAtLeast(0)
+        pendingQueue = result.queue
+        pendingIndex = if (result.playIndex >= 0) {
+            result.playIndex
+        } else {
+            (result.queue.size - 1).coerceAtLeast(0)
+        }
         if (publish) {
             _queueTracks.value = pendingQueue
             _recommend.update { it.copy(feed = pendingQueue) }
         }
-        return head.size
+        return result
+    }
+
+    /** 本机立刻能划走的下一首：最近 / 喜欢，避开刚挡掉的。 */
+    private suspend fun pickInstantSwitchTrack(dislikedId: String): Track? {
+        val blocks = recBlocks()
+        val exclude = linkedSetOf<String>().apply {
+            add(dislikedId)
+            addAll(pendingQueue.map { it.id })
+            addAll(blocks.ids)
+        }
+        val recent = sessionRecent.asReversed()
+        val liked = runCatching { likedStore.tracks() }.getOrDefault(emptyList())
+        return (recent + liked).firstOrNull { t ->
+            t.id !in exclude && !isBlocked(t, blocks)
+        }
+    }
+
+    /** 网络上先抓一首就能播，不要等整表重建。 */
+    private suspend fun fetchFirstSwitchTrack(): Track? {
+        val blocks = recBlocks()
+        val exclude = linkedSetOf<String>().apply {
+            addAll(sessionSeenIds)
+            addAll(pendingQueue.map { it.id })
+            addAll(blocks.ids)
+        }
+        fun firstOk(list: List<Track>): Track? =
+            list.firstOrNull { it.id !in exclude && !isBlocked(it, blocks) }
+        firstOk(runCatching { biliApi.homepageRcmd(limit = 24, freshIdx = 1) }.getOrDefault(emptyList()))
+            ?.let { return it }
+        firstOk(runCatching { biliApi.popularTracks(16) }.getOrDefault(emptyList()))
+            ?.let { return it }
+        for (rid in intArrayOf(3, 1, 4, 160)) {
+            firstOk(runCatching { biliApi.rankingTracks(rid, 12) }.getOrDefault(emptyList()))
+                ?.let { return it }
+        }
+        return null
     }
 
     /**
@@ -3890,31 +3955,49 @@ class AppViewModel(
     }
 
     private suspend fun refillAndPlayAfterNotInterestedBody() {
+        topUpAfterNotInterested(alreadyPlaying = false)
+    }
+
+    /** 已经划走的话只补队列；还没下一首就先抓一首马上播。 */
+    private suspend fun topUpAfterNotInterested(alreadyPlaying: Boolean) {
         expandJob?.cancel()
         expandJob = null
         expandingFeed = false
-        val historySize = pendingQueue.size
-        pendingIndex = (historySize - 1).coerceAtLeast(0)
+        var playing = alreadyPlaying
+        val before = pendingQueue.size
+        if (!playing) {
+            val first = runCatching { fetchFirstSwitchTrack() }.getOrNull()
+            if (first != null && pendingQueue.none { it.id == first.id }) {
+                pendingQueue = pendingQueue + first
+                pendingIndex = pendingQueue.lastIndex
+                _queueTracks.value = pendingQueue
+                _recommend.update { it.copy(feed = pendingQueue, sourceId = "recommend") }
+                playIndex(pendingIndex, startPos = 0L)
+                playing = true
+            }
+        }
         runCatching { ensureInfiniteFeed(force = true, minAdd = 8, switchSource = true) }
-        if (pendingQueue.size <= historySize) {
+        if (pendingQueue.size <= before) {
             val quick = runCatching { buildQuickFeed(16) }.getOrDefault(emptyList())
             if (quick.isNotEmpty()) {
-                pendingQueue = pendingQueue + quick
+                pendingQueue = pendingQueue + quick.filter { q -> pendingQueue.none { it.id == q.id } }
             } else {
                 runCatching { appendRebuiltRecommend(minAdd = 12) }
             }
         }
         publishRecommendQueue()
-        if (pendingQueue.size > historySize) {
-            playIndex(historySize, startPos = 0L)
+        if (!playing && pendingQueue.size > before) {
+            playIndex(before, startPos = 0L)
             return
         }
-        if (pendingQueue.isEmpty()) {
+        if (!playing && pendingQueue.isEmpty()) {
             replaceRecommendFeed()
             return
         }
-        player.dispatch(PlayerCommand.Pause)
-        _toast.value = "暂时没有更多，稍后再刷"
+        if (!playing) {
+            player.dispatch(PlayerCommand.Pause)
+            _toast.value = "暂时没有更多，稍后再刷"
+        }
     }
 
     private suspend fun appendRebuiltRecommend(minAdd: Int) {
@@ -5511,13 +5594,8 @@ class AppViewModel(
     fun refreshForYouRecommend() {
         if (recommendSkipJob?.isActive == true) return
         if (refillAfterDislikeJob?.isActive == true) {
-            recommendSkipJob = viewModelScope.launch {
-                refillAfterDislikeJob?.join()
-                if (!RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex) ||
-                    playback.value.current == null
-                ) {
-                    startRecommendIfReady()
-                }
+            if (RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex)) {
+                next()
             }
             return
         }
@@ -5566,9 +5644,11 @@ class AppViewModel(
         recommendStartJob?.cancel()
         recommendClearLoadingJob?.cancel()
         recommendStartJob = viewModelScope.launch {
-            if (refillAfterDislikeJob?.isActive == true) {
-                refillAfterDislikeJob?.join()
-                if (playback.value.isPlaying && pendingQueue.isNotEmpty()) return@launch
+            if (refillAfterDislikeJob?.isActive == true &&
+                playback.value.current != null &&
+                pendingQueue.isNotEmpty()
+            ) {
+                return@launch
             }
             val keepControls = playback.value.current != null
             try {

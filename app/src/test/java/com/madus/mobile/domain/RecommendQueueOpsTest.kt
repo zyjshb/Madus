@@ -8,43 +8,59 @@ import org.junit.Test
 class RecommendQueueOpsTest {
 
     @Test
-    fun forYouKeepsOnlyUnblockedHistory() {
-        val queue = listOf(t("a"), t("b"), t("cur"), t("rel1"), t("rel2"))
-        val kept = RecommendQueueOps.historyAfterNotInterested(
+    fun forYouSkipsToFirstUnblockedUpcoming() {
+        val queue = listOf(t("a"), t("b"), t("cur"), t("same"), t("ok"))
+        val result = RecommendQueueOps.afterNotInterested(
             queue = queue,
             currentIndex = 2,
             dislikedId = "cur",
             isForYou = true,
-            isBlocked = { it.id == "b" },
+            isBlocked = { it.id == "b" || it.id == "same" },
         )
-        assertEquals(listOf("a"), kept.map { it.id })
+        assertEquals(listOf("a", "ok"), result.queue.map { it.id })
+        assertEquals(1, result.playIndex)
     }
 
     @Test
-    fun forYouFirstTrackLeavesEmptyHistory() {
-        val queue = listOf(t("cur"), t("rel1"), t("rel2"))
-        val kept = RecommendQueueOps.historyAfterNotInterested(
+    fun forYouNoUpcomingNeedsFetch() {
+        val queue = listOf(t("a"), t("cur"), t("same"))
+        val result = RecommendQueueOps.afterNotInterested(
+            queue = queue,
+            currentIndex = 1,
+            dislikedId = "cur",
+            isForYou = true,
+            isBlocked = { it.id == "same" },
+        )
+        assertEquals(listOf("a"), result.queue.map { it.id })
+        assertEquals(-1, result.playIndex)
+    }
+
+    @Test
+    fun forYouFirstTrackLeavesOnlyUnblockedTail() {
+        val queue = listOf(t("cur"), t("rel1"), t("ok"))
+        val result = RecommendQueueOps.afterNotInterested(
             queue = queue,
             currentIndex = 0,
             dislikedId = "cur",
             isForYou = true,
-            isBlocked = { false },
+            isBlocked = { it.id == "rel1" },
         )
-        assertTrue(kept.isEmpty())
-        assertFalse(RecommendQueueOps.hasPlayableNext(kept.size, (kept.size - 1).coerceAtLeast(0)))
+        assertEquals(listOf("ok"), result.queue.map { it.id })
+        assertEquals(0, result.playIndex)
     }
 
     @Test
     fun playlistKeepsLaterUnblockedTracks() {
         val queue = listOf(t("a"), t("cur"), t("c"))
-        val kept = RecommendQueueOps.historyAfterNotInterested(
+        val result = RecommendQueueOps.afterNotInterested(
             queue = queue,
             currentIndex = 1,
             dislikedId = "cur",
             isForYou = false,
             isBlocked = { false },
         )
-        assertEquals(listOf("a", "c"), kept.map { it.id })
+        assertEquals(listOf("a", "c"), result.queue.map { it.id })
+        assertEquals(1, result.playIndex)
     }
 
     @Test

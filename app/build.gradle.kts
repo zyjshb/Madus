@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.16：见底/坏链/清空队列也换源续刷，不再空转
-        versionCode = 305
-        versionName = "1.17.16"
+        // 1.17.17：不喜欢立刻划走，下一首不再被补歌卡住
+        versionCode = 306
+        versionName = "1.17.17"
         vectorDrawables.useSupportLibrary = true
     }
 
