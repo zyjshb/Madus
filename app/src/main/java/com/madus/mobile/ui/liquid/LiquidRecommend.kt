@@ -150,15 +150,17 @@ fun LiquidRecommendScreen(
                         loading -> null
                         needLogin -> "登录"
                         playingThisRadio -> "下一首"
+                        stations.isEmpty() -> "再试一次"
                         else -> null
                     },
                     onSecondary = when {
                         needLogin -> onLogin
                         playingThisRadio -> onNext
+                        stations.isEmpty() -> onStartRadio
                         else -> null
                     },
                     onPlay = when {
-                        loading -> ({})
+                        loading -> onStartRadio
                         needLogin -> onLogin
                         playingThisRadio -> onOpenNowPlaying
                         else -> onStartRadio

@@ -2134,14 +2134,39 @@ class BilibiliApi(
     suspend fun homepageRcmd(limit: Int = 24, freshIdx: Int = 1): List<Track> = withContext(Dispatchers.IO) {
         val cookie = mergedCookieWithSystem()
         val ps = limit.coerceIn(8, 30)
-        val url =
-            "https://api.bilibili.com/x/web-interface/index/top/feed/rcmd?" +
-                "fresh_idx=${freshIdx.coerceAtLeast(1)}" +
-                "&fresh_type=4&feed_version=V8&homepage_ver=1" +
-                "&ps=$ps&y_num=0&brush=0&web_location=333.1007"
+        val idx = freshIdx.coerceAtLeast(1).toString()
+        val params = linkedMapOf(
+            "fresh_idx" to idx,
+            "fresh_idx_1h" to idx,
+            "fresh_type" to "4",
+            "feed_version" to "V8",
+            "homepage_ver" to "1",
+            "ps" to ps.toString(),
+            "y_num" to "0",
+            "brush" to "0",
+            "web_location" to "1430654",
+        )
+        val signed = runCatching { signWbiQuery(params, cookie) }.getOrNull()
         val json = runCatching {
-            getJson(url, cookie, referer = "https://www.bilibili.com/")
-        }.getOrNull()
+            if (signed.isNullOrBlank()) {
+                null
+            } else {
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/wbi/index/top/feed/rcmd?$signed",
+                    cookie,
+                    referer = "https://www.bilibili.com/",
+                )
+            }
+        }.getOrNull()?.takeIf { it.optInt("code", -1) == 0 }
+            ?: runCatching {
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/index/top/feed/rcmd?" +
+                        "fresh_idx=$idx&fresh_type=4&feed_version=V8&homepage_ver=1" +
+                        "&ps=$ps&y_num=0&brush=0&web_location=333.1007",
+                    cookie,
+                    referer = "https://www.bilibili.com/",
+                )
+            }.getOrNull()
         if (json == null || json.optInt("code", -1) != 0) {
             Log.w(TAG, "homepageRcmd fail code=${json?.optInt("code")} ${json?.optString("message")}")
             return@withContext emptyList()

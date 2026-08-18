@@ -118,6 +118,16 @@ class RecommendationReRankerTest {
     }
 
     @Test
+    fun homepageOnlyPoolStillYieldsTracks() {
+        val homepage = (0 until 8).map { i ->
+            candidate(track("h$i", if (i % 2 == 0) 3 else 4, "up-$i"), 80.0 - i, source = "homepage")
+        }
+        val output = reranker.rerank(homepage, FeedContext(limit = 8))
+        assertTrue("首页热门池不该被重排掏空", output.isNotEmpty())
+        assertTrue(output.size >= 4)
+    }
+
+    @Test
     fun singleUpPoolDegradesSafelyWithoutDroppingCandidates() {
         val candidates = listOf(
             candidate(track("same-0", 3, "ONLY_UP"), 100.0),

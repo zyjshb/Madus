@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.15",
+            date = "2026-08-18",
+            fixed = listOf(
+                "为你推荐不再一直转圈，空了可以再试一次",
+            ),
+        ),
+        Entry(
             version = "1.17.14",
             date = "2026-08-18",
             fixed = listOf(

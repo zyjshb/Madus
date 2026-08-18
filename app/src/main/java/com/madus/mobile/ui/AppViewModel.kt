@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Calendar
 
 data class HomeUiState(
@@ -3871,7 +3872,12 @@ class AppViewModel(
         pendingIndex = (historySize - 1).coerceAtLeast(0)
         runCatching { ensureInfiniteFeed(force = true, minAdd = 8, switchSource = true) }
         if (pendingQueue.size <= historySize) {
-            runCatching { appendRebuiltRecommend(minAdd = 12) }
+            val quick = runCatching { buildQuickFeed(16) }.getOrDefault(emptyList())
+            if (quick.isNotEmpty()) {
+                pendingQueue = pendingQueue + quick
+            } else {
+                runCatching { appendRebuiltRecommend(minAdd = 12) }
+            }
         }
         publishRecommendQueue()
         if (pendingQueue.size > historySize) {
@@ -4980,7 +4986,13 @@ class AppViewModel(
      */
     private fun loadRecommendFeed(autoStart: Boolean) {
         viewModelScope.launch {
-            _recommend.update { it.copy(isLoading = true) }
+            val keepHero = playback.value.current != null
+            _recommend.update {
+                it.copy(
+                    isLoading = !keepHero,
+                    isStartingPlayback = false,
+                )
+            }
             val pack = runCatching {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val likedInteractions = runCatching { likedStore.interactions() }.getOrDefault(emptyList())
@@ -4992,16 +5004,18 @@ class AppViewModel(
                     val bili = registry.get(MusicSourceType.BILIBILI)
                     val session = runCatching { bili?.getAuthSession() }.getOrNull()
                     val loggedIn = session?.isLoggedIn == true
-                    val feed = buildSmartFeed(
-                        liked = liked,
-                        recent = recent,
-                        localSample = localSample,
-                        limit = 40,
-                        excludeExtra = seenExcludeForRebuild(refresh = false),
-                        recentLikeIds = likedInteractions
-                            .filter { it.likedAtMs >= System.currentTimeMillis() - HOUR_MS }
-                            .mapTo(linkedSetOf<String>()) { it.track.id },
-                    )
+                    val feed = buildQuickFeed(24).ifEmpty {
+                        buildSmartFeed(
+                            liked = liked,
+                            recent = recent,
+                            localSample = localSample,
+                            limit = 40,
+                            excludeExtra = seenExcludeForRebuild(refresh = false),
+                            recentLikeIds = likedInteractions
+                                .filter { it.likedAtMs >= System.currentTimeMillis() - HOUR_MS }
+                                .mapTo(linkedSetOf<String>()) { it.track.id },
+                        )
+                    }
                     Triple(feed, recent, loggedIn)
                 }
             }.getOrElse {
@@ -5040,6 +5054,60 @@ class AppViewModel(
                 startRecommendQueue(feed)
                 clearRecommendLoadingAfterStart()
             }
+        }
+    }
+
+    /**
+     * 先出一批就能播：首页 rcmd + 热门 + 分区榜。
+     * 不喜欢后 / 冷启动不要先扫收藏夹和 20 条 related，否则「为你推荐」会一直转圈。
+     */
+    private suspend fun buildQuickFeed(limit: Int = 20): List<Track> {
+        val blocks = recBlocks()
+        val now = System.currentTimeMillis()
+        val events = runCatching { recommendationEventStore.events() }.getOrDefault(emptyList())
+        val state = recommendationEngine.buildInterestState(events, now)
+        val exclude = linkedSetOf<String>().apply {
+            addAll(seenExcludeForRebuild(refresh = true))
+            addAll(blocks.ids)
+            addAll(pendingQueue.map { it.id })
+        }
+        val context = FeedContext(
+            nowMs = now,
+            limit = limit.coerceAtLeast(12),
+            sessionSeenIds = exclude,
+            queueIds = pendingQueue.map { it.id }.toSet(),
+            mutedTopics = mutedTopicsOf(state, now),
+            mutedAuthors = mutedAuthorsOf(state, now),
+            sourceId = "recommend",
+        ).withBlocks(blocks)
+        val pool = linkedMapOf<String, ScoredTrack>()
+        fun offer(t: Track, source: String) {
+            if (t.id in exclude || isBlocked(t, blocks)) return
+            val p = ContentProfileParser.profileFromTrack(t, now)
+            val sc = recommendationEngine.scoreCandidate(t, p, state, source, context)
+            val prev = pool[t.id]
+            if (prev == null || sc.score > prev.score) pool[t.id] = sc
+        }
+        runCatching { biliApi.homepageRcmd(limit = 24, freshIdx = 1) }
+            .getOrDefault(emptyList())
+            .forEach { offer(it, "homepage") }
+        if (pool.size < limit) {
+            runCatching { biliApi.popularTracks(24) }
+                .getOrDefault(emptyList())
+                .forEach { offer(it, "popular") }
+        }
+        if (pool.size < 8) {
+            for (rid in intArrayOf(3, 1, 4, 160, 5)) {
+                if (pool.size >= limit) break
+                runCatching { biliApi.rankingTracks(rid, 12) }
+                    .getOrDefault(emptyList())
+                    .forEach { offer(it, "explore") }
+            }
+        }
+        if (pool.isEmpty()) return emptyList()
+        val (feed, _) = recommendationReRanker.rerankWithReasons(pool.values.toList(), context)
+        return feed.ifEmpty {
+            pool.values.sortedByDescending { it.score }.map { it.track }.take(limit)
         }
     }
 
@@ -5402,7 +5470,17 @@ class AppViewModel(
     /** 菜单「推荐」：只换一首；切完前再点无效。没下一首时换源续刷，不要空等。 */
     fun refreshForYouRecommend() {
         if (recommendSkipJob?.isActive == true) return
-        if (refillAfterDislikeJob?.isActive == true) return
+        if (refillAfterDislikeJob?.isActive == true) {
+            recommendSkipJob = viewModelScope.launch {
+                refillAfterDislikeJob?.join()
+                if (!RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex) ||
+                    playback.value.current == null
+                ) {
+                    startRecommendIfReady()
+                }
+            }
+            return
+        }
         if (!isForYouQueue() || playback.value.current == null || pendingQueue.isEmpty()) {
             startRecommendIfReady()
             return
@@ -5435,6 +5513,7 @@ class AppViewModel(
         val pb = playback.value
         val alreadyOnAir = isForYouQueue() &&
             pendingQueue.isNotEmpty() &&
+            RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex) &&
             pb.current != null &&
             (pb.isPlaying || pb.isLoading)
         if (alreadyOnAir) return
@@ -5443,6 +5522,10 @@ class AppViewModel(
         recommendStartJob?.cancel()
         recommendClearLoadingJob?.cancel()
         recommendStartJob = viewModelScope.launch {
+            if (refillAfterDislikeJob?.isActive == true) {
+                refillAfterDislikeJob?.join()
+                if (playback.value.isPlaying && pendingQueue.isNotEmpty()) return@launch
+            }
             val keepControls = playback.value.current != null
             try {
                 _recommend.update {
@@ -5464,29 +5547,39 @@ class AppViewModel(
                 val reuse = _recommend.value.feed.takeIf {
                     it.isNotEmpty() &&
                         pendingQueue.isNotEmpty() &&
+                        RecommendQueueOps.hasPlayableNext(pendingQueue.size, pendingIndex) &&
                         _recommend.value.sourceId == "recommend" &&
                         !veryFreshLike
                 }
                 val built = if (reuse != null) {
                     reuse
                 } else {
-                    runCatching {
-                        withContext(Dispatchers.IO) {
-                            val liked = likedInteractions.map { it.track }
-                            val recent = sessionRecent.asReversed().distinctBy { it.id }
-                            val localSample = runCatching {
-                                localPl.listNonEmpty().flatMap { it.tracks }.shuffled().take(12)
-                            }.getOrDefault(emptyList())
-                            buildSmartFeed(
-                                liked = liked,
-                                recent = recent,
-                                localSample = localSample,
-                                limit = 40,
-                                excludeExtra = seenExcludeForRebuild(refresh = false),
-                                recentLikeIds = recentLikeIds,
-                            )
-                        }
-                    }.getOrDefault(emptyList())
+                    try {
+                        withTimeoutOrNull(12_000L) {
+                            withContext(Dispatchers.IO) {
+                                buildQuickFeed(24).ifEmpty {
+                                    val liked = likedInteractions.map { it.track }
+                                    val recent = sessionRecent.asReversed().distinctBy { it.id }
+                                    val localSample = runCatching {
+                                        localPl.listNonEmpty().flatMap { it.tracks }.shuffled().take(12)
+                                    }.getOrDefault(emptyList())
+                                    buildSmartFeed(
+                                        liked = liked,
+                                        recent = recent,
+                                        localSample = localSample,
+                                        limit = 40,
+                                        excludeExtra = seenExcludeForRebuild(refresh = true),
+                                        recentLikeIds = recentLikeIds,
+                                    )
+                                }
+                            }
+                        }.orEmpty()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("AppViewModel", "startForYouRecommend build: ${e.message}")
+                        emptyList()
+                    }
                 }
 
                 val bili = registry.get(MusicSourceType.BILIBILI)
