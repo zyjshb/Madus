@@ -86,23 +86,19 @@ class RecommendationEngineTest {
     }
 
     @Test
-    fun notInterestedMutesPartitionTidButNotBroadMusic() {
+    fun notInterestedStillDoesNotMuteBroadMusic() {
         val nowMs = 1_800_000_000_000L
         val events = listOf(
             event(
                 "nope-tid",
                 RecommendationEventType.NOT_INTERESTED,
                 nowMs,
-                setOf("music", "tid:31", "cover"),
+                setOf("music", "cover"),
                 "up-z",
             ),
         )
         val state = engine.buildInterestState(events, nowMs)
-        assertTrue("整区 music 仍不该被一首封掉", "music" !in state.mutedTopics)
-        assertEquals(
-            nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS,
-            state.mutedTopics.getValue("tid:31"),
-        )
+        assertTrue("整区 music 不该被一首不喜欢封掉", "music" !in state.mutedTopics)
         assertEquals(
             nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS,
             state.mutedTopics.getValue("cover"),

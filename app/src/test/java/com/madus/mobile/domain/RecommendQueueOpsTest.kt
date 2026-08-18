@@ -8,22 +8,28 @@ import org.junit.Test
 class RecommendQueueOpsTest {
 
     @Test
-    fun forYouDropsWholeRelatedChain() {
-        val queue = listOf(t("a"), t("b"), t("cur"), t("rel1"), t("ok"))
+    fun forYouKeepsUpcomingButPeelsSameUp() {
+        val queue = listOf(
+            t("a", "hist"),
+            t("cur", "up-x"),
+            t("same1", "up-x"),
+            t("same2", "up-x"),
+            t("ok", "other"),
+        )
         val result = RecommendQueueOps.afterNotInterested(
             queue = queue,
-            currentIndex = 2,
+            currentIndex = 1,
             dislikedId = "cur",
             isForYou = true,
-            isBlocked = { it.id == "b" },
+            isBlocked = { false },
         )
-        assertEquals(listOf("a"), result.queue.map { it.id })
-        assertEquals(-1, result.playIndex)
+        assertEquals(listOf("a", "ok"), result.queue.map { it.id })
+        assertEquals(1, result.playIndex)
     }
 
     @Test
-    fun forYouFirstTrackLeavesEmptyQueue() {
-        val queue = listOf(t("cur"), t("rel1"), t("rel2"))
+    fun forYouKeepsDifferentUpRelated() {
+        val queue = listOf(t("cur", "up-a"), t("rel1", "up-b"), t("rel2", "up-c"))
         val result = RecommendQueueOps.afterNotInterested(
             queue = queue,
             currentIndex = 0,
@@ -31,8 +37,8 @@ class RecommendQueueOpsTest {
             isForYou = true,
             isBlocked = { false },
         )
-        assertTrue(result.queue.isEmpty())
-        assertEquals(-1, result.playIndex)
+        assertEquals(listOf("rel1", "rel2"), result.queue.map { it.id })
+        assertEquals(0, result.playIndex)
     }
 
     @Test
@@ -56,13 +62,6 @@ class RecommendQueueOpsTest {
         assertTrue(RecommendQueueOps.hasPlayableNext(3, 1))
     }
 
-    @Test
-    fun forYouNeedsRefillWhenEmptyOrAtEnd() {
-        assertTrue(RecommendQueueOps.needsForYouRefill(true, 0, 0))
-        assertTrue(RecommendQueueOps.needsForYouRefill(true, 3, 2))
-        assertFalse(RecommendQueueOps.needsForYouRefill(true, 3, 1))
-        assertFalse(RecommendQueueOps.needsForYouRefill(false, 0, 0))
-    }
-
-    private fun t(id: String) = Track(id = id, title = id, artist = "up")
+    private fun t(id: String, artist: String = "up") =
+        Track(id = id, title = id, artist = artist)
 }

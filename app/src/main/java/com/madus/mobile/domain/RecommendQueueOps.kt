@@ -1,9 +1,8 @@
 package com.madus.mobile.domain
 
 /**
- * 点「不喜欢」后怎么裁队列。
- * 电台：丢掉当前 + 被挡的后续（同类 / 同 UP），**留下还能播的下一首**，才能马上划走。
- * 普通歌单：整表去掉被挡的。
+ * 点「不喜欢」后怎么裁队列。抖音式：只拿掉这首，再剥掉紧挨着的同 UP，
+ * 后面 feed 还在，绝不把整池掏空去播点赞。
  */
 object RecommendQueueOps {
     data class AfterNotInterested(
@@ -21,10 +20,26 @@ object RecommendQueueOps {
     ): AfterNotInterested {
         if (queue.isEmpty()) return AfterNotInterested(emptyList(), -1)
         if (isForYou) {
-            // 后面是 related 串，整段丢掉，不然点不喜欢还在刷同一类
+            val cur = queue.getOrNull(currentIndex)
+            val mid = cur?.ownerMid.orEmpty()
+            val author = cur?.artist?.trim()?.lowercase().orEmpty()
             val history = queue.take(currentIndex.coerceIn(0, queue.size))
                 .filter { it.id != dislikedId && !isBlocked(it) }
-            return AfterNotInterested(history, -1)
+            var peeled = 0
+            val upcoming = queue.drop((currentIndex + 1).coerceAtMost(queue.size)).filter { t ->
+                if (t.id == dislikedId || isBlocked(t)) return@filter false
+                val sameUp = (mid.isNotBlank() && t.ownerMid == mid) ||
+                    (author.isNotBlank() && !author.equals("bilibili") &&
+                        t.artist.trim().lowercase() == author)
+                if (sameUp && peeled < 2) {
+                    peeled++
+                    return@filter false
+                }
+                true
+            }
+            val next = history + upcoming
+            val playAt = if (upcoming.isNotEmpty()) history.size else -1
+            return AfterNotInterested(next, playAt)
         }
         val keep = queue.mapIndexedNotNull { i, t ->
             if (t.id == dislikedId || isBlocked(t)) null else i to t

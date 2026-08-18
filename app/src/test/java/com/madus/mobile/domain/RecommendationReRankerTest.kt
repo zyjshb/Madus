@@ -249,7 +249,7 @@ class RecommendationReRankerTest {
     }
 
     @Test
-    fun blockedCategoryIdNeverPicked() {
+    fun mutedTopicIsNotHardDropped() {
         val cover = candidate(
             Track(id = "cover-1", title = "翻唱", artist = "up-a", categoryId = 31),
             900.0,
@@ -260,9 +260,9 @@ class RecommendationReRankerTest {
         )
         val output = reranker.rerank(
             listOf(cover, other),
-            FeedContext(limit = 4, blockedCategoryIds = setOf(31)),
+            FeedContext(limit = 4, mutedTopics = setOf("cover"), blockedCategoryIds = setOf(31)),
         )
-        assertEquals(listOf("game-1"), output.map { it.id })
+        assertTrue("细类只能降权，不能把池子掏空", output.any { it.id == "cover-1" })
     }
 
     private fun track(id: String, categoryId: Int, artist: String): Track =

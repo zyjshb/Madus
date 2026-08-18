@@ -58,10 +58,7 @@ class RecommendationReRanker {
         if (t.ownerMid.isNotBlank() && t.ownerMid in context.blockedAuthorIds) return true
         val author = candidate.authorKey ?: authorOf(t)
         if (author != null && author in context.mutedAuthors) return true
-        val topics = candidate.topicKeys.ifEmpty { topicsOf(t) }
-        if (topics.any { it in context.mutedTopics }) return true
-        if (context.blockedTitleKeys.any { ContentProfileParser.titlesOverlap(it, t.title) }) return true
-        if (t.categoryId > 0 && t.categoryId in context.blockedCategoryIds) return true
+        // 细类 / 分区只走打分降权，不在这里硬扔，否则池子会被掏空
         return false
     }
 

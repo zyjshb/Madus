@@ -443,9 +443,7 @@ class AppViewModel(
     private var lastNotInterested: Track? = null
     private var lastNotInterestedWasPlaying: Boolean = false
     private var lastNotInterestedAt: Long = 0L
-    private val sessionMutedCategoryIds = linkedSetOf<Int>()
-    private val sessionMutedBroad = linkedSetOf<String>()
-    private val sessionBroadStrikes = mutableMapOf<String, Int>()
+
     private val markNotInterestedLock = Mutex()
     @Volatile private var blocksCache: RecBlocks? = null
 
@@ -1505,12 +1503,10 @@ class AppViewModel(
         val bvids = linkedSetOf<String>()
         val authorIds = linkedSetOf<String>()
         val titleKeys = linkedSetOf<String>()
-        val categoryIds = linkedSetOf<Int>()
         hidden.forEach { t ->
             ids.add(t.id)
             if (t.bvid.isNotBlank()) bvids.add(t.bvid)
             if (t.ownerMid.isNotBlank()) authorIds.add(t.ownerMid)
-            if (t.categoryId > 0) categoryIds.add(t.categoryId)
             ContentProfileParser.titleKey(t.title).takeIf { it.isNotBlank() }?.let { titleKeys.add(it) }
         }
         events.filter { it.type == RecommendationEventType.NOT_INTERESTED }.forEach { ev ->
@@ -1518,20 +1514,16 @@ class AppViewModel(
             if (ev.bvid.isNotBlank()) bvids.add(ev.bvid)
             ev.topicKeys.forEach { key ->
                 if (key.startsWith("upid:")) authorIds.add(key.removePrefix("upid:"))
-                if (key.startsWith("tid:")) {
-                    key.removePrefix("tid:").toIntOrNull()?.let { categoryIds.add(it) }
-                }
             }
         }
-        categoryIds.addAll(sessionMutedCategoryIds)
         val computed = RecBlocks(
             ids = ids,
             bvids = bvids,
             authorIds = authorIds,
             authors = mutedAuthorsOf(state, now),
-            topics = mutedTopicsOf(state, now) + sessionMutedBroad,
+            topics = mutedTopicsOf(state, now),
             titleKeys = titleKeys,
-            categoryIds = categoryIds,
+            categoryIds = emptySet(),
         )
         blocksCache = computed
         return computed
@@ -1548,11 +1540,7 @@ class AppViewModel(
         ) {
             return true
         }
-        val topics = ContentProfileParser.profileFromTrack(track).topicKeys +
-            ContentProfileParser.titleTokens(track.title)
-        if (topics.any { it != "unknown" && it in blocks.topics }) return true
-        if (blocks.titleKeys.any { ContentProfileParser.titlesOverlap(it, track.title) }) return true
-        if (track.categoryId > 0 && track.categoryId in blocks.categoryIds) return true
+        // 细类 / 标题 / 分区只降权，硬挡只有这首和这个 UP（抖音：不感兴趣不会把品类封死）
         return false
     }
 
@@ -3750,10 +3738,7 @@ class AppViewModel(
                 val stored = t.copy(ownerMid = mid)
                 val topics = p.topicKeys.toMutableSet()
                 if (mid.isNotBlank()) topics.add("upid:$mid")
-                ContentProfileParser.tidKey(t.categoryId)?.let { topics.add(it) }
-                topics.addAll(ContentProfileParser.kindKeys(t))
                 topics.addAll(ContentProfileParser.titleTokens(t.title))
-                rememberDislikedKind(stored)
                 val event = RecommendationEvent(
                     trackId = t.id,
                     bvid = t.bvid,
@@ -3843,7 +3828,6 @@ class AppViewModel(
             runCatching { recommendationEventStore.removeNotInterested(t.id, t.bvid) }
             runCatching { notInterestedStore.remove(t.id, t.bvid) }
             sessionSeenIds.remove(t.id)
-            forgetDislikedKind(t)
             val replay = lastNotInterestedWasPlaying &&
                 lastNotInterested?.id == t.id &&
                 System.currentTimeMillis() - lastNotInterestedAt <
@@ -3917,43 +3901,12 @@ class AppViewModel(
         return result
     }
 
-    private fun rememberDislikedKind(t: Track) {
-        if (t.categoryId > 0) sessionMutedCategoryIds.add(t.categoryId)
-        ContentProfileParser.zoneOf(t)?.let { zone ->
-            val n = (sessionBroadStrikes[zone] ?: 0) + 1
-            sessionBroadStrikes[zone] = n
-            if (n >= 2) sessionMutedBroad.add(zone)
-        }
-    }
-
-    private fun forgetDislikedKind(t: Track) {
-        if (t.categoryId > 0) sessionMutedCategoryIds.remove(t.categoryId)
-        ContentProfileParser.zoneOf(t)?.let { zone ->
-            val n = (sessionBroadStrikes[zone] ?: 1) - 1
-            if (n <= 0) {
-                sessionBroadStrikes.remove(zone)
-                sessionMutedBroad.remove(zone)
-            } else {
-                sessionBroadStrikes[zone] = n
-            }
-        }
-    }
-
-    /** 本机立刻能划走的下一首：最近 / 喜欢，必须换类。 */
-    private suspend fun pickInstantSwitchTrack(dislikedId: String): Track? {
-        val blocks = recBlocks()
-        val seed = lastNotInterested
-        val exclude = linkedSetOf<String>().apply {
-            add(dislikedId)
-            addAll(pendingQueue.map { it.id })
-            addAll(blocks.ids)
-        }
-        val recent = sessionRecent.asReversed()
-        val liked = runCatching { likedStore.tracks() }.getOrDefault(emptyList())
-        return (recent + liked).firstOrNull { t ->
-            t.id !in exclude &&
-                !isBlocked(t, blocks) &&
-                (seed == null || !ContentProfileParser.sharesKind(seed, t))
+    /** 队列见底时垫一首：只用最近，不用喜欢列表当主池。 */
+    private fun pickInstantSwitchTrack(dislikedId: String): Track? {
+        val mid = lastNotInterested?.ownerMid.orEmpty()
+        val seen = pendingQueue.map { it.id }.toSet() + dislikedId
+        return sessionRecent.asReversed().firstOrNull { t ->
+            t.id !in seen && (mid.isBlank() || t.ownerMid != mid)
         }
     }
 
@@ -3965,20 +3918,13 @@ class AppViewModel(
             addAll(pendingQueue.map { it.id })
             addAll(blocks.ids)
         }
-        val seed = lastNotInterested
         fun firstOk(list: List<Track>): Track? =
-            list.firstOrNull { t ->
-                t.id !in exclude &&
-                    !isBlocked(t, blocks) &&
-                    (seed == null || !ContentProfileParser.sharesKind(seed, t))
-            }
+            list.firstOrNull { t -> t.id !in exclude && !isBlocked(t, blocks) }
         firstOk(runCatching { biliApi.homepageRcmd(limit = 24, freshIdx = 1) }.getOrDefault(emptyList()))
             ?.let { return it }
         firstOk(runCatching { biliApi.popularTracks(16) }.getOrDefault(emptyList()))
             ?.let { return it }
-        val avoidRid = seed?.categoryId ?: 0
-        for (rid in intArrayOf(1, 4, 160, 5, 36, 129, 3)) {
-            if (rid == avoidRid) continue
+        for (rid in intArrayOf(3, 1, 4, 160, 5)) {
             firstOk(runCatching { biliApi.rankingTracks(rid, 12) }.getOrDefault(emptyList()))
                 ?.let { return it }
         }

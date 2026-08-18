@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.18：不喜欢丢掉 related 串并挡同分区，不再刷同一类
-        versionCode = 307
-        versionName = "1.17.18"
+        // 1.17.19：不喜欢只挡这首/这个UP，细类降权，不再掏空去播点赞
+        versionCode = 308
+        versionName = "1.17.19"
         vectorDrawables.useSupportLibrary = true
     }
 
