@@ -1646,6 +1646,7 @@ class AppViewModel(
     }
 
     private var suggestJob: Job? = null
+    private var searchJob: Job? = null
 
     fun onSearchQueryChange(query: String) {
         _search.update { it.copy(query = query, message = null) }
@@ -1675,7 +1676,8 @@ class AppViewModel(
         val q = _search.value.query.trim()
         if (q.isEmpty()) return
         suggestJob?.cancel()
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _search.update {
                 it.copy(
                     isSearching = true,

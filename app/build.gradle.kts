@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.23：回到 1.17.13
-        versionCode = 312
-        versionName = "1.17.23"
+        // 1.17.24：1.17.13 底子，只修搜索出视频
+        versionCode = 313
+        versionName = "1.17.24"
         vectorDrawables.useSupportLibrary = true
     }
 
