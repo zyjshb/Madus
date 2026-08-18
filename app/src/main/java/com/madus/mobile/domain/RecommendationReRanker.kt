@@ -58,7 +58,9 @@ class RecommendationReRanker {
         if (t.ownerMid.isNotBlank() && t.ownerMid in context.blockedAuthorIds) return true
         val author = candidate.authorKey ?: authorOf(t)
         if (author != null && author in context.mutedAuthors) return true
-        // 细类 / 分区只走打分降权，不在这里硬扔，否则池子会被掏空
+        val topics = candidate.topicKeys.ifEmpty { topicsOf(t) }
+        if (topics.any { it in context.mutedTopics }) return true
+        if (context.blockedTitleKeys.any { ContentProfileParser.titlesOverlap(it, t.title) }) return true
         return false
     }
 
@@ -91,17 +93,6 @@ class RecommendationReRanker {
             window4.count { topicsOf(it).any { t -> t in topics } } >= topicLimit
         ) {
             return false
-        }
-        if (relaxation == 0 && picked.size >= 2) {
-            val fine = topics.filter {
-                it != "unknown" && it !in RecommendationTuning.BROAD_TOPICS
-            }
-            if (fine.isNotEmpty()) {
-                val lastTwoShare = picked.takeLast(2).all { prev ->
-                    topicsOf(prev).any { t -> t in fine }
-                }
-                if (lastTwoShare) return false
-            }
         }
 
         if (candidate.realtime) {

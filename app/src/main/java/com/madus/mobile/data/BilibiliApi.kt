@@ -5,7 +5,6 @@ import com.madus.mobile.domain.MusicSourceType
 import com.madus.mobile.domain.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -146,6 +145,15 @@ class BilibiliApi(
                 }
             }
         }
+        // 兜底：若 suggest 空，用搜索前几条标题当联想
+        if (out.isEmpty() && t.length >= 2) {
+            runCatching {
+                search(t, limit = 6).forEach { tr ->
+                    if (out.size >= limit) return@forEach
+                    out.add(tr.title)
+                }
+            }
+        }
         out.toList()
     }
 
@@ -193,58 +201,49 @@ class BilibiliApi(
         suspend fun fetchOnce(q: String, pageNo: Int, ord: String): SearchPage? {
             val referer =
                 "https://search.bilibili.com/all?keyword=${URLEncoder.encode(q, "UTF-8")}"
-            val params = linkedMapOf(
-                "category_id" to "",
-                "search_type" to "video",
-                "ad_resource" to "5654",
-                "__refresh__" to "true",
-                "_extra" to "",
-                "context" to "",
-                "page" to pageNo.toString(),
-                "page_size" to ps.toString(),
-                "order" to ord,
-                "duration" to "",
-                "from_source" to "",
-                "from_spmid" to "333.337",
-                "platform" to "pc",
-                "highlight" to "1",
-                "single_column" to "0",
-                "keyword" to q,
-                "qv_id" to "",
-                "source_tag" to "3",
-                "gaia_vtoken" to "",
-                "dynamic_offset" to "0",
-                "web_location" to "1430654",
-            )
-            suspend fun wbiOnce(): JSONObject? = runCatching {
+            // 1) WBI（与网页一致，翻页不易 412）
+            val wbi = runCatching {
+                val params = linkedMapOf(
+                    "category_id" to "",
+                    "search_type" to "video",
+                    "ad_resource" to "5654",
+                    "__refresh__" to "true",
+                    "_extra" to "",
+                    "context" to "",
+                    "page" to pageNo.toString(),
+                    "page_size" to ps.toString(),
+                    "order" to ord,
+                    "duration" to "",
+                    "from_source" to "",
+                    "from_spmid" to "333.337",
+                    "platform" to "pc",
+                    "highlight" to "1",
+                    "single_column" to "0",
+                    "keyword" to q,
+                    "qv_id" to "",
+                    "source_tag" to "3",
+                    "gaia_vtoken" to "",
+                    "dynamic_offset" to "0",
+                    "web_location" to "1430654",
+                )
                 val signed = signWbiQuery(params, cookie)
-                withTimeoutOrNull(8_000) {
-                    getJson(
-                        "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
-                        cookie,
-                        referer = referer,
-                    )
-                }
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/wbi/search/type?$signed",
+                    cookie,
+                    referer = referer,
+                )
             }.getOrNull()
-
-            var wbi = wbiOnce()
-            val wbiCode = wbi?.optInt("code", -1) ?: -1
-            if (wbiCode == -412 || wbiCode == 412 || wbiCode == -352) {
-                invalidateWbi()
-                wbi = wbiOnce()
-            }
             parseSearchJson(wbi, pageNo, ps, q)?.let { return it }
 
+            // 2) 经典无签名
             val encoded = URLEncoder.encode(q, "UTF-8")
             val classic = runCatching {
-                withTimeoutOrNull(8_000) {
-                    getJson(
-                        "https://api.bilibili.com/x/web-interface/search/type" +
-                            "?search_type=video&keyword=$encoded&page=$pageNo&page_size=$ps&order=$ord",
-                        cookie,
-                        referer = referer,
-                    )
-                }
+                getJson(
+                    "https://api.bilibili.com/x/web-interface/search/type" +
+                        "?search_type=video&keyword=$encoded&page=$pageNo&page_size=$ps&order=$ord",
+                    cookie,
+                    referer = referer,
+                )
             }.getOrNull()
             return parseSearchJson(classic, pageNo, ps, q)
         }
@@ -291,7 +290,8 @@ class BilibiliApi(
             return null
         }
         val data = json.optJSONObject("data") ?: return null
-        val tracks = parseSearchData(data)
+        val result = data.optJSONArray("result") ?: JSONArray()
+        val tracks = parseSearchResultArray(result)
         val total = data.optInt("numResults", 0)
             .coerceAtLeast(data.optInt("numresults", 0))
         val numPages = data.optInt("numPages", 0)
@@ -310,68 +310,25 @@ class BilibiliApi(
         )
     }
 
-    private fun parseSearchData(data: JSONObject): List<Track> {
-        val buckets = mutableListOf<JSONArray>()
-        when (val raw = data.opt("result")) {
-            is JSONArray -> buckets.add(raw)
-            is JSONObject -> {
-                raw.optJSONArray("video")?.let { buckets.add(it) }
-                raw.optJSONArray("data")?.let { buckets.add(it) }
-            }
-        }
-        data.optJSONArray("items")?.let { buckets.add(it) }
-        val flat = buckets.flatMap { parseSearchResultArray(it) }
-        if (flat.isNotEmpty()) return flat.distinctBy { it.id }
-        val grouped = data.optJSONArray("result") ?: return emptyList()
-        return buildList {
-            for (i in 0 until grouped.length()) {
-                val block = grouped.optJSONObject(i) ?: continue
-                val kind = block.optString("result_type", block.optString("type", "video"))
-                if (kind.isNotBlank() && kind != "video") continue
-                val nested = block.optJSONArray("data")
-                    ?: block.optJSONArray("items")
-                    ?: continue
-                addAll(parseSearchResultArray(nested))
-            }
-        }.distinctBy { it.id }
-    }
-
     private fun parseSearchResultArray(result: JSONArray): List<Track> = buildList {
         for (i in 0 until result.length()) {
             val item = result.optJSONObject(i) ?: continue
-            val nested = item.optJSONArray("data") ?: item.optJSONArray("items")
-            if (nested != null && item.optString("bvid").isBlank()) {
-                addAll(parseSearchResultArray(nested))
-                continue
-            }
+            // 综合搜索 result 可能混 bilibili_user 等
             val type = item.optString("type", item.optString("result_type", "video"))
-            if (type.isNotBlank() && type != "video" &&
-                type != "ketang" && item.optString("bvid").isBlank()
-            ) {
-                continue
-            }
-            val aid = item.opt("aid")?.toString()?.takeIf { it != "null" && it != "0" }.orEmpty()
-                .ifBlank { item.opt("id")?.toString()?.takeIf { it != "null" && it.all(Char::isDigit) }.orEmpty() }
-            val bvid = item.optString("bvid", "").ifBlank {
-                parseBvid(item.optString("arcurl", item.optString("uri", item.optString("url", "")))).orEmpty()
-            }
-            if (bvid.isBlank() && aid.isBlank()) continue
-            val title = stripHtml(item.optString("title", bvid.ifBlank { aid }))
-            val author = item.optString("author", item.optString("uname", "Bilibili"))
+            if (type.isNotBlank() && type != "video" && item.optString("bvid").isBlank()) continue
+            val bvid = item.optString("bvid", "")
+            if (bvid.isBlank()) continue
+            val title = stripHtml(item.optString("title", bvid))
+            val author = item.optString("author", "Bilibili")
             val mid = item.opt("mid")?.toString()?.takeIf { it != "null" }.orEmpty()
-            val cover = normalizeUrl(
-                item.optString("pic").ifBlank {
-                    item.optString("cover").ifBlank { item.optString("cover_url") }
-                },
-            )
+            val cover = normalizeUrl(item.optString("pic", ""))
             val durationMs = parseDurationToMs(item.optString("duration", "0"))
             val pageCount = item.optInt("videos", 1).coerceAtLeast(1)
             val album = if (pageCount > 1) "合集·${pageCount}P" else "Bilibili"
             val displayTitle = if (pageCount > 1) "$title · ${pageCount}P" else title
-            val id = bvid.ifBlank { "av$aid" }
             add(
                 Track(
-                    id = id,
+                    id = bvid,
                     title = displayTitle,
                     artist = author,
                     album = album,
@@ -379,7 +336,7 @@ class BilibiliApi(
                     durationMs = durationMs,
                     source = MusicSourceType.BILIBILI,
                     bvid = bvid,
-                    aid = aid,
+                    aid = item.opt("aid")?.toString()?.takeIf { it != "null" }.orEmpty(),
                     ownerMid = mid,
                     pageCount = pageCount,
                     categoryId = item.optInt("typeid", item.optInt("tid", 0)),
@@ -1654,11 +1611,6 @@ class BilibiliApi(
         return "$query&w_rid=$wrid"
     }
 
-    private fun invalidateWbi() {
-        wbiMixinKey.set("")
-        wbiMixinAt.set(0L)
-    }
-
     private suspend fun ensureWbiMixin(cookie: String): String {
         val cached = wbiMixinKey.get()
         val age = System.currentTimeMillis() - wbiMixinAt.get()
@@ -2182,39 +2134,14 @@ class BilibiliApi(
     suspend fun homepageRcmd(limit: Int = 24, freshIdx: Int = 1): List<Track> = withContext(Dispatchers.IO) {
         val cookie = mergedCookieWithSystem()
         val ps = limit.coerceIn(8, 30)
-        val idx = freshIdx.coerceAtLeast(1).toString()
-        val params = linkedMapOf(
-            "fresh_idx" to idx,
-            "fresh_idx_1h" to idx,
-            "fresh_type" to "4",
-            "feed_version" to "V8",
-            "homepage_ver" to "1",
-            "ps" to ps.toString(),
-            "y_num" to "0",
-            "brush" to "0",
-            "web_location" to "1430654",
-        )
-        val signed = runCatching { signWbiQuery(params, cookie) }.getOrNull()
+        val url =
+            "https://api.bilibili.com/x/web-interface/index/top/feed/rcmd?" +
+                "fresh_idx=${freshIdx.coerceAtLeast(1)}" +
+                "&fresh_type=4&feed_version=V8&homepage_ver=1" +
+                "&ps=$ps&y_num=0&brush=0&web_location=333.1007"
         val json = runCatching {
-            if (signed.isNullOrBlank()) {
-                null
-            } else {
-                getJson(
-                    "https://api.bilibili.com/x/web-interface/wbi/index/top/feed/rcmd?$signed",
-                    cookie,
-                    referer = "https://www.bilibili.com/",
-                )
-            }
-        }.getOrNull()?.takeIf { it.optInt("code", -1) == 0 }
-            ?: runCatching {
-                getJson(
-                    "https://api.bilibili.com/x/web-interface/index/top/feed/rcmd?" +
-                        "fresh_idx=$idx&fresh_type=4&feed_version=V8&homepage_ver=1" +
-                        "&ps=$ps&y_num=0&brush=0&web_location=333.1007",
-                    cookie,
-                    referer = "https://www.bilibili.com/",
-                )
-            }.getOrNull()
+            getJson(url, cookie, referer = "https://www.bilibili.com/")
+        }.getOrNull()
         if (json == null || json.optInt("code", -1) != 0) {
             Log.w(TAG, "homepageRcmd fail code=${json?.optInt("code")} ${json?.optString("message")}")
             return@withContext emptyList()
@@ -2315,7 +2242,7 @@ class BilibiliApi(
      * 游客可听的「热门」流（全站，非音乐区）。
      */
     suspend fun popularTracks(limit: Int = 24): List<Track> = withContext(Dispatchers.IO) {
-        val cookie = mergedCookieWithSystem()
+        val cookie = mergedCookie()
         val url =
             "https://api.bilibili.com/x/web-interface/popular?" +
                 "ps=${limit.coerceIn(8, 40)}&pn=1"
@@ -2332,7 +2259,7 @@ class BilibiliApi(
 
     /** 分区排行（rid 可选；默认 0=全站若可用，3=音乐）。游客可用。 */
     suspend fun rankingTracks(rid: Int = 3, limit: Int = 24): List<Track> = withContext(Dispatchers.IO) {
-        val cookie = mergedCookieWithSystem()
+        val cookie = mergedCookie()
         val url =
             "https://api.bilibili.com/x/web-interface/ranking/v2?" +
                 "rid=$rid&type=all"
@@ -2541,20 +2468,11 @@ class BilibiliApi(
     /** 相关推荐（B 站官方 related），用作轻量「电台/相似」。 */
     suspend fun relatedTracks(bvid: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
         if (bvid.isBlank()) return@withContext emptyList()
-        val cookie = mergedCookieWithSystem()
-        val encoded = URLEncoder.encode(bvid, "UTF-8")
-        val unsigned =
-            "https://api.bilibili.com/x/web-interface/archive/related?bvid=$encoded"
-        val json = runCatching { getJson(unsigned, cookie) }.getOrNull()
-            ?.takeIf { it.optInt("code", -1) == 0 }
-            ?: runCatching {
-                val signed = signWbiQuery(mapOf("bvid" to bvid), cookie)
-                getJson(
-                    "https://api.bilibili.com/x/web-interface/archive/related?$signed",
-                    cookie,
-                )
-            }.getOrNull()
-        if (json == null || json.optInt("code", -1) != 0) return@withContext emptyList()
+        val cookie = mergedCookie()
+        val url =
+            "https://api.bilibili.com/x/web-interface/archive/related?bvid=${URLEncoder.encode(bvid, "UTF-8")}"
+        val json = getJson(url, cookie)
+        if (json.optInt("code", -1) != 0) return@withContext emptyList()
         val list = json.optJSONArray("data") ?: return@withContext emptyList()
         buildList {
             for (i in 0 until list.length()) {

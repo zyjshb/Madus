@@ -80,33 +80,9 @@ class RecommendationEngineTest {
             ),
         )
         val state = engine.buildInterestState(events, nowMs)
-        val until = nowMs + RecommendationTuning.TOPIC_MUTE_AFTER_DISLIKE_MS
+        val until = nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
         assertEquals(until, state.mutedTopics.getValue("cover"))
         assertEquals(until, state.mutedTopics.getValue("kw:告白气球"))
-    }
-
-    @Test
-    fun notInterestedStillDoesNotMuteBroadMusic() {
-        val nowMs = 1_800_000_000_000L
-        val events = listOf(
-            event(
-                "nope-tid",
-                RecommendationEventType.NOT_INTERESTED,
-                nowMs,
-                setOf("music", "cover"),
-                "up-z",
-            ),
-        )
-        val state = engine.buildInterestState(events, nowMs)
-        assertTrue("整区 music 不该被一首不喜欢封掉", "music" !in state.mutedTopics)
-        assertEquals(
-            nowMs + RecommendationTuning.TOPIC_MUTE_AFTER_DISLIKE_MS,
-            state.mutedTopics.getValue("cover"),
-        )
-        assertEquals(
-            nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS,
-            state.mutedTopics.getValue("author:up-z"),
-        )
     }
 
     @Test

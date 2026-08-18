@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.22：搜索联想不再盖住视频列表；封面/BV 多字段解析
-        versionCode = 311
-        versionName = "1.17.22"
+        // 1.17.23：回到 1.17.13
+        versionCode = 312
+        versionName = "1.17.23"
         vectorDrawables.useSupportLibrary = true
     }
 

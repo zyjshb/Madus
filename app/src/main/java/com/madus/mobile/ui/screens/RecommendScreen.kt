@@ -428,8 +428,7 @@ private fun RadioPanel(
                     )
                 }
             }
-            if (track == null && !state.isLoading && !state.isStartingPlayback &&
-                state.feed.isEmpty() &&
+            if (track == null && !state.isLoading && state.feed.isEmpty() &&
                 state.sourceLabel == "请先登录"
             ) {
                 Spacer(Modifier.height(18.dp))
@@ -445,25 +444,6 @@ private fun RadioPanel(
                         .padding(horizontal = 28.dp, vertical = 12.dp),
                 ) {
                     Text(text = "登录 B 站听推荐", style = MaterialTheme.typography.titleMedium)
-                }
-            }
-            if (track == null && !state.isLoading && !state.isStartingPlayback &&
-                state.feed.isEmpty() &&
-                state.sourceLabel != "请先登录"
-            ) {
-                Spacer(Modifier.height(18.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(appearanceTokens().cornerSm))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline,
-                            RoundedCornerShape(appearanceTokens().cornerSm),
-                        )
-                        .clickable(onClick = onStartRadio)
-                        .padding(horizontal = 28.dp, vertical = 12.dp),
-                ) {
-                    Text(text = "再试一次", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }

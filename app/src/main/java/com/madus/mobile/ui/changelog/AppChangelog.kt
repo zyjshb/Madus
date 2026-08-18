@@ -29,69 +29,10 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
-            version = "1.17.22",
-            date = "2026-08-18",
-            fixed = listOf(
-                "搜索不再只剩文字联想，视频列表会出来，也能点播",
-            ),
-        ),
-        Entry(
-            version = "1.17.21",
-            date = "2026-08-18",
-            fixed = listOf(
-                "搜索卡死或没结果：空结果不再互相套娃，412 会重签",
-            ),
-        ),
-        Entry(
-            version = "1.17.20",
+            version = "1.17.23",
             date = "2026-08-18",
             changed = listOf(
-                "不喜欢后这类只降权两小时，不会封死",
-                "会穿插一点不一样的，不会连着三首同一类",
-            ),
-        ),
-        Entry(
-            version = "1.17.19",
-            date = "2026-08-18",
-            fixed = listOf(
-                "不喜欢只少推这首和这个 UP，不会把一类封死只剩点赞",
-            ),
-        ),
-        Entry(
-            version = "1.17.18",
-            date = "2026-08-18",
-            fixed = listOf(
-                "点不喜欢后不再接着刷同一类，会换一批别的",
-            ),
-        ),
-        Entry(
-            version = "1.17.17",
-            date = "2026-08-18",
-            fixed = listOf(
-                "点不喜欢马上划走，不用等",
-                "补歌时下一首可以马上点",
-                "连点切歌不会跳回上一首",
-            ),
-        ),
-        Entry(
-            version = "1.17.16",
-            date = "2026-08-18",
-            fixed = listOf(
-                "播到尽头、这首放不了、清空列表、相关没了，都会换一批接着播",
-            ),
-        ),
-        Entry(
-            version = "1.17.15",
-            date = "2026-08-18",
-            fixed = listOf(
-                "为你推荐不再一直转圈，空了可以再试一次",
-            ),
-        ),
-        Entry(
-            version = "1.17.14",
-            date = "2026-08-18",
-            fixed = listOf(
-                "点不喜欢后列表空了、下一首和推荐没反应，会换一批接着播",
+                "回到 1.17.13",
             ),
         ),
         Entry(

@@ -118,16 +118,6 @@ class RecommendationReRankerTest {
     }
 
     @Test
-    fun homepageOnlyPoolStillYieldsTracks() {
-        val homepage = (0 until 8).map { i ->
-            candidate(track("h$i", if (i % 2 == 0) 3 else 4, "up-$i"), 80.0 - i, source = "homepage")
-        }
-        val output = reranker.rerank(homepage, FeedContext(limit = 8))
-        assertTrue("首页热门池不该被重排掏空", output.isNotEmpty())
-        assertTrue(output.size >= 4)
-    }
-
-    @Test
     fun singleUpPoolDegradesSafelyWithoutDroppingCandidates() {
         val candidates = listOf(
             candidate(track("same-0", 3, "ONLY_UP"), 100.0),
@@ -246,33 +236,6 @@ class RecommendationReRankerTest {
         )
 
         assertEquals(listOf("ok"), output.map { it.id })
-    }
-
-    @Test
-    fun doesNotStackThreeSameFineTopicWhenExploreExists() {
-        val covers = (0..3).map { i ->
-            candidate(Track(id = "c$i", title = "夜曲 翻唱 $i", artist = "up-$i"), 100.0 - i)
-        }
-        val game = candidate(Track(id = "g", title = "原神攻略", artist = "gamer"), 20.0)
-        val output = reranker.rerank(covers + game, FeedContext(limit = 4))
-        assertTrue("连续两条同类后应插入不同类", output.take(3).any { it.id == "g" })
-    }
-
-    @Test
-    fun mutedTopicIsNotHardDropped() {
-        val cover = candidate(
-            Track(id = "cover-1", title = "翻唱", artist = "up-a", categoryId = 31),
-            900.0,
-        )
-        val other = candidate(
-            Track(id = "game-1", title = "游戏", artist = "up-b", categoryId = 4),
-            10.0,
-        )
-        val output = reranker.rerank(
-            listOf(cover, other),
-            FeedContext(limit = 4, mutedTopics = setOf("cover"), blockedCategoryIds = setOf(31)),
-        )
-        assertTrue("细类只能降权，不能把池子掏空", output.any { it.id == "cover-1" })
     }
 
     private fun track(id: String, categoryId: Int, artist: String): Track =
