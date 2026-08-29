@@ -203,9 +203,13 @@ class ThemePrefs(private val context: Context) {
 
     suspend fun pinCurrentWallpaper() = wallpaperLock.withLock {
         val prefs = context.themeStore.data.first()
-        val stored = prefs[keyWallpaper]?.let { File(it) }?.takeIf { it.exists() && it.length() > 80 }
-        val src = stored ?: currentWallpaperFile() ?: return@withLock
         val pin = File(context.filesDir, "theme/wallpaper.jpg")
+        val src = resolveCurrentWallpaperFile(
+            storedPath = prefs[keyWallpaper],
+            mode = WallpaperMode.fromId(prefs[keyWallpaperMode]),
+            pin = pin,
+            daily = File(context.filesDir, "theme/daily.webp"),
+        ) ?: return@withLock
         pin.parentFile?.mkdirs()
         runCatching {
             if (src.canonicalPath != pin.canonicalPath) {
@@ -251,13 +255,20 @@ class ThemePrefs(private val context: Context) {
         return ensureDailyWallpaper(force = true)
     }
 
-    suspend fun saveCurrentWallpaperToGallery(): Boolean {
-        val src = currentWallpaperFile() ?: return false
-        return runCatching {
-            val name = "Madus-${System.currentTimeMillis()}.webp"
+    suspend fun saveCurrentWallpaperToGallery(): Boolean = wallpaperLock.withLock {
+        val prefs = context.themeStore.data.first()
+        val src = resolveCurrentWallpaperFile(
+            storedPath = prefs[keyWallpaper],
+            mode = WallpaperMode.fromId(prefs[keyWallpaperMode]),
+            pin = File(context.filesDir, "theme/wallpaper.jpg"),
+            daily = File(context.filesDir, "theme/daily.webp"),
+        ) ?: return@withLock false
+        runCatching {
+            val (ext, mime) = wallpaperExportType(src)
+            val name = "Madus-${System.currentTimeMillis()}.$ext"
             val values = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/webp")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
                 if (android.os.Build.VERSION.SDK_INT >= 29) {
                     put(
                         android.provider.MediaStore.Images.Media.RELATIVE_PATH,
@@ -276,16 +287,6 @@ class ThemePrefs(private val context: Context) {
         }.getOrDefault(false)
     }
 
-    private fun currentWallpaperFile(): File? {
-        val pin = File(context.filesDir, "theme/wallpaper.jpg")
-        val daily = File(context.filesDir, "theme/daily.webp")
-        return when {
-            pin.exists() && pin.length() > 80 -> pin
-            daily.exists() && daily.length() > 80 -> daily
-            else -> null
-        }
-    }
-
     suspend fun clearWallpaper() {
         runCatching { File(context.filesDir, "theme/wallpaper.jpg").delete() }
         runCatching { File(context.filesDir, "theme/daily.webp").delete() }
@@ -296,5 +297,34 @@ class ThemePrefs(private val context: Context) {
             it[keyWallpaperMode] = WallpaperMode.Daily.id
         }
         ensureDailyWallpaper(force = true)
+    }
+}
+
+/**
+ * 下载/固定用当前正在显示的那张，不要因为磁盘上还留着旧的 wallpaper.jpg 就优先它。
+ * 固定后再切回每日随机时，pin 文件会一直留着，旧逻辑会永远存那一张。
+ */
+internal fun resolveCurrentWallpaperFile(
+    storedPath: String?,
+    mode: WallpaperMode,
+    pin: File,
+    daily: File,
+    minBytes: Long = 80L,
+): File? {
+    fun usable(file: File) = file.exists() && file.length() > minBytes
+    storedPath?.let { File(it) }?.takeIf(::usable)?.let { return it }
+    return when (mode) {
+        WallpaperMode.Daily -> daily.takeIf(::usable)
+        WallpaperMode.Pinned, WallpaperMode.Custom ->
+            pin.takeIf(::usable) ?: daily.takeIf(::usable)
+    }
+}
+
+internal fun wallpaperExportType(file: File): Pair<String, String> {
+    val name = file.name.lowercase()
+    return when {
+        name.endsWith(".jpg") || name.endsWith(".jpeg") -> "jpg" to "image/jpeg"
+        name.endsWith(".png") -> "png" to "image/png"
+        else -> "webp" to "image/webp"
     }
 }

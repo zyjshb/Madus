@@ -29,6 +29,13 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.17.27",
+            date = "2026-08-29",
+            fixed = listOf(
+                "固定壁纸后再开每日随机，下载会存当前这张，不再一直存以前固定的那张",
+            ),
+        ),
+        Entry(
             version = "1.17.26",
             date = "2026-08-18",
             fixed = listOf(

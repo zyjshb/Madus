@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.26：只修操作（不喜欢划走、下一首/推荐、搜索），算法不动
-        versionCode = 315
-        versionName = "1.17.26"
+        // 1.17.27：固定后再随机，下载要存当前这张而不是旧固定图
+        versionCode = 316
+        versionName = "1.17.27"
         vectorDrawables.useSupportLibrary = true
     }
 
