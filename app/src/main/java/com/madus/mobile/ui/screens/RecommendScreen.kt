@@ -75,12 +75,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.Track
+import com.madus.mobile.domain.TrackFilters
+import com.madus.mobile.domain.MusicStyleFeedback
 import com.madus.mobile.ui.RecommendSegment
 import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
 import com.madus.mobile.ui.components.CoverArt
 import com.madus.mobile.ui.components.MusicTasteBar
 import com.madus.mobile.ui.components.MusicTasteSheet
+import com.madus.mobile.ui.components.SongFeedbackSheet
 import com.madus.mobile.ui.components.TrackRow
 import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
 import com.madus.mobile.ui.theme.appearanceTokens
@@ -117,6 +120,8 @@ fun RecommendScreen(
     onStartRadio: () -> Unit = {},
     onRefreshRadio: () -> Unit = {},
     onUpdateMusicTaste: (Set<String>) -> Unit = {},
+    onStyleFeedback: (Track, Int) -> Unit = { _, _ -> },
+    onFeedbackNotInterested: (Track) -> Unit = { onNotInterested() },
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -130,6 +135,7 @@ fun RecommendScreen(
     modifier: Modifier = Modifier,
 ) {
     var showMusicTaste by rememberSaveable { mutableStateOf(false) }
+    var feedbackTrack by remember { mutableStateOf<Track?>(null) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -179,6 +185,7 @@ fun RecommendScreen(
                 onStartRadio = onStartRadio,
                 onRefreshRadio = onRefreshRadio,
                 onOpenMusicTaste = { showMusicTaste = true },
+                onOpenFeedback = { feedbackTrack = playback.current },
                 onLogin = onLogin,
                 onQualityClick = onQualityClick,
                 onSleepClick = onSleepClick,
@@ -194,6 +201,16 @@ fun RecommendScreen(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+    feedbackTrack?.let { song ->
+        SongFeedbackSheet(
+            track = song,
+            direction = state.styleFeedbackBySong[MusicStyleFeedback.key(song)] ?: 0,
+            notInterested = song.id in state.notInterestedIds,
+            onStyleFeedback = { direction -> onStyleFeedback(song, direction); feedbackTrack = null },
+            onNotInterested = { onFeedbackNotInterested(song); feedbackTrack = null },
+            onDismiss = { feedbackTrack = null },
+        )
     }
     if (showMusicTaste) {
         MusicTasteSheet(
@@ -276,6 +293,7 @@ private fun RadioPanel(
     onStartRadio: () -> Unit = {},
     onRefreshRadio: () -> Unit = {},
     onOpenMusicTaste: () -> Unit = {},
+    onOpenFeedback: () -> Unit = {},
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -298,18 +316,8 @@ private fun RadioPanel(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         MusicTasteBar(
-            sourceLabel = buildString {
-                append(state.sourceLabel.ifBlank { "推荐电台" })
-                if (videoMode) append(" · 视频")
-            },
-            preferredTopics = state.preferredTopics,
-            tasteReady = state.tasteReady,
-            adapting = state.adapting,
-            recommendationHint = state.recommendationHint,
             onOpen = onOpenMusicTaste,
-            isRecommendationSource = state.sourceId == "recommend",
-            onNotInterested = onNotInterested.takeIf { track != null && state.sourceId == "recommend" },
-            notInterested = track != null && track.id in state.notInterestedIds,
+            onOpenFeedback = onOpenFeedback.takeIf { track != null && TrackFilters.isLikelyMusic(track) },
             modifier = Modifier.padding(bottom = 4.dp),
         )
 
@@ -606,14 +614,10 @@ private fun RadioPanel(
                     )
                     SecondaryAction(
                         icon = Icons.Outlined.ThumbDown,
-                        label = if (track != null && state.notInterestedIds.contains(track.id)) {
-                            "取消不喜欢"
-                        } else {
-                            "不喜欢"
-                        },
-                        onClick = onNotInterested,
-                        enabled = track != null,
-                        contentDescription = "不喜欢",
+                        label = "歌曲反馈",
+                        onClick = onOpenFeedback,
+                        enabled = track != null && TrackFilters.isLikelyMusic(track),
+                        contentDescription = "歌曲反馈",
                     )
                     SecondaryAction(
                         icon = Icons.Default.Share,

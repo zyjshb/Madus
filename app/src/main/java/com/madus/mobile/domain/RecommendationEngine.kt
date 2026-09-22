@@ -7,6 +7,7 @@ import kotlin.math.ln
 class RecommendationEngine {
     fun buildInterestState(
         events: List<RecommendationEvent>, nowMs: Long, preferredTopics: Set<String> = emptySet(),
+        styleFeedback: List<MusicStyleFeedback> = emptyList(),
     ): InterestState {
         val songs = events.filter { nowMs - it.occurredAtMs in 0..RecommendationTuning.LONG_TERM_TTL_MS }
             .groupBy { it.songKey.ifBlank { it.bvid.ifBlank { it.trackId } } }
@@ -72,6 +73,7 @@ class RecommendationEngine {
             interestTopics = normalized(blended), negativeTopics = negative,
             preferredTopics = selected, cooledTrackIds = cooledIds, cooledSongKeys = cooledSongs,
             evidenceSongCount = evidenceCount,
+            styleAdjustments = MusicStyleFeedback.adjustments(styleFeedback, nowMs),
         )
     }
 
@@ -137,11 +139,13 @@ class RecommendationEngine {
             else -> 0.0
         }
         val mismatch = if (knownTaste && !inPool) if (adjacent) 0.4 else 1.0 else 0.0
+        val styleAdjustment = musicalTopics.sumOf { state.styleAdjustments[it] ?: 0.0 }
+            .coerceIn(-MusicStyleFeedback.MAX_SCORE_ADJUSTMENT, MusicStyleFeedback.MAX_SCORE_ADJUSTMENT)
         val score = 4.0 * poolAffinity + RecommendationTuning.W_REALTIME * realtimeAffinity +
             RecommendationTuning.W_HOURLY * hourlyAffinity + RecommendationTuning.W_LONG_TERM * longTermAffinity +
             sourceQuality + RecommendationTuning.W_FRESHNESS * freshness +
             RecommendationTuning.W_NEGATIVE * negativePenalty + RecommendationTuning.W_FATIGUE * fatiguePenalty +
-            RecommendationTuning.W_REPEAT * repeatPenalty + RecommendationTuning.W_MISMATCH * mismatch
+            RecommendationTuning.W_REPEAT * repeatPenalty + RecommendationTuning.W_MISMATCH * mismatch + styleAdjustment
         val labels = evidenceTopics.filter { it in interest }.mapNotNull { MusicDiscovery.availableTopics[it] }.take(2)
         val reason = when {
             cooled -> "最近已跳过这首歌"

@@ -37,73 +37,31 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.MusicDiscovery
 
-/** 轻入口：不自动弹出，不阻断当前播放。 */
+/** 主页面只保留两个轻入口，解释与反馈操作在面板内呈现。 */
 @Composable
 fun MusicTasteBar(
-    sourceLabel: String,
-    preferredTopics: Set<String>,
-    tasteReady: Boolean,
-    adapting: Boolean,
-    recommendationHint: String,
     onOpen: () -> Unit,
-    isRecommendationSource: Boolean = true,
-    onNotInterested: (() -> Unit)? = null,
-    notInterested: Boolean = false,
+    onOpenFeedback: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val selectedLabels = preferredTopics.mapNotNull { MusicDiscovery.availableTopics[it] }
-    val hint = when {
-        !isRecommendationSource -> "音乐口味会用于推荐电台，当前按原队列播放"
-        adapting -> "正在根据你的反馈调整接下来的歌…"
-        recommendationHint.isNotBlank() -> recommendationHint
-        selectedLabels.isNotEmpty() -> "喜欢听：${selectedLabels.take(3).joinToString(" · ")}"
-        !tasteReady -> "选几种喜欢的音乐，让推荐更合口味"
-        else -> "喜欢、听完和跳过，都会帮助调整推荐"
-    }
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = sourceLabel,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onOpen) {
-                Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(5.dp))
-                Text("我的音乐口味", style = MaterialTheme.typography.labelMedium)
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onOpenFeedback != null) {
+            TextButton(onClick = onOpenFeedback) {
+                Text("歌曲反馈", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = hint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (onNotInterested != null) {
-                TextButton(onClick = onNotInterested) {
-                    Text(
-                        text = if (notInterested) "撤销不喜欢" else "不合口味",
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                    )
-                }
-            }
+        } else Spacer(Modifier.weight(1f))
+        TextButton(onClick = onOpen) {
+            Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(5.dp))
+            Text("我的音乐口味", style = MaterialTheme.typography.labelMedium)
         }
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MusicTasteSheet(

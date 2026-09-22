@@ -27,6 +27,8 @@ import com.madus.mobile.domain.ContentProfileParser
 import com.madus.mobile.domain.FeedContext
 import com.madus.mobile.domain.InterestState
 import com.madus.mobile.domain.ListeningProgress
+import com.madus.mobile.domain.MusicStyleFeedback
+import com.madus.mobile.data.MusicStyleFeedbackStore
 import com.madus.mobile.domain.MusicDiscovery
 import com.madus.mobile.domain.MusicInterestPool
 import com.madus.mobile.domain.MusicPoolCandidate
@@ -132,6 +134,7 @@ data class LibraryUiState(
 enum class RecommendSegment { Feed, Recent }
 
 data class RecommendUiState(
+    val styleFeedbackBySong: Map<String, Int> = emptyMap(),
     val preferredTopics: Set<String> = emptySet(),
     val tasteReady: Boolean = false,
     val adapting: Boolean = false,
@@ -349,6 +352,9 @@ class AppViewModel(
     private val musicTasteStore = MusicTasteStore(MadusApp.instance)
     private val musicPoolStore = MusicInterestPoolStore(MadusApp.instance)
     private val musicPool = MusicInterestPool()
+    private val styleFeedbackStore = MusicStyleFeedbackStore(MadusApp.instance)
+    private var styleFeedback: List<MusicStyleFeedback> = emptyList()
+    private var styleFeedbackRequest = 0L
     private var librarySeeds: List<Track> = emptyList()
     private val feedbackMutex = Mutex()
     private val feedMutex = Mutex()
@@ -557,6 +563,8 @@ class AppViewModel(
             runCatching { localPl.purgeEmptyJunk(aggressive = true) }
             loadRecentFromStore()
             val taste = musicTasteStore.load()
+            styleFeedback = styleFeedbackStore.load()
+            _recommend.update { it.copy(styleFeedbackBySong = styleFeedback.associate { vote -> vote.songKey to vote.direction }) }
             _recommend.update { it.copy(preferredTopics = taste.preferredTopics, tasteReady = taste.configured) }
             musicPool.restore(musicPoolStore.load(), System.currentTimeMillis())
             preferencesLoaded.complete(Unit)
@@ -1386,6 +1394,49 @@ class AppViewModel(
         poolSaveJob = viewModelScope.launch {
             delay(400)
             runCatching { musicPoolStore.save(musicPool.snapshot(System.currentTimeMillis())) }
+        }
+    }
+
+    fun setMusicStyleFeedback(track: Track, direction: Int) {
+        if (!TrackFilters.isLikelyMusic(track)) {
+            _toast.value = "这项反馈仅用于歌曲"
+            return
+        }
+        val request = ++styleFeedbackRequest
+        viewModelScope.launch {
+            try {
+                preferencesLoaded.await()
+                var topics = MusicStyleFeedback.topics(profileOf(track).topicKeys)
+                if (direction != 0 && topics.isEmpty()) {
+                    _toast.value = "正在识别这首歌的类型…"
+                    topics = MusicStyleFeedback.topics(profileOf(track, fetchRemote = true).topicKeys)
+                }
+                if (request != styleFeedbackRequest) return@launch
+                if (direction != 0 && topics.isEmpty()) {
+                    _toast.value = "暂未识别出歌曲类型，可以在「我的音乐口味」选择喜欢的方向"
+                    return@launch
+                }
+                feedbackMutex.withLock {
+                    if (request != styleFeedbackRequest) return@withLock
+                    styleFeedback = styleFeedbackStore.set(MusicStyleFeedback(MusicStyleFeedback.key(track),
+                        topics, direction.coerceIn(-1, 1), System.currentTimeMillis()))
+                    interestRevision++
+                    _recommend.update { it.copy(styleFeedbackBySong = styleFeedback.associate { vote -> vote.songKey to vote.direction }) }
+                }
+                if (request != styleFeedbackRequest) return@launch
+                val labels = topics.mapNotNull { MusicDiscovery.availableTopics[it] }.joinToString("、")
+                _toast.value = when {
+                    direction > 0 -> "已记住，适当多推荐${labels}类歌曲"
+                    direction < 0 -> "已记住，适当少推荐${labels}类歌曲"
+                    else -> "已撤销这首歌的同类反馈"
+                }
+                rerankUpcoming()
+                requestLiveDiscovery()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                _toast.value = "反馈暂未保存，请稍后再试"
+            }
         }
     }
 
@@ -5001,7 +5052,7 @@ class AppViewModel(
                 nowMs - RecommendationTuning.HOURLY_TTL_MS - 1, "library-seed", p.topicKeys, p.authorKey,
                 MusicDiscovery.songKey(track))
         }
-        return recommendationEngine.buildInterestState(events + libraryEvents, nowMs, _recommend.value.preferredTopics)
+        return recommendationEngine.buildInterestState(events + libraryEvents, nowMs, _recommend.value.preferredTopics, styleFeedback)
     }
 
     private suspend fun rankMusicPool(

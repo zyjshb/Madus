@@ -60,6 +60,7 @@ data class InterestState(
     val cooledTrackIds: Set<String> = emptySet(),
     val cooledSongKeys: Set<String> = emptySet(),
     val evidenceSongCount: Int = 0,
+    val styleAdjustments: Map<String, Double> = emptyMap(),
 )
 
 data class ScoredTrack(

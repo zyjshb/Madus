@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.19.0：持久化兴趣池、音乐口味设置与实时反馈推荐
-        versionCode = 318
-        versionName = "1.19.0"
+        // 1.19.1：同类歌曲辅助反馈与推荐页精简
+        versionCode = 319
+        versionName = "1.19.1"
         vectorDrawables.useSupportLibrary = true
     }
 

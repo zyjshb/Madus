@@ -31,11 +31,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.Track
+import com.madus.mobile.domain.TrackFilters
+import com.madus.mobile.domain.MusicStyleFeedback
 import com.madus.mobile.ui.RecommendSegment
 import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
 import com.madus.mobile.ui.components.MusicTasteBar
 import com.madus.mobile.ui.components.MusicTasteSheet
+import com.madus.mobile.ui.components.SongFeedbackSheet
 import com.madus.mobile.ui.theme.LiquidType
 
 @Composable
@@ -63,6 +66,8 @@ fun LiquidRecommendScreen(
     onRelatedRadio: () -> Unit = {},
     onStartRadio: () -> Unit = {},
     onUpdateMusicTaste: (Set<String>) -> Unit = {},
+    onStyleFeedback: (Track, Int) -> Unit = { _, _ -> },
+    onFeedbackNotInterested: (Track) -> Unit = { onNotInterested() },
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -77,6 +82,7 @@ fun LiquidRecommendScreen(
 ) {
     var more by remember { mutableStateOf(false) }
     var showMusicTaste by rememberSaveable { mutableStateOf(false) }
+    var feedbackTrack by remember { mutableStateOf<Track?>(null) }
     val playingThisRadio = playback.current != null && state.sourceId == "recommend"
     val loading = state.isLoading || state.isStartingPlayback
     val needLogin = state.sourceLabel == "请先登录"
@@ -119,15 +125,10 @@ fun LiquidRecommendScreen(
                 )
             }
             MusicTasteBar(
-                sourceLabel = state.sourceLabel.ifBlank { "推荐电台" },
-                preferredTopics = state.preferredTopics,
-                tasteReady = state.tasteReady,
-                adapting = state.adapting,
-                recommendationHint = state.recommendationHint,
                 onOpen = { showMusicTaste = true },
-                isRecommendationSource = state.sourceId == "recommend",
-                onNotInterested = onNotInterested.takeIf { playingThisRadio },
-                notInterested = track != null && track.id in state.notInterestedIds,
+                onOpenFeedback = if (track != null && TrackFilters.isLikelyMusic(track)) {
+                    { feedbackTrack = track }
+                } else null,
             )
             Spacer(Modifier.height(14.dp))
 
@@ -241,6 +242,16 @@ fun LiquidRecommendScreen(
                 LiquidSheetAction("缓存", enabled = has) { onCache() },
                 LiquidSheetAction("相关电台", enabled = has) { onRelatedRadio() },
             ),
+        )
+    }
+    feedbackTrack?.let { song ->
+        SongFeedbackSheet(
+            track = song,
+            direction = state.styleFeedbackBySong[MusicStyleFeedback.key(song)] ?: 0,
+            notInterested = song.id in state.notInterestedIds,
+            onStyleFeedback = { direction -> onStyleFeedback(song, direction); feedbackTrack = null },
+            onNotInterested = { onFeedbackNotInterested(song); feedbackTrack = null },
+            onDismiss = { feedbackTrack = null },
         )
     }
     if (showMusicTaste) {

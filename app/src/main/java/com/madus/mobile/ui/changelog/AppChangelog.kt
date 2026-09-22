@@ -29,6 +29,16 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.19.1",
+            date = "2026-09-22",
+            added = listOf("歌曲反馈新增「喜欢这类歌曲 / 不喜欢这类歌曲」，再次选择可撤销"),
+            changed = listOf(
+                "同类反馈仅小幅调整推荐顺序，继续以实际收听、点赞、收藏和已选口味为基础",
+                "推荐页移除常驻长提示，将反馈收进独立面板，保留「我的音乐口味」入口",
+                "单曲不合口味与同类少推荐分别呈现，减少误操作",
+            ),
+        ),
+        Entry(
             version = "1.19.0",
             date = "2026-09-22",
             added = listOf(
