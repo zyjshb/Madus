@@ -90,7 +90,7 @@ class BilibiliSource(
     }
 
     override suspend fun resolveStream(track: Track): Track {
-        runCatching { api.ensureGuestCookies() }
+        // resolvePlayUrl 内部统一准备 Cookie，避免失败时在一次取流里重复等待。
         val qn = qualityProvider()
         return api.resolvePlayUrl(
             track,

@@ -8,6 +8,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.madus.mobile.domain.RecommendationEvent
 import com.madus.mobile.domain.RecommendationEventType
 import com.madus.mobile.domain.RecommendationTuning
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -90,10 +92,10 @@ class RecommendationEventStore(private val context: Context) {
         if (keep.size != readInternal().size) save(keep)
     }
 
-    private suspend fun readInternal(): List<RecommendationEvent> {
+    private suspend fun readInternal(): List<RecommendationEvent> = withContext(Dispatchers.IO) {
         val raw = context.recommendationEventStore.data.first()[keyEvents].orEmpty()
-        if (raw.isBlank()) return emptyList()
-        return runCatching {
+        if (raw.isBlank()) return@withContext emptyList()
+        runCatching {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
@@ -104,7 +106,7 @@ class RecommendationEventStore(private val context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    private suspend fun save(list: List<RecommendationEvent>) {
+    private suspend fun save(list: List<RecommendationEvent>) = withContext(Dispatchers.IO) {
         val arr = JSONArray()
         list.forEach { event ->
             val topics = JSONArray()

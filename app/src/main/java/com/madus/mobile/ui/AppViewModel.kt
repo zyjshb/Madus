@@ -47,6 +47,7 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.domain.TrackFilters
 import com.madus.mobile.player.PlayerController
 import com.madus.mobile.player.SleepTimer
+import com.madus.mobile.player.StreamResolutionCache
 import com.madus.mobile.player.StreamCache
 import com.madus.mobile.source.MusicSource
 import com.madus.mobile.source.SourceRegistry
@@ -369,6 +370,8 @@ class AppViewModel(
     private var searchPlaybackGeneration = -1
     private var lastListeningDiscoveryAt = 0L
     private var listeningSaveJob: Job? = null
+    private val streamResolutionCache = StreamResolutionCache<Track>(viewModelScope)
+    private var streamPrefetchJob: Job? = null
     private var discoveryRequested = false
     private val profileEnrichmentJobs = mutableMapOf<String, Job>()
     private val watchFired30 = linkedSetOf<String>()
@@ -1189,23 +1192,21 @@ class AppViewModel(
         }
     }
 
-    private suspend fun persistCurrentPosition(flushListening: Boolean = false) {
+    private suspend fun persistCurrentPosition(flushListening: Boolean = false, backgroundSave: Boolean = false) {
         val pb = playback.value
         sampleListening(pb)
-        if (flushListening) {
-            listeningSaveJob?.join()
-            listeningTracker.flush(System.currentTimeMillis())?.let { persistListeningSamples(listOf(it)) }
+        val sample = if (flushListening) listeningTracker.flush(System.currentTimeMillis()) else null
+        val previousSave = listeningSaveJob
+        val t = pb.current
+        val pos = if (pb.durationMs > 0 && pb.positionMs > pb.durationMs - 3_000) 0L else pb.positionMs
+        if (t != null && pb.positionMs >= 1_500) rememberPosition(t.id, pos)
+        suspend fun saveSnapshot() {
+            if (flushListening) previousSave?.join()
+            if (sample != null) persistListeningSamples(listOf(sample))
+            if (t != null && pb.positionMs >= 1_500) runCatching { recentStore.savePosition(t.id, pos) }
         }
-        val t = pb.current ?: return
-        if (pb.positionMs < 1_500) return
-        // Near end: reset so next open starts clean
-        val pos = if (pb.durationMs > 0 && pb.positionMs > pb.durationMs - 3_000) {
-            0L
-        } else {
-            pb.positionMs
-        }
-        rememberPosition(t.id, pos)
-        runCatching { recentStore.savePosition(t.id, pos) }
+        if (backgroundSave) listeningSaveJob = viewModelScope.launch { saveSnapshot() }
+        else saveSnapshot()
     }
 
     private fun rememberPosition(trackId: String, positionMs: Long) {
@@ -1265,7 +1266,7 @@ class AppViewModel(
         }
     }
 
-    /** 用实际听过的时长判断跳过，先提交并在本地重排，再选择下一首。 */
+    /** 同步截取旧曲的听歌证据，保存与重排不阻塞已预取的下一首。 */
     private suspend fun maybeRecordSkipFast() {
         val pb = playback.value
         val t = pb.current ?: return
@@ -1279,9 +1280,12 @@ class AppViewModel(
             duration > 0 && heard < duration * 0.65 -> RecommendationEventType.SKIP
             else -> return
         }
-        persistFeedback(t, type)
-        rerankUpcoming(allowDuringNext = true)
-        requestLiveDiscovery()
+        viewModelScope.launch {
+            persistFeedback(t, type)
+            nextMutex.withLock { /* 等本次切歌完成，避免替换正在取流的队列项。 */ }
+            rerankUpcoming()
+            requestLiveDiscovery()
+        }
     }
     private fun profileKey(track: Track): String = track.bvid.ifBlank { track.id }
 
@@ -1519,7 +1523,8 @@ class AppViewModel(
         val tail = pendingQueue.drop(index + 1)
         val ranked = rankMusicPool(12, head.mapTo(hashSetOf()) { it.id } + sessionSeenIds,
             head.takeLast(6), extraTracks = tail)
-        if (!isForYouQueue() || queueRevision != revision || interestRevision != feedbackRevision || pendingIndex != index) return
+        if (!isForYouQueue() || queueRevision != revision || interestRevision != feedbackRevision || pendingIndex != index ||
+            (nextMutex.isLocked && !allowDuringNext)) return
         pendingQueue = head + ranked
         _queueTracks.value = pendingQueue
         _recommend.update { it.copy(feed = pendingQueue) }
@@ -1960,25 +1965,6 @@ class AppViewModel(
             applyPlayModeToPlayer()
             // 自动续播记忆（上下滑/重进同一条不从零开始）
             playIndex(pendingIndex)
-
-            // 并行预解析：前台 3 / 后台 1 / 游戏轻量再压一档（至少保下一首）
-            launch {
-                val ahead = prefetchAheadCount()
-                val from = pendingIndex + 1
-                val to = minOf(pendingIndex + ahead, pendingQueue.size)
-                if (from >= to) return@launch
-                val jobs = (from until to).map { i ->
-                    async(Dispatchers.IO) {
-                        val t = pendingQueue.getOrNull(i) ?: return@async null
-                        resolveOne(t)
-                    }
-                }
-                val map = jobs.mapNotNull { it.await() }.associateBy { it.id }
-                if (map.isNotEmpty()) {
-                    pendingQueue = pendingQueue.map { map[it.id] ?: it }
-                    _queueTracks.value = pendingQueue
-                }
-            }
         }
     }
 
@@ -2396,7 +2382,11 @@ class AppViewModel(
 
     /** 预解析后续 playurl；最省档可跳过 */
     private fun schedulePrefetchNextStreams() {
-        viewModelScope.launch {
+        streamPrefetchJob?.cancel()
+        streamPrefetchJob = viewModelScope.launch {
+            val revision = queueRevision
+            val video = MadusApp.instance.videoModeEnabled
+            val quality = MadusApp.instance.currentQualityQn
             val bg = MadusApp.instance.appInBackground
             val net = MadusApp.instance.networkIntensity
             val ahead = prefetchAheadCount()
@@ -2406,7 +2396,6 @@ class AppViewModel(
             val from = pendingIndex + 1
             val to = minOf(from + ahead, pendingQueue.size)
             if (from >= to) return@launch
-            val thrift = net.thriftFeed(bg) || net == com.madus.mobile.data.NetworkIntensity.MINIMAL
             for (i in from until to) {
                 val t = pendingQueue.getOrNull(i) ?: continue
                 val url = t.streamUrl
@@ -2415,10 +2404,9 @@ class AppViewModel(
                 if (durable) continue
                 // 已有 http 预取也不强刷，留给 play 时再取；空地址才预取
                 if (!url.isNullOrBlank() && url.startsWith("http")) continue
-                val r = resolveOne(
-                    t.copy(streamUrl = null),
-                    forceRefresh = !thrift,
-                ) ?: continue
+                val r = resolveOne(t.copy(streamUrl = null)) ?: continue
+                if (revision != queueRevision || video != MadusApp.instance.videoModeEnabled ||
+                    quality != MadusApp.instance.currentQualityQn) return@launch
                 pendingQueue = pendingQueue.toMutableList().also { list ->
                     if (i in list.indices && list[i].id == r.id) list[i] = r
                 }
@@ -2499,7 +2487,7 @@ class AppViewModel(
             _recommend.value.sourceId == source
         ensureService()
         // 曲终/用户切歌都先记进度，滑回来才能续播
-        persistCurrentPosition(flushListening = true)
+        persistCurrentPosition(flushListening = true, backgroundSave = true)
         if (userInitiated && recordSkipFast) maybeRecordSkipFast()
         if (!isCurrentIntent()) return
 
@@ -2637,7 +2625,7 @@ class AppViewModel(
     fun previous() {
         viewModelScope.launch {
             ensureService()
-            persistCurrentPosition(flushListening = true)
+            persistCurrentPosition(flushListening = true, backgroundSave = true)
             if (pendingQueue.isEmpty()) {
                 // 空队列不要再 Previous，避免与引擎回调打架
                 return@launch
@@ -3705,9 +3693,13 @@ class AppViewModel(
             return track
         }
         val seed = track.copy(streamUrl = null, isVideoStream = false)
+        val key = "${seed.source}:${seed.id}:${seed.cid}:$wantVideo:${MadusApp.instance.currentQualityQn}"
         val result = runCatching {
-            registry.get(seed.source)?.resolveStream(seed)
+            streamResolutionCache.resolve(key, refresh = forceRefresh) {
+                registry.get(seed.source)?.resolveStream(seed)?.takeIf { !it.streamUrl.isNullOrBlank() }
+            }
         }
+        result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
         result.exceptionOrNull()?.let { e ->
             android.util.Log.w("AppViewModel", "resolve fail ${track.title}: ${e.message}")
         }

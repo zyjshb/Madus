@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -177,6 +178,8 @@ fun MadusRoot(
     val cacheManager by vm.cacheManager.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var snackJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val accessibility = androidx.compose.ui.platform.LocalAccessibilityManager.current
     val context = LocalContext.current
     val themeSettings by MadusApp.instance.themePrefs.flow.collectAsState(
         initial = ThemeSettings(),
@@ -302,9 +305,23 @@ fun MadusRoot(
         if (onRecommend) vm.onEnterRecommend()
     }
 
-    suspend fun flashSnack(msg: String) {
+    fun flashSnack(msg: String, action: AppViewModel.ActionToast? = null) {
+        snackJob?.cancel()
         snackbar.currentSnackbarData?.dismiss()
-        snackbar.showSnackbar(message = msg, duration = SnackbarDuration.Short)
+        snackJob = scope.launch {
+            val hasAction = !action?.actionLabel.isNullOrBlank()
+            val base = if (hasAction) 4_000L else (action?.holdMs ?: 1_100L).coerceIn(800L, 1_400L)
+            val duration = accessibility?.calculateRecommendedTimeoutMillis(
+                originalTimeoutMillis = base, containsIcons = false,
+                containsText = true, containsControls = hasAction,
+            ) ?: base
+            val result = kotlinx.coroutines.withTimeoutOrNull(duration) {
+                snackbar.showSnackbar(msg, actionLabel = action?.actionLabel, duration = SnackbarDuration.Indefinite)
+            }
+            if (result == SnackbarResult.ActionPerformed && action?.actionId == AppViewModel.ACTION_UNDO_NOT_INTERESTED) {
+                vm.undoNotInterested()
+            }
+        }
     }
 
     LaunchedEffect(collect.toast) {
@@ -321,29 +338,7 @@ fun MadusRoot(
 
     LaunchedEffect(actionToast) {
         val t = actionToast ?: return@LaunchedEffect
-        snackbar.currentSnackbarData?.dismiss()
-        if (t.holdMs in 1..2_000L && t.actionLabel.isNullOrBlank()) {
-            val shown = launch {
-                snackbar.showSnackbar(
-                    message = t.message,
-                    duration = SnackbarDuration.Indefinite,
-                )
-            }
-            kotlinx.coroutines.delay(t.holdMs)
-            snackbar.currentSnackbarData?.dismiss()
-            shown.cancel()
-        } else {
-            val result = snackbar.showSnackbar(
-                message = t.message,
-                actionLabel = t.actionLabel,
-                duration = SnackbarDuration.Short,
-            )
-            if (result == SnackbarResult.ActionPerformed &&
-                t.actionId == AppViewModel.ACTION_UNDO_NOT_INTERESTED
-            ) {
-                vm.undoNotInterested()
-            }
-        }
+        flashSnack(t.message, t)
         vm.clearActionToast()
     }
 
@@ -388,7 +383,14 @@ fun MadusRoot(
                 modifier = Modifier
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = snackLift),
-            )
+            ) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    modifier = Modifier.clickable { data.dismiss() },
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         },
         bottomBar = {
             if (!liquid && (showTabChrome || showPlaylistMini)) {

@@ -29,6 +29,15 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.20.1",
+            date = "2026-09-22",
+            fixed = listOf(
+                "切歌优先复用预取地址，合并重复取流，省去非必要的头像请求",
+                "听歌记录后台保存，推荐重排不再挡住切歌，历史记录解析移出主线程",
+                "普通操作提示约 1 秒自动收起，新提示替换旧提示，支持点按关闭",
+            ),
+        ),
+        Entry(
             version = "1.20.0",
             date = "2026-09-22",
             changed = listOf(

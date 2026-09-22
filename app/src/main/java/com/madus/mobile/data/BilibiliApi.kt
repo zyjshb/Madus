@@ -829,9 +829,9 @@ class BilibiliApi(
             }
         }
 
-        val needPlayMeta = cid.isBlank() || bvid.isBlank() || aid.isBlank()
-        val needOwner = ownerFace.isBlank() || ownerMid.isBlank()
-        if (needPlayMeta || needOwner) {
+        val needPlayMeta = cid.isBlank() || (bvid.isBlank() && aid.isBlank())
+        // 展示信息不额外阻塞取流；已有稿件 id + cid 即可播放。
+        if (needPlayMeta) {
             if (bvid.isBlank() && aid.isBlank()) {
                 if (needPlayMeta) error("缺少 bvid")
             } else {
