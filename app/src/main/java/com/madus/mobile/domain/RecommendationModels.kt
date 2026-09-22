@@ -4,11 +4,13 @@ enum class RecommendationEventType(val weight: Double) {
     LIKE(1.00),
     COLLECT_LOCAL(1.15),
     COLLECT_BILIBILI(1.25),
-    PLAY_START(0.05),
+    PLAY_START(0.0),
+    WATCH_30(0.15),
     WATCH_50(0.30),
     WATCH_90(0.60),
     REPLAY(0.80),
     SKIP_FAST(-0.70),
+    SKIP(-0.35),
     NOT_INTERESTED(-1.50),
 }
 
@@ -51,6 +53,13 @@ data class InterestState(
     val mutedTopics: Map<String, Long> = emptyMap(),
     val realtimeAuthors: Map<String, Double> = emptyMap(),
     val hourlyAuthors: Map<String, Double> = emptyMap(),
+    /** Normalized, bounded musical interests; repeated feedback on one song is one piece of evidence. */
+    val interestTopics: Map<String, Double> = emptyMap(),
+    val negativeTopics: Map<String, Double> = emptyMap(),
+    val preferredTopics: Set<String> = emptySet(),
+    val cooledTrackIds: Set<String> = emptySet(),
+    val cooledSongKeys: Set<String> = emptySet(),
+    val evidenceSongCount: Int = 0,
 )
 
 data class ScoredTrack(
@@ -63,6 +72,9 @@ data class ScoredTrack(
     val dailyBaseline: Boolean = false,
     val topicKeys: Set<String> = emptySet(),
     val authorKey: String? = null,
+    val inInterestPool: Boolean = true,
+    val adjacentInterest: Boolean = false,
+    val cooledDown: Boolean = false,
 )
 
 data class FeedContext(
@@ -81,6 +93,8 @@ data class FeedContext(
     val blockedTitleKeys: Set<String> = emptySet(),
     val sourceId: String = "recommend",
     val realtimeTopicQuota: Map<String, Int> = emptyMap(),
+    /** Exploration is an upper bound, never a requirement to inject unrelated music. */
+    val maxExploreRatio: Double = 0.15,
 )
 
 object RecommendationTuning {
@@ -91,6 +105,8 @@ object RecommendationTuning {
     const val HEARD_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000L
     const val TOPIC_COOLDOWN_MS = 30 * 60 * 1000L
     const val NOT_INTERESTED_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000L
+    const val FAST_SKIP_COOLDOWN_MS = 2 * 24 * 60 * 60 * 1000L
+    const val SKIP_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     /** snackbar 大约 4 秒，撤销窗口略长一点 */
     const val UNDO_NOT_INTERESTED_MS = 6_000L
     /** 一首不喜欢不该封掉整个音乐/动画区 */
@@ -101,7 +117,7 @@ object RecommendationTuning {
     const val MAX_REALTIME_IN_FIRST_20 = 3
     const val MAX_SAME_TOPIC_IN_WINDOW_4 = 2
     const val MAX_SAME_AUTHOR_IN_WINDOW_4 = 1
-    const val MIN_EXPLORE_RATIO = 0.15
+    const val MIN_EXPLORE_RATIO = 0.0
     const val MIN_DAILY_BASELINE_RATIO = 0.20
     const val REALTIME_HALF_LIFE_MS = 10 * 60 * 1000L
     const val HOURLY_HALF_LIFE_MS = 6 * 60 * 60 * 1000L

@@ -1,60 +1,36 @@
 package com.madus.mobile.domain
 
+/** Keep discovery inside the listener's interest pool; variety must not override musical fit. */
 class RecommendationReRanker {
-
-    fun rerank(candidates: List<ScoredTrack>, context: FeedContext): List<Track> {
-        val waiting = candidates.filterNot { violatesHard(it, context) }.sortedByDescending { it.score }.toMutableList()
-        val picked = mutableListOf<ScoredTrack>()
-        var relaxation = 0
-        while (waiting.isNotEmpty() && picked.size < context.limit) {
-            val candidate = waiting.firstOrNull { canPick(it, picked, context, relaxation) }
-                ?: if (relaxation >= 2) {
-                    waiting.firstOrNull { canPick(it, picked, context, 1) }
-                } else {
-                    null
-                }
-            if (candidate == null) {
-                if (relaxation < 2) {
-                    relaxation++
-                    continue
-                }
-                break
-            }
-            waiting.remove(candidate)
-            picked.add(candidate)
-            relaxation = 0
-        }
-        return picked.map { it.track }
-    }
+    fun rerank(candidates: List<ScoredTrack>, context: FeedContext): List<Track> =
+        rerankWithReasons(candidates, context).first
 
     fun rerankWithReasons(candidates: List<ScoredTrack>, context: FeedContext): Pair<List<Track>, List<ScoredTrack>> {
         val waiting = candidates.filterNot { violatesHard(it, context) }.sortedByDescending { it.score }.toMutableList()
         val picked = mutableListOf<ScoredTrack>()
-        var relaxation = 0
         while (waiting.isNotEmpty() && picked.size < context.limit) {
-            val candidate = waiting.firstOrNull { canPick(it, picked, context, relaxation) }
-                ?: if (relaxation >= 2) {
-                    waiting.firstOrNull { canPick(it, picked, context, 1) }
-                } else {
-                    null
-                }
-            if (candidate == null) {
-                if (relaxation < 2) {
-                    relaxation++
-                    continue
-                }
-                break
-            }
+            val eligible = waiting.filter { canPick(it, picked, context) }
+            if (eligible.isEmpty()) break
+            // Relax uploader repetition inside the pool before ever leaving the user's taste.
+            val pool = eligible.filter { it.inInterestPool && !it.explore }
+            val preferred = pool.ifEmpty { eligible }
+            // Uploader variety breaks near-ties; it cannot promote a much weaker musical match.
+            val choiceSet = preferred.filter { it.score >= preferred.first().score - 1.25 }
+            val candidate = choiceSet.firstOrNull { variedAuthor(it, picked) &&
+                (context.musicOnly || variedTopic(it, picked)) }
+                ?: choiceSet.firstOrNull { variedAuthor(it, picked) }
+                ?: choiceSet.first()
             waiting.remove(candidate)
-            picked.add(candidate)
-            relaxation = 0
+            picked += candidate
         }
         return picked.map { it.track } to picked
     }
 
     private fun violatesHard(candidate: ScoredTrack, context: FeedContext): Boolean {
         val t = candidate.track
-        if (context.musicOnly && !TrackFilters.isLikelyMusic(t)) return true
+        if (!candidate.score.isFinite() || candidate.cooledDown) return true
+        if (context.musicOnly && (!TrackFilters.isLikelyMusic(t) ||
+                (!candidate.inInterestPool && !candidate.adjacentInterest))) return true
         val songKey = MusicDiscovery.songKey(t)
         if (songKey.isNotBlank() && songKey in context.recentSongKeys) return true
         if (t.id in context.sessionSeenIds || t.id in context.queueIds) return true
@@ -62,89 +38,47 @@ class RecommendationReRanker {
         if (t.id in context.blockedIds) return true
         if (t.bvid.isNotBlank() && t.bvid in context.blockedBvids) return true
         if (t.ownerMid.isNotBlank() && t.ownerMid in context.blockedAuthorIds) return true
-        val author = candidate.authorKey ?: authorOf(t)
+        val author = authorOf(candidate)
         if (author != null && author in context.mutedAuthors) return true
-        val topics = candidate.topicKeys.ifEmpty { topicsOf(t) }
-        if (topics.any { it in context.mutedTopics }) return true
-        if (context.blockedTitleKeys.any { ContentProfileParser.titlesOverlap(it, t.title) }) return true
-        return false
+        if (topicsOf(candidate).any { it in context.mutedTopics }) return true
+        return context.blockedTitleKeys.any { ContentProfileParser.titlesOverlap(it, t.title) }
     }
 
-    private fun canPick(
-        candidate: ScoredTrack,
-        picked: List<ScoredTrack>,
-        context: FeedContext,
-        relaxation: Int,
-    ): Boolean {
+    private fun canPick(candidate: ScoredTrack, picked: List<ScoredTrack>, context: FeedContext): Boolean {
         if (picked.any { it.track.id == candidate.track.id ||
                 (candidate.track.bvid.isNotBlank() && it.track.bvid == candidate.track.bvid) }) return false
         if (context.musicOnly) {
             val key = MusicDiscovery.songKey(candidate.track)
             if (key.isNotBlank() && picked.any { MusicDiscovery.songKey(it.track) == key }) return false
         }
-
-        val window4 = picked.takeLast(4)
-        val window6 = picked.takeLast(6)
-        val author = candidate.authorKey ?: authorOf(candidate.track)
-        val topics = candidate.topicKeys.ifEmpty { topicsOf(candidate.track) }.filter {
-            !context.musicOnly || it !in RecommendationTuning.BROAD_TOPICS
-        }.toSet()
-
-        val authorLimit = when {
-            relaxation >= 2 -> Int.MAX_VALUE
-            relaxation >= 1 -> RecommendationTuning.MAX_SAME_AUTHOR_IN_WINDOW_4 + 1
-            else -> RecommendationTuning.MAX_SAME_AUTHOR_IN_WINDOW_4
+        if (candidate.explore || !candidate.inInterestPool) {
+            // Enforce a maximum on every prefix, including partially filled queues. A thin pool
+            // cannot silently become mostly exploration, and the first few tracks stay familiar.
+            val ratio = context.maxExploreRatio.coerceIn(0.0, 0.15)
+            val allowed = ((picked.size + 1) * ratio).toInt()
+            if (picked.count { it.explore || !it.inInterestPool } >= allowed) return false
         }
-        val topicLimit = when {
-            relaxation >= 2 -> Int.MAX_VALUE
-            relaxation >= 1 -> RecommendationTuning.MAX_SAME_TOPIC_IN_WINDOW_4 + 1
-            else -> RecommendationTuning.MAX_SAME_TOPIC_IN_WINDOW_4
-        }
-
-        if (author != null && window4.count { authorOf(it) == author } >= authorLimit) return false
-        if (topics.isNotEmpty() &&
-            window4.count { topicsOf(it).any { t -> t in topics } } >= topicLimit
-        ) {
-            return false
-        }
-
-        if (candidate.realtime) {
-            if (picked.take(20).count { it.realtime } >= RecommendationTuning.MAX_REALTIME_IN_FIRST_20) {
-                return false
-            }
-            val realtimeTopicIn6 = window6.count {
-                it.realtime && topicsOf(it).any { t -> t in topics }
-            }
-            if (realtimeTopicIn6 >= 2) return false
-            for (topic in topics) {
-                val quota = context.realtimeTopicQuota[topic] ?: continue
-                if (quota <= 0) return false
-            }
-        }
-
-        if (relaxation < 2) {
-            val position = picked.size
-            if (position % 6 == 5 && picked.takeLast(6).none { it.explore }) {
-                if (!candidate.explore) return false
-            }
-            if (!context.musicOnly && position % 5 == 4 && picked.takeLast(5).none { it.dailyBaseline }) {
-                if (!candidate.dailyBaseline) return false
-            }
+        if (candidate.realtime) for (topic in topicsOf(candidate)) {
+            val quota = context.realtimeTopicQuota[topic] ?: continue
+            if (picked.count { it.realtime && topic in topicsOf(it) } >= quota) return false
         }
         return true
     }
 
-    private fun authorOf(scored: ScoredTrack): String? =
-        scored.authorKey ?: authorOf(scored.track)
-
-    private fun authorOf(track: Track): String? {
-        val author = track.artist.trim()
-        return author.takeIf { it.isNotBlank() && !it.equals("Bilibili", ignoreCase = true) }?.lowercase()
+    private fun variedAuthor(candidate: ScoredTrack, picked: List<ScoredTrack>): Boolean {
+        val author = authorOf(candidate) ?: return true
+        return picked.takeLast(3).none { authorOf(it) == author }
     }
 
-    private fun topicsOf(scored: ScoredTrack): Set<String> =
-        scored.topicKeys.ifEmpty { topicsOf(scored.track) }
+    private fun variedTopic(candidate: ScoredTrack, picked: List<ScoredTrack>): Boolean {
+        val topics = topicsOf(candidate)
+        return picked.takeLast(3).count { topicsOf(it).any { topic -> topic in topics } } < 2
+    }
 
-    private fun topicsOf(track: Track): Set<String> =
-        ContentProfileParser.profileFromTrack(track).topicKeys.filter { it != "unknown" }.toSet()
+    private fun authorOf(scored: ScoredTrack): String? = scored.authorKey ?: scored.track.artist.trim()
+        .takeIf { it.isNotBlank() && !it.equals("Bilibili", ignoreCase = true) }?.lowercase()
+
+    private fun topicsOf(scored: ScoredTrack): Set<String> = scored.topicKeys.ifEmpty {
+        ContentProfileParser.profileFromTrack(scored.track).topicKeys.filter { it != "unknown" }.toSet()
+    }
 }

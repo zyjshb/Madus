@@ -2557,10 +2557,11 @@ class BilibiliApi(
                 cookie,
                 referer = "https://www.bilibili.com/video/$bv",
             )
-            val tagData = tagJson.optJSONObject("data")
+            val tagData = tagJson.opt("data")
             val arr = when (tagData) {
                 is JSONArray -> tagData
-                else -> tagData?.optJSONArray("tags") ?: JSONArray()
+                is JSONObject -> tagData.optJSONArray("tags") ?: JSONArray()
+                else -> JSONArray()
             }
             buildList {
                 for (i in 0 until arr.length()) {

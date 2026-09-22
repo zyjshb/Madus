@@ -1,266 +1,213 @@
 package com.madus.mobile.domain
 
 import kotlin.math.exp
+import kotlin.math.ln
 
+/** Local, explainable musical taste learning; repeated feedback is bounded per song. */
 class RecommendationEngine {
-
-    fun buildInterestState(events: List<RecommendationEvent>, nowMs: Long): InterestState {
-        val realtimeTopics = linkedMapOf<String, Double>()
-        val hourlyTopics = linkedMapOf<String, Double>()
-        val longTermTopics = linkedMapOf<String, Double>()
+    fun buildInterestState(
+        events: List<RecommendationEvent>, nowMs: Long, preferredTopics: Set<String> = emptySet(),
+    ): InterestState {
+        val songs = events.filter { nowMs - it.occurredAtMs in 0..RecommendationTuning.LONG_TERM_TTL_MS }
+            .groupBy { it.songKey.ifBlank { it.bvid.ifBlank { it.trackId } } }
+        val realtime = linkedMapOf<String, Double>()
+        val hourly = linkedMapOf<String, Double>()
+        val longTerm = linkedMapOf<String, Double>()
         val realtimeAuthors = linkedMapOf<String, Double>()
         val hourlyAuthors = linkedMapOf<String, Double>()
-        val strongPositive = linkedMapOf<String, MutableList<Long>>()
-        val skipCounts = linkedMapOf<String, MutableList<Long>>()
-
-        for (event in events) {
-            val age = nowMs - event.occurredAtMs
-            if (age < 0L) continue
-            val positive = event.type.weight > 0.0
-            val strong = event.type == RecommendationEventType.LIKE ||
-                event.type == RecommendationEventType.COLLECT_LOCAL ||
-                event.type == RecommendationEventType.COLLECT_BILIBILI ||
-                event.type == RecommendationEventType.REPLAY
-
-            for (topic in event.topicKeys) {
-                if (topic.isBlank() || topic == "unknown") continue
-                if (positive) {
-                    if (strong && age <= RecommendationTuning.REALTIME_TTL_MS) {
-                        realtimeTopics[topic] = (realtimeTopics[topic] ?: 0.0) +
-                            decayed(event.type.weight, age, RecommendationTuning.REALTIME_HALF_LIFE_MS)
-                        strongPositive.getOrPut(topic) { mutableListOf() }.add(event.occurredAtMs)
-                    }
-                    if (age <= RecommendationTuning.HOURLY_TTL_MS) {
-                        hourlyTopics[topic] = (hourlyTopics[topic] ?: 0.0) +
-                            decayed(event.type.weight, age, RecommendationTuning.HOURLY_HALF_LIFE_MS)
-                    }
-                    if (age <= RecommendationTuning.LONG_TERM_TTL_MS &&
-                        event.type in LONG_TERM_EVENTS
-                    ) {
-                        longTermTopics[topic] = (longTermTopics[topic] ?: 0.0) +
-                            decayed(event.type.weight, age, RecommendationTuning.LONG_TERM_HALF_LIFE_MS)
-                    }
-                } else if (event.type == RecommendationEventType.SKIP_FAST &&
-                    age <= RecommendationTuning.REALTIME_TTL_MS
-                ) {
-                    skipCounts.getOrPut(topic) { mutableListOf() }.add(event.occurredAtMs)
-                    hourlyTopics[topic] = (hourlyTopics[topic] ?: 0.0) +
-                        decayed(event.type.weight, age, RecommendationTuning.NEGATIVE_HALF_LIFE_MS)
-                }
+        val negative = linkedMapOf<String, Double>()
+        val cooledIds = linkedSetOf<String>()
+        val cooledSongs = linkedSetOf<String>()
+        var evidenceCount = 0
+        for ((_, songEvents) in songs) {
+            val rejection = songEvents.filter { it.type == RecommendationEventType.NOT_INTERESTED }
+                .maxOfOrNull { it.occurredAtMs } ?: Long.MIN_VALUE
+            val positive = songEvents.filter { it.type.weight > 0.0 && it.occurredAtMs > rejection &&
+                (it.sourceId != "library-seed" || rejection == Long.MIN_VALUE) }
+            if (positive.isNotEmpty()) evidenceCount++
+            // One song contributes its strongest evidence once per horizon. Listening milestones,
+            // repeated likes/replays and copies in collections cannot multiply a song's weight.
+            val currentFeedback = positive.filter { it.sourceId != "library-seed" }
+            addSongEvidence(currentFeedback, nowMs, RecommendationTuning.REALTIME_TTL_MS,
+                RecommendationTuning.REALTIME_HALF_LIFE_MS, realtime, realtimeAuthors)
+            addSongEvidence(currentFeedback, nowMs, RecommendationTuning.HOURLY_TTL_MS,
+                RecommendationTuning.HOURLY_HALF_LIFE_MS, hourly, hourlyAuthors)
+            addSongEvidence(positive.filter { it.type in LONG_TERM_EVENTS }, nowMs,
+                RecommendationTuning.LONG_TERM_TTL_MS, RecommendationTuning.LONG_TERM_HALF_LIFE_MS, longTerm)
+            val latestPositive = currentFeedback.filter { it.type in LONG_TERM_EVENTS }
+                .maxOfOrNull { it.occurredAtMs } ?: Long.MIN_VALUE
+            val dislikes = songEvents.filter { it.type.weight < 0.0 && it.occurredAtMs >= latestPositive }
+            if (dislikes.any { nowMs - it.occurredAtMs <= cooldownFor(it.type) }) songEvents.forEach { event ->
+                if (event.trackId.isNotBlank()) cooledIds += event.trackId
+                if (event.bvid.isNotBlank()) cooledIds += event.bvid
+                if (event.songKey.isNotBlank()) cooledSongs += event.songKey
             }
-
-            val author = event.authorKey
-            if (author != null && positive) {
-                if (strong && age <= RecommendationTuning.REALTIME_TTL_MS) {
-                    realtimeAuthors[author] = (realtimeAuthors[author] ?: 0.0) +
-                        decayed(event.type.weight, age, RecommendationTuning.REALTIME_HALF_LIFE_MS)
-                }
-                if (age <= RecommendationTuning.HOURLY_TTL_MS) {
-                    hourlyAuthors[author] = (hourlyAuthors[author] ?: 0.0) +
-                        decayed(event.type.weight, age, RecommendationTuning.HOURLY_HALF_LIFE_MS)
+            // A skip means "not now". Rejections last longer, but neither bans a genre or uploader.
+            // Several distinct rejected songs reduce a topic's score gradually.
+            val dislike = dislikes.maxByOrNull { negativeStrength(it, nowMs) }
+            if (dislike != null) {
+                val strength = negativeStrength(dislike, nowMs)
+                if (strength <= 0.0) continue
+                musicTopics(dislike.topicKeys).forEach { topic ->
+                    negative[topic] = ((negative[topic] ?: 0.0) + strength).coerceAtMost(0.8)
                 }
             }
         }
-
-        // 升级规则：10 分钟内 2 次同主题强正反馈提高实时分，30 分钟内 3 次提高小时分。
-        for ((topic, times) in strongPositive) {
-            val in10 = times.count { nowMs - it <= RecommendationTuning.REALTIME_STRONG_TTL_MS }
-            val in30 = times.count { nowMs - it <= RecommendationTuning.REALTIME_TTL_MS }
-            if (in10 >= 2) {
-                realtimeTopics[topic] = (realtimeTopics[topic] ?: 0.0) * 1.5
-            }
-            if (in30 >= 3) {
-                hourlyTopics[topic] = (hourlyTopics[topic] ?: 0.0) * 1.5
-            }
+        val rt = boundedDistribution(realtime)
+        val hour = boundedDistribution(hourly)
+        val long = boundedDistribution(longTerm)
+        val selected = preferredTopics.intersect(MusicDiscovery.availableTopics.keys)
+        val blended = linkedMapOf<String, Double>()
+        fun mix(values: Map<String, Double>, weight: Double) = values.forEach { (topic, value) ->
+            blended[topic] = (blended[topic] ?: 0.0) + value * weight
         }
-
-        val muted = linkedMapOf<String, Long>()
-        for ((topic, times) in skipCounts) {
-            if (topic in RecommendationTuning.BROAD_TOPICS) continue
-            val recent = times.count { nowMs - it <= RecommendationTuning.TOPIC_COOLDOWN_MS }
-            if (recent >= 2) {
-                muted[topic] = times.max() + RecommendationTuning.TOPIC_COOLDOWN_MS
-            }
-        }
-        for (event in events) {
-            if (event.type != RecommendationEventType.NOT_INTERESTED) continue
-            val age = nowMs - event.occurredAtMs
-            if (age < 0L || age > RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS) continue
-            val until = event.occurredAtMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
-            event.topicKeys.forEach { topic ->
-                if (topic.isBlank() || topic == "unknown") return@forEach
-                if (topic.startsWith("upid:")) {
-                    muted[topic] = maxOf(muted[topic] ?: 0L, until)
-                    return@forEach
-                }
-                if (topic in RecommendationTuning.BROAD_TOPICS) return@forEach
-                muted[topic] = maxOf(muted[topic] ?: 0L, until)
-            }
-            event.authorKey?.let {
-                muted["author:$it"] = maxOf(muted["author:$it"] ?: 0L, until)
-            }
-        }
-
+        mix(long, 0.50)
+        mix(hour, 0.15)
+        mix(rt, 0.35)
+        // Explicit choices anchor the pool across sessions and survive occasional skips.
+        mix(selected.associateWith { 1.0 / selected.size.coerceAtLeast(1) }, 1.5)
         return InterestState(
-            realtimeTopics = realtimeTopics,
-            hourlyTopics = hourlyTopics,
-            longTermTopics = longTermTopics,
-            mutedTopics = muted,
-            realtimeAuthors = realtimeAuthors,
-            hourlyAuthors = hourlyAuthors,
+            realtimeTopics = rt, hourlyTopics = hour, longTermTopics = long,
+            realtimeAuthors = boundedDistribution(realtimeAuthors), hourlyAuthors = boundedDistribution(hourlyAuthors),
+            interestTopics = normalized(blended), negativeTopics = negative,
+            preferredTopics = selected, cooledTrackIds = cooledIds, cooledSongKeys = cooledSongs,
+            evidenceSongCount = evidenceCount,
         )
     }
 
     fun scoreCandidate(
-        track: Track,
-        profile: ContentProfile?,
-        state: InterestState,
-        source: String,
-        context: FeedContext,
+        track: Track, profile: ContentProfile?, state: InterestState, source: String,
+        context: FeedContext, seedTopicKeys: Set<String> = emptySet(),
     ): ScoredTrack {
         val p = profile ?: ContentProfileParser.profileFromTrack(track, context.nowMs)
         val topics = p.topicKeys.filter { it != "unknown" &&
-            (!context.musicOnly || it !in RecommendationTuning.BROAD_TOPICS) }
+            (!context.musicOnly || it !in RecommendationTuning.BROAD_TOPICS) }.toSet()
+        val musicalTopics = musicTopics(topics)
+        val weights = state.interestTopics.ifEmpty {
+            normalized((state.realtimeTopics.keys + state.hourlyTopics.keys + state.longTermTopics.keys)
+                .associateWith { (state.realtimeTopics[it] ?: 0.0) * 0.35 +
+                    (state.hourlyTopics[it] ?: 0.0) * 0.15 + (state.longTermTopics[it] ?: 0.0) * 0.50 })
+        }
+        val interest = weights.filterValues { it >= 0.04 }.keys + state.preferredTopics
+        val knownTaste = musicTopics(interest).isNotEmpty()
+        val genreConflict = conflicts(musicalTopics, interest, MusicDiscovery.genreTopics)
+        val languageConflict = conflicts(musicalTopics, interest, MusicDiscovery.languageTopics)
+        val directMatch = musicalTopics.any { it in interest } && !genreConflict && !languageConflict
+        val seedMatch = !directMatch && !genreConflict && !languageConflict &&
+            musicalTopics.intersect(MusicDiscovery.genreTopics).isEmpty() &&
+            musicTopics(seedTopicKeys).any { it in interest }
+        val inPool = !knownTaste || directMatch || seedMatch
+        val adjacent = knownTaste && !inPool && !languageConflict &&
+            musicalTopics.any { it in MusicDiscovery.adjacentTopics(interest) } &&
+            musicalTopics.none { (state.negativeTopics[it] ?: 0.0) >= 0.3 }
+        val evidenceTopics = if (seedMatch) musicalTopics + musicTopics(seedTopicKeys) else topics
+        val confidence = if (seedMatch) 0.45 else 1.0
         val author = p.authorKey
-
-        val realtimeAffinity = topics.sumOf { state.realtimeTopics[it] ?: 0.0 } +
-            (author?.let { (state.realtimeAuthors[it] ?: 0.0) * 0.7 } ?: 0.0)
-        val hourlyAffinity = topics.sumOf { state.hourlyTopics[it] ?: 0.0 } +
-            (author?.let { (state.hourlyAuthors[it] ?: 0.0) * 0.6 } ?: 0.0)
-        val longTermAffinity = topics.sumOf { state.longTermTopics[it] ?: 0.0 }
-
+        val realtimeAffinity = evidenceTopics.sumOf { state.realtimeTopics[it] ?: 0.0 } * confidence +
+            (author?.let { (state.realtimeAuthors[it] ?: 0.0) * 0.10 } ?: 0.0)
+        val hourlyAffinity = evidenceTopics.sumOf { state.hourlyTopics[it] ?: 0.0 } * confidence +
+            (author?.let { (state.hourlyAuthors[it] ?: 0.0) * 0.08 } ?: 0.0)
+        val longTermAffinity = evidenceTopics.sumOf { state.longTermTopics[it] ?: 0.0 } * confidence
+        val poolAffinity = evidenceTopics.sumOf { weights[it] ?: 0.0 } * confidence
         val sourceQuality = when (source) {
             "realtime-related", "related-like" -> 1.0
-            "homepage" -> 0.75
-            "daily" -> 0.7
-            "history" -> 0.7
-            "search" -> 0.65
-            "related" -> 0.5
-            "liked", "local" -> 0.6
-            "popular", "explore" -> 0.55
-            else -> 0.4
+            "search", "interest-search" -> 0.85
+            "liked", "local", "history" -> 0.8
+            "daily", "homepage" -> 0.6
+            else -> 0.5
         }
-
-        val fresh = track.id !in context.sessionSeenIds && track.id !in context.queueIds
-        val freshness = if (fresh) 1.0 else 0.0
-        val interestTopics = (state.realtimeTopics.keys +
-            state.hourlyTopics.keys +
-            state.longTermTopics.keys).filter {
-                !context.musicOnly || it !in RecommendationTuning.BROAD_TOPICS
-            }.toSet()
-        val matchesInterest = interestTopics.isEmpty() || topics.any { it in interestTopics }
-        val novelty = when {
-            !matchesInterest && interestTopics.isNotEmpty() -> 0.0
-            state.longTermTopics.isNotEmpty() &&
-                topics.none { state.longTermTopics.containsKey(it) } -> 0.8
-            state.longTermTopics.isEmpty() && (source == "popular" || source == "explore") -> 0.5
-            else -> 0.0
-        }
-        val mismatch = when {
-            interestTopics.isEmpty() || matchesInterest -> 0.0
-            source == "related-like" || source == "realtime-related" || source == "related" -> 0.0
-            source == "liked" || source == "local" || source == "history" -> 0.0
-            else -> 1.0
-        }
-
-        val negativePenalty = topics.count { topic ->
-            topic in context.mutedTopics || isMutedTopic(state, topic, context.nowMs)
-        }.toDouble() +
+        val songKey = MusicDiscovery.songKey(track)
+        val cooled = track.id in state.cooledTrackIds ||
+            (track.bvid.isNotBlank() && track.bvid in state.cooledTrackIds) ||
+            (songKey.isNotBlank() && songKey in state.cooledSongKeys)
+        val freshness = if (track.id !in context.sessionSeenIds && track.id !in context.queueIds) 1.0 else 0.0
+        val negativePenalty = topics.sumOf { state.negativeTopics[it] ?: 0.0 } +
+            topics.count { it in context.mutedTopics || (state.mutedTopics[it] ?: 0L) > context.nowMs } +
             if (author != null && (author in context.mutedAuthors ||
-                    isMutedAuthor(state, author, context.nowMs))
-            ) {
-                1.5
-            } else {
-                0.0
-            }
-
-        val fatiguePenalty = context.recentQueue.count { q ->
-            val qt = topicsOf(q)
-            topics.any { it in qt }
-        } * 0.5 +
-            context.recentQueue.count { q -> q.artist.trim().lowercase() == author } * 0.8
-
+                    (state.mutedTopics["author:$author"] ?: 0L) > context.nowMs)) 1.5 else 0.0
+        // Hearing several folk songs is not evidence of being tired of folk. Genre continuity is
+        // the point of an interest pool; fatigue applies to recordings and repeated uploaders.
+        val fatiguePenalty = context.recentQueue.takeLast(5).count {
+            author != null && it.artist.trim().lowercase() == author
+        } * 0.15
         val repeatPenalty = when {
             track.id in context.queueIds || track.id in context.sessionSeenIds -> 2.0
-            context.recentQueue.any { titleSimilar(it.title, track.title) } -> 1.0
-            context.recentQueue.any { it.artist.trim().lowercase() == author } -> 0.4
+            songKey.isNotBlank() && songKey in context.recentSongKeys -> 2.0
+            context.recentQueue.any { songKey.isNotBlank() && MusicDiscovery.songKey(it) == songKey } -> 1.5
             else -> 0.0
         }
-
-        val score = RecommendationTuning.W_REALTIME * realtimeAffinity +
-            RecommendationTuning.W_HOURLY * hourlyAffinity +
-            RecommendationTuning.W_LONG_TERM * longTermAffinity +
-            RecommendationTuning.W_SOURCE_QUALITY * sourceQuality +
-            RecommendationTuning.W_FRESHNESS * freshness +
-            RecommendationTuning.W_NOVELTY * novelty +
-            RecommendationTuning.W_NEGATIVE * negativePenalty +
-            RecommendationTuning.W_FATIGUE * fatiguePenalty +
-            RecommendationTuning.W_REPEAT * repeatPenalty +
-            RecommendationTuning.W_MISMATCH * mismatch
-
-        val reason = buildString {
-            append("src=").append(source)
-            append(",rt=").append(format(realtimeAffinity))
-            append(",h=").append(format(hourlyAffinity))
-            append(",lt=").append(format(longTermAffinity))
-            if (negativePenalty > 0.0) append(",neg=").append(format(negativePenalty))
-            if (fatiguePenalty > 0.0) append(",fatigue=").append(format(fatiguePenalty))
-            if (repeatPenalty > 0.0) append(",repeat=").append(format(repeatPenalty))
-            if (mismatch > 0.0) append(",mis=").append(format(mismatch))
+        val mismatch = if (knownTaste && !inPool) if (adjacent) 0.4 else 1.0 else 0.0
+        val score = 4.0 * poolAffinity + RecommendationTuning.W_REALTIME * realtimeAffinity +
+            RecommendationTuning.W_HOURLY * hourlyAffinity + RecommendationTuning.W_LONG_TERM * longTermAffinity +
+            sourceQuality + RecommendationTuning.W_FRESHNESS * freshness +
+            RecommendationTuning.W_NEGATIVE * negativePenalty + RecommendationTuning.W_FATIGUE * fatiguePenalty +
+            RecommendationTuning.W_REPEAT * repeatPenalty + RecommendationTuning.W_MISMATCH * mismatch
+        val labels = evidenceTopics.filter { it in interest }.mapNotNull { MusicDiscovery.availableTopics[it] }.take(2)
+        val reason = when {
+            cooled -> "最近已跳过这首歌"
+            seedMatch -> "从你喜欢的歌曲继续发现"
+            directMatch -> "符合你的${labels.joinToString("、")}口味"
+            adjacent -> "试一点相近曲风"
+            !knownTaste -> "听一听，找到你的口味"
+            else -> "与你的口味关联较弱"
         }
-
         return ScoredTrack(
-            track = track,
-            score = score,
-            source = source,
-            reason = reason,
-            explore = source == "popular" || source == "explore",
-            realtime = source == "realtime-related",
-            dailyBaseline = source == "daily",
-            topicKeys = topics.toSet(),
-            authorKey = author,
+            track = track, score = score, source = source, reason = reason,
+            explore = adjacent, realtime = source == "realtime-related", dailyBaseline = source == "daily",
+            topicKeys = evidenceTopics, authorKey = author, inInterestPool = inPool,
+            adjacentInterest = adjacent, cooledDown = cooled,
         )
     }
 
-    private fun isMutedTopic(state: InterestState, topic: String, nowMs: Long): Boolean =
-        (state.mutedTopics[topic] ?: 0L) > nowMs
-
-    private fun isMutedAuthor(state: InterestState, author: String, nowMs: Long): Boolean =
-        (state.mutedTopics["author:$author"] ?: 0L) > nowMs
-
-    private fun decayed(base: Double, ageMs: Long, halfLifeMs: Long): Double {
-        if (halfLifeMs <= 0L) return 0.0
-        return base * exp(-ageMs.toDouble() / halfLifeMs)
+    private fun addSongEvidence(
+        events: List<RecommendationEvent>, nowMs: Long, ttl: Long, halfLife: Long,
+        topics: MutableMap<String, Double>, authors: MutableMap<String, Double>? = null,
+    ) {
+        val within = events.filter { nowMs - it.occurredAtMs <= ttl }
+        val strongest = within.maxByOrNull { decayed(it.type.weight, nowMs - it.occurredAtMs, halfLife) } ?: return
+        val weight = decayed(strongest.type.weight, nowMs - strongest.occurredAtMs, halfLife)
+        val keys = musicTopics(within.flatMap { it.topicKeys }.toSet())
+        keys.forEach { topic -> topics[topic] = (topics[topic] ?: 0.0) + weight / keys.size.coerceAtLeast(1) }
+        strongest.authorKey?.takeIf { it.isNotBlank() }?.let { author ->
+            if (authors != null) authors[author] = (authors[author] ?: 0.0) + weight
+        }
     }
 
-    private fun topicsOf(track: Track): Set<String> =
-        ContentProfileParser.profileFromTrack(track).topicKeys.filter { it != "unknown" }.toSet()
-
-    private fun titleSimilar(a: String, b: String): Boolean {
-        val na = normalizeTitle(a)
-        val nb = normalizeTitle(b)
-        if (na.isEmpty() || nb.isEmpty()) return false
-        if (na.length >= 4 && nb.contains(na)) return true
-        if (nb.length >= 4 && na.contains(nb)) return true
-        return false
+    private fun conflicts(candidate: Set<String>, interest: Set<String>, dimension: Set<String>): Boolean {
+        val candidateValues = candidate.intersect(dimension)
+        val preferredValues = interest.intersect(dimension)
+        return candidateValues.isNotEmpty() && preferredValues.isNotEmpty() && candidateValues.intersect(preferredValues).isEmpty()
     }
-
-    private fun normalizeTitle(title: String): String =
-        title.lowercase()
-            .replace(Regex("【.*?】|\\[.*?]|\\(.*?\\)|（.*?）"), " ")
-            .replace(Regex("[\\s|｜/\\\\·•~～!！?？.。,，、:：;；\"'“”‘’]+"), " ")
-            .trim()
-
-    private fun format(value: Double): String =
-        if (value == value.toLong().toDouble()) value.toLong().toString() else String.format("%.2f", value)
-
+    private fun musicTopics(topics: Set<String>): Set<String> = topics.intersect(MusicDiscovery.availableTopics.keys)
+    private fun cooldownFor(type: RecommendationEventType): Long = when (type) {
+        RecommendationEventType.NOT_INTERESTED -> RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
+        RecommendationEventType.SKIP_FAST -> RecommendationTuning.FAST_SKIP_COOLDOWN_MS
+        else -> RecommendationTuning.SKIP_COOLDOWN_MS
+    }
+    private fun negativeStrength(event: RecommendationEvent, nowMs: Long): Double {
+        val explicit = event.type == RecommendationEventType.NOT_INTERESTED
+        val ttl = if (explicit) RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS else RecommendationTuning.HOURLY_TTL_MS
+        val age = nowMs - event.occurredAtMs
+        if (age !in 0..ttl) return 0.0
+        val halfLife = if (explicit) 3 * RecommendationTuning.HOURLY_TTL_MS else RecommendationTuning.NEGATIVE_HALF_LIFE_MS
+        return decayed(-event.type.weight * 0.16, age, halfLife)
+    }
+    private fun boundedDistribution(values: Map<String, Double>): Map<String, Double> {
+        val positive = values.filterValues { it.isFinite() && it > 0.0 }
+        val total = positive.values.sum().coerceAtLeast(1.0)
+        return positive.mapValues { it.value / total }
+    }
+    private fun normalized(values: Map<String, Double>): Map<String, Double> {
+        val positive = values.filterValues { it.isFinite() && it > 0.0 }
+        val sum = positive.values.sum()
+        return if (sum > 0.0) positive.mapValues { it.value / sum } else emptyMap()
+    }
+    private fun decayed(base: Double, ageMs: Long, halfLifeMs: Long): Double =
+        if (halfLifeMs <= 0L) 0.0 else base * exp(-ln(2.0) * ageMs.toDouble() / halfLifeMs)
     companion object {
         private val LONG_TERM_EVENTS = setOf(
-            RecommendationEventType.LIKE,
-            RecommendationEventType.COLLECT_LOCAL,
-            RecommendationEventType.COLLECT_BILIBILI,
-            RecommendationEventType.WATCH_90,
-            RecommendationEventType.REPLAY,
+            RecommendationEventType.LIKE, RecommendationEventType.COLLECT_LOCAL,
+            RecommendationEventType.COLLECT_BILIBILI, RecommendationEventType.WATCH_90, RecommendationEventType.REPLAY,
         )
     }
 }

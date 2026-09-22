@@ -2,6 +2,28 @@ package com.madus.mobile.domain
 
 /** 音乐发现策略：曲风召回、跨会话避重，不依赖 UP 主等同于歌手。 */
 object MusicDiscovery {
+    val availableTopics: Map<String, String> = linkedMapOf(
+        "rock" to "摇滚", "folk" to "民谣", "rnb" to "R&B", "jazz" to "爵士",
+        "pop" to "流行", "rap" to "说唱", "gufeng" to "国风", "dj" to "电子",
+        "instrumental" to "纯音乐", "jp-song" to "日语", "en-song" to "欧美",
+        "kpop" to "韩语", "cantonese" to "粤语", "mandarin" to "华语",
+        "healing" to "治愈", "sleep" to "助眠", "anime-song" to "动漫歌曲",
+        "vocaloid" to "虚拟歌手", "cover" to "翻唱", "live" to "现场",
+    )
+    val genreTopics: Set<String> = setOf("rock", "folk", "rnb", "jazz", "pop", "rap", "gufeng", "dj", "instrumental")
+    val languageTopics: Set<String> = setOf("jp-song", "en-song", "kpop", "cantonese", "mandarin")
+    private val neighbors = mapOf(
+        "rock" to setOf("pop", "folk"), "folk" to setOf("pop", "healing"),
+        "rnb" to setOf("jazz", "pop", "rap"), "jazz" to setOf("rnb", "instrumental"),
+        "pop" to setOf("rnb", "folk"), "rap" to setOf("rnb", "dj"),
+        "gufeng" to setOf("folk", "instrumental"), "dj" to setOf("pop", "rap"),
+        "instrumental" to setOf("healing", "jazz", "sleep"),
+        "healing" to setOf("folk", "instrumental", "sleep"), "sleep" to setOf("healing", "instrumental"),
+        "anime-song" to setOf("jp-song", "vocaloid"), "vocaloid" to setOf("anime-song", "jp-song"),
+    )
+
+    fun adjacentTopics(topics: Set<String>): Set<String> = topics.flatMap { neighbors[it].orEmpty() }.toSet() - topics
+
     private val queries = linkedMapOf(
         "rock" to "摇滚 单曲", "folk" to "民谣 单曲", "rnb" to "R&B 歌曲",
         "jazz" to "爵士 音乐", "pop" to "流行 单曲", "rap" to "说唱 单曲",
@@ -9,26 +31,42 @@ object MusicDiscovery {
         "jp-song" to "日语 歌曲", "en-song" to "欧美 歌曲", "kpop" to "韩语 歌曲",
         "cantonese" to "粤语 歌曲", "mandarin" to "华语 单曲", "healing" to "治愈 音乐",
         "anime-song" to "动漫 主题曲", "vocaloid" to "VOCALOID 原创曲",
-        "cover" to "翻唱 歌曲", "live" to "音乐 现场",
+        "cover" to "翻唱 歌曲", "live" to "音乐 现场", "sleep" to "助眠 纯音乐",
     )
+
+    /** Search intent is weak provenance, just like a positive seed, never a replacement for tags. */
+    fun queryTopicKeys(query: String): Set<String> = queries.filterValues { it == query }.keys.ifEmpty {
+        availableTopics.filterValues { label -> query.startsWith("$label ") }.keys
+    }
 
     fun searchQueries(state: InterestState, seeds: List<Track>, round: Int, nowMs: Long): List<String> {
         val weights = linkedMapOf<String, Double>()
         queries.keys.forEach { topic ->
-            weights[topic] = (state.realtimeTopics[topic] ?: 0.0) * 2.8 +
-                (state.hourlyTopics[topic] ?: 0.0) * 2.0 + (state.longTermTopics[topic] ?: 0.0)
+            weights[topic] = state.interestTopics[topic] ?: ((state.realtimeTopics[topic] ?: 0.0) * 2.8 +
+                (state.hourlyTopics[topic] ?: 0.0) * 2.0 + (state.longTermTopics[topic] ?: 0.0))
         }
-        seeds.distinctBy { it.id }.filter { TrackFilters.isLikelyMusic(it) }.forEach { track ->
+        seeds.distinctBy { songKey(it).ifBlank { it.id } }.filter { TrackFilters.isLikelyMusic(it) }.forEach { track ->
             ContentProfileParser.profileFromTrack(track).topicKeys.forEach { topic ->
-                if (topic in queries) weights[topic] = (weights[topic] ?: 0.0) + 0.35
+                // Seeds help bootstrap an empty profile; they must not overwhelm a learned taste.
+                if (topic in queries && state.interestTopics.isEmpty()) weights[topic] = (weights[topic] ?: 0.0) + 0.05
             }
         }
         val available = queries.keys.filter { (state.mutedTopics[it] ?: 0L) <= nowMs }
         val preferred = available.filter { (weights[it] ?: 0.0) > 0.0 }
             .sortedByDescending { weights[it] }.take(8)
-        val rotated = rotate(preferred, round).take(3)
-        val explore = rotate(available.filterNot { it in preferred }, round).take(if (preferred.isEmpty()) 4 else 1)
-        return (rotated + explore).mapNotNull { queries[it] }
+        if (preferred.isEmpty()) return rotate(listOf("pop", "folk", "rnb", "instrumental", "rock", "gufeng"), round)
+            .take(4).mapNotNull { queries[it] }
+        // Keep the strongest interest on every page. Rotate only secondary interests and query wording.
+        val core = preferred.take(2) + rotate(preferred.drop(2), round).take(1)
+        val result = core.mapNotNull { queries[it] }.toMutableList()
+        if (result.size < 3) {
+            val label = availableTopics.getValue(preferred.first())
+            result += "$label ${listOf("原创 歌曲", "歌曲 高音质", "单曲 歌词")[Math.floorMod(round, 3)]}"
+        }
+        val adjacent = rotate(adjacentTopics(preferred.toSet()).filter { it in available }, round)
+            .firstOrNull { (state.negativeTopics[it] ?: 0.0) < 0.3 }
+        if (adjacent != null) queries[adjacent]?.let { result += it }
+        return result.distinct()
     }
 
     private fun <T> rotate(items: List<T>, round: Int): List<T> {
@@ -41,7 +79,8 @@ object MusicDiscovery {
         events.filter {
             nowMs - it.occurredAtMs in 0..RecommendationTuning.HEARD_COOLDOWN_MS &&
                 it.type in setOf(RecommendationEventType.PLAY_START, RecommendationEventType.WATCH_50,
-                    RecommendationEventType.WATCH_90, RecommendationEventType.REPLAY, RecommendationEventType.SKIP_FAST)
+                    RecommendationEventType.WATCH_90, RecommendationEventType.REPLAY, RecommendationEventType.SKIP_FAST,
+                    RecommendationEventType.SKIP, RecommendationEventType.WATCH_30)
         }
 
     /** 有书名号时按歌名避重；否则只去掉明确的版本包装，保留歌名中的括号。 */

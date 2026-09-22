@@ -1,197 +1,164 @@
-﻿package com.madus.mobile.domain
+package com.madus.mobile.domain
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
 
 class RecommendationEngineTest {
-
+    private val now = 1_800_000_000_000L
     private val engine = RecommendationEngine()
+    private val context = FeedContext(nowMs = now, musicOnly = true)
+    private fun event(id: String, type: RecommendationEventType = RecommendationEventType.LIKE,
+        topic: String = "folk", age: Long = 0, songKey: String = id) = RecommendationEvent(
+        id, id, type, now - age, "recommend", setOf("music", topic), "same-uploader", songKey)
+    private fun song(id: String, vararg tags: String) = Track(id, "单曲《$id》", "same-uploader",
+        durationMs = 180_000, categoryId = 28, tags = tags.toList())
 
-    @Test
-    fun twoLikesWithinTenMinutesUpgradeRealtimeTopic() {
-        val nowMs = 1_800_000_000_000L
-        val events = listOf(
-            event("like-a-1", RecommendationEventType.LIKE, nowMs, setOf("music"), "up-a"),
-            event("like-a-2", RecommendationEventType.LIKE, nowMs, setOf("music"), "up-b"),
-        )
-
-        val state = engine.buildInterestState(events, nowMs)
-        val single = engine.buildInterestState(events.take(1), nowMs)
-
-        assertEquals(1.0, single.realtimeTopics.getValue("music"), 1e-9)
-        assertEquals(3.0, state.realtimeTopics.getValue("music"), 1e-9)
-        assertEquals(
-            1.5,
-            state.realtimeTopics.getValue("music") / (2.0 * single.realtimeTopics.getValue("music")),
-            1e-9,
-        )
+    @Test fun playbackStartNeverTeachesAnUnchosenGenre() {
+        val likes = listOf(event("liked"))
+        val impressions = (1..500).map { event("exposure$it", RecommendationEventType.PLAY_START, "rap") }
+        assertEquals(engine.buildInterestState(likes, now).interestTopics,
+            engine.buildInterestState(likes + impressions, now).interestTopics)
+        assertTrue(engine.buildInterestState(impressions, now).interestTopics.isEmpty())
     }
 
-    @Test
-    fun twoFastSkipsCreateMutedTopicCooldown() {
-        val nowMs = 1_800_000_000_000L
-        val events = listOf(
-            event("skip-1", RecommendationEventType.SKIP_FAST, nowMs - 60_000L, setOf("music", "rock"), null),
-            event("skip-2", RecommendationEventType.SKIP_FAST, nowMs, setOf("music", "rock"), null),
-        )
-
-        val state = engine.buildInterestState(events, nowMs)
-
-        assertEquals(
-            nowMs + RecommendationTuning.TOPIC_COOLDOWN_MS,
-            state.mutedTopics.getValue("rock"),
-        )
-        assertTrue(state.mutedTopics.getValue("rock") > nowMs)
-        assertTrue("跳过两首不能封掉所有音乐", "music" !in state.mutedTopics)
-
-        val singleSkip = engine.buildInterestState(events.take(1), nowMs)
-        assertTrue(singleSkip.mutedTopics.isEmpty())
+    @Test fun sameSongRepeatedAndCollectedDoesNotMultiplyItsInfluence() {
+        val first = event("song-a", RecommendationEventType.COLLECT_BILIBILI)
+        val baseline = listOf(first, event("song-b", topic = "rock"))
+        val repeats = (1..100).map { first.copy(trackId = "copy$it", bvid = "bv$it") }
+        val learned = engine.buildInterestState(baseline + repeats, now)
+        assertEquals(engine.buildInterestState(baseline, now).interestTopics, learned.interestTopics)
+        assertEquals(2, learned.evidenceSongCount)
+        assertEquals(1.0, learned.interestTopics.values.sum(), 1e-9)
     }
 
-    @Test
-    fun notInterestedMutesAuthorButNotBroadTopic() {
-        val nowMs = 1_800_000_000_000L
-        val events = listOf(
-            event(
-                "nope-1",
-                RecommendationEventType.NOT_INTERESTED,
-                nowMs,
-                setOf("music", "upid:123"),
-                "up-x",
-            ),
-        )
-        val state = engine.buildInterestState(events, nowMs)
-        val until = nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
-        assertTrue("整区 music 不该被一首不喜欢封掉", "music" !in state.mutedTopics)
-        assertEquals(until, state.mutedTopics.getValue("author:up-x"))
-        assertEquals(until, state.mutedTopics.getValue("upid:123"))
+    @Test fun listeningMilestonesUseStrongestEvidenceOnce() {
+        val milestones = listOf(RecommendationEventType.WATCH_30, RecommendationEventType.WATCH_50,
+            RecommendationEventType.WATCH_90).map { event("song-a", it) }
+        val other = event("song-b", topic = "rock")
+        val all = engine.buildInterestState(milestones + other, now)
+        val finalOnly = engine.buildInterestState(listOf(milestones.last(), other), now)
+        assertEquals(finalOnly.interestTopics, all.interestTopics)
+        assertTrue(all.interestTopics.getValue("rock") > all.interestTopics.getValue("folk"))
     }
 
-    @Test
-    fun notInterestedMutesFineTopicAndTitleToken() {
-        val nowMs = 1_800_000_000_000L
-        val events = listOf(
-            event(
-                "nope-2",
-                RecommendationEventType.NOT_INTERESTED,
-                nowMs,
-                setOf("cover", "kw:告白气球"),
-                "up-y",
-            ),
-        )
-        val state = engine.buildInterestState(events, nowMs)
-        val until = nowMs + RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
-        assertEquals(until, state.mutedTopics.getValue("cover"))
-        assertEquals(until, state.mutedTopics.getValue("kw:告白气球"))
+    @Test fun engagedListeningUpdatesNowButShortListeningDoesNotBecomeLongTermTaste() {
+        val thirtySeconds = engine.buildInterestState(listOf(event("a", RecommendationEventType.WATCH_30)), now)
+        val like = engine.buildInterestState(listOf(event("a")), now)
+        assertTrue(thirtySeconds.realtimeTopics.getValue("folk") > 0)
+        assertTrue(thirtySeconds.longTermTopics.isEmpty())
+        val candidate = song("new", "民谣")
+        assertTrue(engine.scoreCandidate(candidate, null, like, "search", context).score >
+            engine.scoreCandidate(candidate, null, thirtySeconds, "search", context).score)
     }
 
-    @Test
-    fun removingNotInterestedEventClearsMute() {
-        val nowMs = 1_800_000_000_000L
-        val events = listOf(
-            event("nope-1", RecommendationEventType.NOT_INTERESTED, nowMs, setOf("music"), "up-x"),
-        )
-        val muted = engine.buildInterestState(events, nowMs)
-        val cleared = engine.buildInterestState(emptyList(), nowMs)
-        assertTrue(muted.mutedTopics.isNotEmpty())
-        assertTrue(cleared.mutedTopics.isEmpty())
+    @Test fun selectedTasteRemainsAnAnchorEvenWithLargeHistoricalLibrary() {
+        val history = (1..100).map { event("old$it", topic = "rap", age = 5 * RecommendationTuning.HOURLY_TTL_MS) }
+        val state = engine.buildInterestState(history, now, setOf("folk", "not-a-topic"))
+        assertEquals(setOf("folk"), state.preferredTopics)
+        assertTrue(state.interestTopics.getValue("folk") > state.interestTopics.getValue("rap"))
+        assertEquals(1.0, state.interestTopics.values.sum(), 1e-9)
     }
 
-    @Test
-    fun realtimeAffinityHasLargestPositiveWeight() {
-        val nowMs = 1_800_000_000_000L
-        val track = musicTrack()
-        val context = FeedContext(nowMs = nowMs)
-
-        val realtimeScore = engine.scoreCandidate(
-            track,
-            null,
-            InterestState(realtimeTopics = mapOf("music" to 1.0)),
-            "related",
-            context,
-        ).score
-        val hourlyScore = engine.scoreCandidate(
-            track,
-            null,
-            InterestState(hourlyTopics = mapOf("music" to 1.0)),
-            "related",
-            context,
-        ).score
-        val longTermScore = engine.scoreCandidate(
-            track,
-            null,
-            InterestState(longTermTopics = mapOf("music" to 1.0)),
-            "related",
-            context,
-        ).score
-
-        assertTrue("实时亲和权重应大于小时亲和", realtimeScore > hourlyScore)
-        assertTrue("小时亲和权重应大于长期亲和", hourlyScore > longTermScore)
+    @Test fun rejectingOneSongCoolsItsVersionsWithoutBanningGenreOrUploader() {
+        val dislike = event("a", RecommendationEventType.NOT_INTERESTED, songKey = "歌甲")
+        val state = engine.buildInterestState(listOf(dislike), now, setOf("folk"))
+        assertTrue(state.mutedTopics.isEmpty())
+        assertTrue("a" in state.cooledTrackIds)
+        assertTrue("歌甲" in state.cooledSongKeys)
+        val another = engine.scoreCandidate(song("歌乙", "民谣"), null, state, "search", context)
+        val variant = engine.scoreCandidate(song("歌甲", "民谣"), null, state, "search", context)
+        assertTrue(another.inInterestPool)
+        assertFalse(another.cooledDown)
+        assertTrue(variant.cooledDown)
+        assertEquals(listOf("歌乙"), RecommendationReRanker().rerank(listOf(variant, another), context).map { it.id })
     }
 
-    @Test
-    fun mutedTopicAndNegativeFeedbackPenalizeScore() {
-        val nowMs = 1_800_000_000_000L
-        val track = musicTrack()
-        val baseContext = FeedContext(nowMs = nowMs)
-
-        val normal = engine.scoreCandidate(track, null, InterestState(), "homepage", baseContext)
-        val cooling = engine.scoreCandidate(
-            track,
-            null,
-            InterestState(mutedTopics = mapOf("music" to nowMs + 60_000L)),
-            "homepage",
-            baseContext,
-        )
-        val contextMuted = engine.scoreCandidate(
-            track,
-            null,
-            InterestState(),
-            "homepage",
-            FeedContext(nowMs = nowMs, mutedTopics = setOf("music")),
-        )
-
-        assertTrue("冷却主题应明显扣分", cooling.score < normal.score)
-        assertTrue("会话级负反馈主题应明显扣分", contextMuted.score < normal.score)
-        assertEquals(RecommendationTuning.W_NEGATIVE, cooling.score - normal.score, 1e-9)
+    @Test fun repeatedSkipOnSameSongDoesNotBanGenreOrAccumulatePenalty() {
+        val skip = event("a", RecommendationEventType.SKIP_FAST)
+        val once = engine.buildInterestState(listOf(skip), now, setOf("folk"))
+        val repeated = engine.buildInterestState(List(100) { skip }, now, setOf("folk"))
+        assertEquals(once.negativeTopics, repeated.negativeTopics)
+        assertTrue(repeated.mutedTopics.isEmpty())
     }
 
-    @Test
-    fun popularOffInterestScoresBelowRelatedLike() {
-        val nowMs = 1_800_000_000_000L
-        val music = musicTrack()
-        val gaming = Track(
-            id = "game-track",
-            title = "Game Title",
-            artist = "up-game",
-            categoryId = 4,
-        )
-        val context = FeedContext(nowMs = nowMs)
-        val likedMusic = InterestState(hourlyTopics = mapOf("music" to 1.0))
-
-        val related = engine.scoreCandidate(music, null, likedMusic, "related-like", context)
-        val popularOff = engine.scoreCandidate(gaming, null, likedMusic, "popular", context)
-
-        assertTrue("画像外热门不该压过喜欢的 related", related.score > popularOff.score)
+    @Test fun skipIsShortTermWhileExplicitRejectionLastsLonger() {
+        val skipped = event("a", RecommendationEventType.SKIP_FAST, age = 2 * RecommendationTuning.HOURLY_TTL_MS + 1)
+        val rejected = skipped.copy(type = RecommendationEventType.NOT_INTERESTED)
+        val skipState = engine.buildInterestState(listOf(skipped), now)
+        val rejectedState = engine.buildInterestState(listOf(rejected), now)
+        assertTrue(skipState.negativeTopics.isEmpty())
+        assertTrue(skipState.cooledTrackIds.isEmpty())
+        assertTrue(rejectedState.negativeTopics.getValue("folk") > 0)
+        assertTrue("a" in rejectedState.cooledTrackIds)
     }
 
-    private fun musicTrack(): Track =
-        Track(id = "music-track", title = "Music Title", artist = "singer-a", categoryId = 3)
+    @Test fun laterLikeRestoresRejectedSongAndUndoRemovesItsPenalty() {
+        val rejection = event("a", RecommendationEventType.NOT_INTERESTED, age = 1000)
+        val likedLater = event("a")
+        val state = engine.buildInterestState(listOf(rejection, likedLater), now)
+        assertTrue(state.cooledTrackIds.isEmpty())
+        assertTrue(state.negativeTopics.isEmpty())
+        assertTrue(state.interestTopics.getValue("folk") > 0)
+        assertTrue(engine.buildInterestState(emptyList(), now).cooledTrackIds.isEmpty())
+    }
 
-    private fun event(
-        trackId: String,
-        type: RecommendationEventType,
-        occurredAtMs: Long,
-        topicKeys: Set<String>,
-        authorKey: String?,
-    ): RecommendationEvent = RecommendationEvent(
-        trackId = trackId,
-        bvid = trackId,
-        type = type,
-        occurredAtMs = occurredAtMs,
-        sourceId = "recommend",
-        topicKeys = topicKeys,
-        authorKey = authorKey,
-    )
+    @Test fun resamplingAnOldCollectionDoesNotCancelARejectionOrCreateRealtimeFeedback() {
+        val oldRejection = event("a", RecommendationEventType.NOT_INTERESTED,
+            age = 2 * RecommendationTuning.HOURLY_TTL_MS)
+        val collection = event("a").copy(sourceId = "library-seed")
+        val rejected = engine.buildInterestState(listOf(oldRejection, collection), now)
+        assertTrue("a" in rejected.cooledTrackIds)
+        assertTrue(rejected.interestTopics.isEmpty())
+        val libraryOnly = engine.buildInterestState(listOf(collection), now)
+        assertTrue(libraryOnly.realtimeTopics.isEmpty())
+        assertTrue(libraryOnly.hourlyTopics.isEmpty())
+        assertTrue(libraryOnly.longTermTopics.getValue("folk") > 0)
+    }
+
+    @Test fun laterWeakSkipDoesNotShortenAnExplicitRejection() {
+        val rejected = event("a", RecommendationEventType.NOT_INTERESTED,
+            age = 2 * RecommendationTuning.HOURLY_TTL_MS)
+        val laterSkip = event("a", RecommendationEventType.SKIP, age = RecommendationTuning.HOURLY_TTL_MS)
+        val state = engine.buildInterestState(listOf(rejected, laterSkip), now)
+        assertTrue("a" in state.cooledTrackIds)
+        assertTrue(state.negativeTopics.getValue("folk") > 0)
+    }
+
+    @Test fun repeatedSameGenreDoesNotCreateGenreFatigue() {
+        val state = engine.buildInterestState(emptyList(), now, setOf("folk"))
+        val candidate = song("new", "民谣").copy(artist = "new-uploader")
+        val base = engine.scoreCandidate(candidate, null, state, "search", context)
+        val recent = (1..10).map { song("old$it", "民谣") }
+        val continued = engine.scoreCandidate(candidate, null, state, "search", context.copy(recentQueue = recent))
+        assertEquals(base.score, continued.score, 1e-9)
+    }
+
+    @Test fun missingGenreCanInheritPositiveSeedButConflictingMetadataCannot() {
+        val state = engine.buildInterestState(emptyList(), now, setOf("folk", "mandarin"))
+        val unknown = song("unknown")
+        val noSeed = engine.scoreCandidate(unknown, null, state, "related", context)
+        val withSeed = engine.scoreCandidate(unknown, null, state, "related-like", context, setOf("folk"))
+        val conflict = engine.scoreCandidate(song("rap", "说唱", "华语"), null, state,
+            "related-like", context, setOf("folk"))
+        val languageConflict = engine.scoreCandidate(song("english", "民谣", "欧美"), null, state,
+            "related-like", context, setOf("folk", "mandarin"))
+        assertFalse(noSeed.inInterestPool)
+        assertTrue(withSeed.inInterestPool)
+        assertFalse(conflict.inInterestPool)
+        assertFalse(conflict.adjacentInterest)
+        assertFalse(languageConflict.inInterestPool)
+    }
+
+    @Test fun discoveryClassificationDependsOnTasteNotSourceName() {
+        val state = engine.buildInterestState(emptyList(), now, setOf("folk"))
+        val familiarGenre = engine.scoreCandidate(song("folk", "民谣"), null, state, "popular", context)
+        val adjacent = engine.scoreCandidate(song("pop", "流行"), null, state, "search", context)
+        val unrelated = engine.scoreCandidate(song("rap", "说唱"), null, state, "related-like", context)
+        assertTrue(familiarGenre.inInterestPool)
+        assertFalse(familiarGenre.explore)
+        assertTrue(adjacent.adjacentInterest)
+        assertTrue(adjacent.explore)
+        assertFalse(unrelated.inInterestPool)
+        assertFalse(unrelated.adjacentInterest)
+    }
 }

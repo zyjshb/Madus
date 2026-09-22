@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,8 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.ui.RecommendSegment
 import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
+import com.madus.mobile.ui.components.MusicTasteBar
+import com.madus.mobile.ui.components.MusicTasteSheet
 import com.madus.mobile.ui.theme.LiquidType
 
 @Composable
@@ -59,6 +62,7 @@ fun LiquidRecommendScreen(
     onCache: () -> Unit = {},
     onRelatedRadio: () -> Unit = {},
     onStartRadio: () -> Unit = {},
+    onUpdateMusicTaste: (Set<String>) -> Unit = {},
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -72,6 +76,7 @@ fun LiquidRecommendScreen(
     modifier: Modifier = Modifier,
 ) {
     var more by remember { mutableStateOf(false) }
+    var showMusicTaste by rememberSaveable { mutableStateOf(false) }
     val playingThisRadio = playback.current != null && state.sourceId == "recommend"
     val loading = state.isLoading || state.isStartingPlayback
     val needLogin = state.sourceLabel == "请先登录"
@@ -113,6 +118,17 @@ fun LiquidRecommendScreen(
                     contentDescription = "更多",
                 )
             }
+            MusicTasteBar(
+                sourceLabel = state.sourceLabel.ifBlank { "推荐电台" },
+                preferredTopics = state.preferredTopics,
+                tasteReady = state.tasteReady,
+                adapting = state.adapting,
+                recommendationHint = state.recommendationHint,
+                onOpen = { showMusicTaste = true },
+                isRecommendationSource = state.sourceId == "recommend",
+                onNotInterested = onNotInterested.takeIf { playingThisRadio },
+                notInterested = track != null && track.id in state.notInterestedIds,
+            )
             Spacer(Modifier.height(14.dp))
 
             if (showVideo) {
@@ -225,6 +241,16 @@ fun LiquidRecommendScreen(
                 LiquidSheetAction("缓存", enabled = has) { onCache() },
                 LiquidSheetAction("相关电台", enabled = has) { onRelatedRadio() },
             ),
+        )
+    }
+    if (showMusicTaste) {
+        MusicTasteSheet(
+            preferredTopics = state.preferredTopics,
+            onDismiss = { showMusicTaste = false },
+            onSave = { topics ->
+                onUpdateMusicTaste(topics)
+                showMusicTaste = false
+            },
         )
     }
 }

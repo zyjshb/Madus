@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
@@ -61,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +79,8 @@ import com.madus.mobile.ui.RecommendSegment
 import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
 import com.madus.mobile.ui.components.CoverArt
+import com.madus.mobile.ui.components.MusicTasteBar
+import com.madus.mobile.ui.components.MusicTasteSheet
 import com.madus.mobile.ui.components.TrackRow
 import com.madus.mobile.ui.liquid.LocalLiquidChromeBottom
 import com.madus.mobile.ui.theme.appearanceTokens
@@ -111,6 +116,7 @@ fun RecommendScreen(
     onRelatedRadio: () -> Unit = {},
     onStartRadio: () -> Unit = {},
     onRefreshRadio: () -> Unit = {},
+    onUpdateMusicTaste: (Set<String>) -> Unit = {},
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -123,6 +129,7 @@ fun RecommendScreen(
     onOpenNowPlaying: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    var showMusicTaste by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -171,6 +178,7 @@ fun RecommendScreen(
                 onRelatedRadio = onRelatedRadio,
                 onStartRadio = onStartRadio,
                 onRefreshRadio = onRefreshRadio,
+                onOpenMusicTaste = { showMusicTaste = true },
                 onLogin = onLogin,
                 onQualityClick = onQualityClick,
                 onSleepClick = onSleepClick,
@@ -186,6 +194,16 @@ fun RecommendScreen(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+    if (showMusicTaste) {
+        MusicTasteSheet(
+            preferredTopics = state.preferredTopics,
+            onDismiss = { showMusicTaste = false },
+            onSave = { topics ->
+                onUpdateMusicTaste(topics)
+                showMusicTaste = false
+            },
+        )
     }
 }
 
@@ -257,6 +275,7 @@ private fun RadioPanel(
     onRelatedRadio: () -> Unit = {},
     onStartRadio: () -> Unit = {},
     onRefreshRadio: () -> Unit = {},
+    onOpenMusicTaste: () -> Unit = {},
     onLogin: () -> Unit = {},
     onQualityClick: () -> Unit = {},
     onSleepClick: () -> Unit = {},
@@ -278,17 +297,20 @@ private fun RadioPanel(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // 来源小标签
-        Text(
-            text = buildString {
+        MusicTasteBar(
+            sourceLabel = buildString {
                 append(state.sourceLabel.ifBlank { "推荐电台" })
                 if (videoMode) append(" · 视频")
             },
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .align(Alignment.Start)
-                .padding(bottom = 4.dp),
+            preferredTopics = state.preferredTopics,
+            tasteReady = state.tasteReady,
+            adapting = state.adapting,
+            recommendationHint = state.recommendationHint,
+            onOpen = onOpenMusicTaste,
+            isRecommendationSource = state.sourceId == "recommend",
+            onNotInterested = onNotInterested.takeIf { track != null && state.sourceId == "recommend" },
+            notInterested = track != null && track.id in state.notInterestedIds,
+            modifier = Modifier.padding(bottom = 4.dp),
         )
 
         if (com.madus.mobile.BuildConfig.DEBUG && state.debugRows.isNotEmpty()) {
@@ -311,164 +333,171 @@ private fun RadioPanel(
             }
         }
 
-        // 竖滑只挂在封面/信息区：避免抢走底部菜单的左右滑
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .pointerInput(actionsExpanded) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            when {
-                                dragAcc < -56f -> actionsExpanded = true   // 上滑 → 展开
-                                dragAcc > 56f -> actionsExpanded = false  // 下滑 → 收起
-                            }
-                            dragAcc = 0f
-                        },
-                        onVerticalDrag = { _, amount -> dragAcc += amount },
-                    )
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            if (showVideo) {
-                // 电台预览小窗；点「清屏」才进心动模式（无边框全屏）
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 280.dp)
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(appearanceTokens().cornerMd)),
-                ) {
-                    BiliPlayerSurface(modifier = Modifier.fillMaxSize(), fit = false)
-                }
-            } else {
-                CoverArt(
-                    coverUrl = track?.coverUrl,
-                    modifier = Modifier
-                        .fillMaxWidth(if (track != null) 0.62f else 0.48f)
-                        .heightIn(max = 240.dp)
-                        .aspectRatio(1f),
-                    size = 0.dp,
-                )
-            }
-            Spacer(Modifier.height(14.dp))
-            Text(
-                text = track?.title
-                    ?: when {
-                        state.isLoading || state.isStartingPlayback -> "加载中…"
-                        else -> "未在播放"
+        // 主控固定在底部；小屏先允许封面/信息区滚动，避免压没曲名和进度。
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val contentScroll = rememberScrollState()
+            val viewportHeight = maxHeight
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(contentScroll)
+                    .heightIn(min = viewportHeight)
+                    .pointerInput(actionsExpanded, contentScroll.maxValue) {
+                        // 内容放得下时沿用上滑菜单；有溢出时让滚动处理竖向手势。
+                        if (contentScroll.maxValue != 0) return@pointerInput
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                when {
+                                    dragAcc < -56f -> actionsExpanded = true   // 上滑 → 展开
+                                    dragAcc > 56f -> actionsExpanded = false  // 下滑 → 收起
+                                }
+                                dragAcc = 0f
+                            },
+                            onVerticalDrag = { _, amount -> dragAcc += amount },
+                        )
                     },
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = track?.artist
-                    ?: "从首页歌单或搜索点一首开始",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = if (track != null && track.artist.isNotBlank()) {
-                    Modifier.clickable(onClick = onOpenUp)
-                } else {
-                    Modifier
-                },
-            )
-
-            if (track != null) {
-                Spacer(Modifier.height(12.dp))
-                com.madus.mobile.ui.components.SeekBar(
-                    positionMs = playback.positionMs,
-                    durationMs = playback.durationMs,
-                    onSeek = onSeek,
-                    enabled = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                )
-            }
-
-            playback.errorMessage?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-            }
-
-            // 有推荐队列时：轻量「播放」；起播中绝不展示（避免二次闪现还要点第二次）
-            if (track == null &&
-                !state.isLoading &&
-                !state.isStartingPlayback &&
-                state.feed.isNotEmpty()
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                Spacer(Modifier.height(18.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(appearanceTokens().cornerSm))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline,
-                            RoundedCornerShape(appearanceTokens().cornerSm),
-                        )
-                        .clickable(onClick = onStartRadio)
-                        .padding(horizontal = 28.dp, vertical = 12.dp),
-                ) {
-                    Text(
-                        text = "播放 ${state.sourceLabel}",
-                        style = MaterialTheme.typography.titleMedium,
+                if (showVideo) {
+                    // 电台预览小窗；点「清屏」才进心动模式（无边框全屏）
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp)
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(appearanceTokens().cornerMd)),
+                    ) {
+                        BiliPlayerSurface(modifier = Modifier.fillMaxSize(), fit = false)
+                    }
+                } else {
+                    CoverArt(
+                        coverUrl = track?.coverUrl,
+                        modifier = Modifier
+                            .fillMaxWidth(if (track != null) 0.62f else 0.48f)
+                            .heightIn(max = 240.dp)
+                            .aspectRatio(1f),
+                        size = 0.dp,
                     )
                 }
-            }
-            if (track == null && !state.isLoading && !state.isStartingPlayback &&
-                state.feed.isEmpty() &&
-                state.sourceLabel != "请先登录"
-            ) {
-                Spacer(Modifier.height(18.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(appearanceTokens().cornerSm))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline,
-                            RoundedCornerShape(appearanceTokens().cornerSm),
-                        )
-                        .clickable(onClick = onStartRadio)
-                        .padding(horizontal = 28.dp, vertical = 12.dp),
-                ) {
-                    Text(text = "再试一次", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = track?.title
+                        ?: when {
+                            state.isLoading || state.isStartingPlayback -> "加载中…"
+                            else -> "未在播放"
+                        },
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = track?.artist
+                        ?: "从首页歌单或搜索点一首开始",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = if (track != null && track.artist.isNotBlank()) {
+                        Modifier.clickable(onClick = onOpenUp)
+                    } else {
+                        Modifier
+                    },
+                )
+
+                if (track != null) {
+                    Spacer(Modifier.height(12.dp))
+                    com.madus.mobile.ui.components.SeekBar(
+                        positionMs = playback.positionMs,
+                        durationMs = playback.durationMs,
+                        onSeek = onSeek,
+                        enabled = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                    )
                 }
-            }
-            if (track == null && !state.isLoading && state.feed.isEmpty() &&
-                state.sourceLabel == "请先登录"
-            ) {
-                Spacer(Modifier.height(18.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(appearanceTokens().cornerSm))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline,
-                            RoundedCornerShape(appearanceTokens().cornerSm),
-                        )
-                        .clickable(onClick = onLogin)
-                        .padding(horizontal = 28.dp, vertical = 12.dp),
+
+                playback.errorMessage?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
+                // 有推荐队列时：轻量「播放」；起播中绝不展示（避免二次闪现还要点第二次）
+                if (track == null &&
+                    !state.isLoading &&
+                    !state.isStartingPlayback &&
+                    state.feed.isNotEmpty()
                 ) {
-                    Text(text = "登录 B 站听推荐", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(18.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(appearanceTokens().cornerSm))
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline,
+                                RoundedCornerShape(appearanceTokens().cornerSm),
+                            )
+                            .clickable(onClick = onStartRadio)
+                            .padding(horizontal = 28.dp, vertical = 12.dp),
+                    ) {
+                        Text(
+                            text = "播放 ${state.sourceLabel}",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+                if (track == null && !state.isLoading && !state.isStartingPlayback &&
+                    state.feed.isEmpty() &&
+                    state.sourceLabel != "请先登录"
+                ) {
+                    Spacer(Modifier.height(18.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(appearanceTokens().cornerSm))
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline,
+                                RoundedCornerShape(appearanceTokens().cornerSm),
+                            )
+                            .clickable(onClick = onStartRadio)
+                            .padding(horizontal = 28.dp, vertical = 12.dp),
+                    ) {
+                        Text(text = "再试一次", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                if (track == null && !state.isLoading && state.feed.isEmpty() &&
+                    state.sourceLabel == "请先登录"
+                ) {
+                    Spacer(Modifier.height(18.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(appearanceTokens().cornerSm))
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline,
+                                RoundedCornerShape(appearanceTokens().cornerSm),
+                            )
+                            .clickable(onClick = onLogin)
+                            .padding(horizontal = 28.dp, vertical = 12.dp),
+                    ) {
+                        Text(text = "登录 B 站听推荐", style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
         }
 
         // 主控：爱心 · 上一首 · 播放 · 下一首 · 队列（切歌只靠这里）
-        // 「不喜欢」只放上滑菜单，避免主控 6 键挤歪、跟菜单重复
+        // 推荐负反馈在顶部口味栏，主控保留 5 键，避免小屏挤压。
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -539,7 +568,7 @@ private fun RadioPanel(
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = "上滑 · 全屏/收藏/评论…",
+                    text = "更多 · 全屏/收藏/评论…",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

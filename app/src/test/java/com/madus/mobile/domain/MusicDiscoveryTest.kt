@@ -40,6 +40,31 @@ class MusicDiscoveryTest {
         assertEquals(4, MusicDiscovery.searchQueries(InterestState(), emptyList(), 0, now).size)
     }
 
+    @Test fun coreInterestStaysInEveryRoundAndExplorationRemainsAdjacent() {
+        val state = RecommendationEngine().buildInterestState(emptyList(), now, setOf("folk"))
+        for (round in 0..20) {
+            val queries = MusicDiscovery.searchQueries(state, emptyList(), round, now)
+            assertEquals("民谣 单曲", queries.first())
+            assertTrue(queries.all { it.contains("民谣") || it.contains("流行") || it.contains("治愈") })
+            assertTrue(queries.none { it.contains("说唱") || it.contains("电子") })
+        }
+    }
+
+    @Test fun seedLibraryCannotOverrideExplicitPrimaryTaste() {
+        val state = RecommendationEngine().buildInterestState(emptyList(), now, setOf("folk"))
+        val rapSeeds = (1..100).map { song("rap$it", tags = listOf("说唱")) }
+        assertEquals("民谣 单曲", MusicDiscovery.searchQueries(state, rapSeeds, 3, now).first())
+    }
+
+    @Test fun searchProvenanceIsKnownForEveryGeneratedQuery() {
+        for (topic in MusicDiscovery.availableTopics.keys) {
+            val state = RecommendationEngine().buildInterestState(emptyList(), now, setOf(topic))
+            for (round in 0..2) for (query in MusicDiscovery.searchQueries(state, emptyList(), round, now)) {
+                assertTrue("No topic provenance for $query", MusicDiscovery.queryTopicKeys(query).isNotEmpty())
+            }
+        }
+    }
+
     @Test fun heardCooldownSurvivesSessionButExpires() {
         fun event(id: String, age: Long, type: RecommendationEventType) = RecommendationEvent(
             id, id, type, now - age, "search", setOf("music"), null, "song$id")
@@ -86,12 +111,15 @@ class MusicDiscoveryTest {
         assertTrue(folk.score > rock.score)
     }
 
-    @Test fun skipCooldownDoesNotExtendWheneverFeedIsRebuilt() {
+    @Test fun skipSongCooldownExpiresWithoutTurningIntoAGenreBan() {
         val events = (1..2).map { RecommendationEvent("$it", "$it", RecommendationEventType.SKIP_FAST,
             now - 60_000, "recommend", setOf("music", "rock"), null) }
         val engine = RecommendationEngine()
-        assertEquals(engine.buildInterestState(events, now).mutedTopics["rock"],
-            engine.buildInterestState(events, now + 60_000).mutedTopics["rock"])
+        val initial = engine.buildInterestState(events, now)
+        assertTrue(initial.mutedTopics.isEmpty())
+        assertEquals(setOf("1", "2"), initial.cooledTrackIds)
+        assertEquals(initial.cooledTrackIds, engine.buildInterestState(events, now + 60_000).cooledTrackIds)
+        assertTrue(engine.buildInterestState(events, now + RecommendationTuning.FAST_SKIP_COOLDOWN_MS).cooledTrackIds.isEmpty())
     }
 
     @Test fun seekingAndPausingDoNotCountAsListening() {

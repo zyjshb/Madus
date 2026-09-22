@@ -7,6 +7,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.madus.mobile.domain.ContentProfile
 import com.madus.mobile.domain.RecommendationTuning
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -17,6 +19,7 @@ private val Context.contentProfileStore by preferencesDataStore(name = "madus_co
  */
 class ContentProfileStore(private val context: Context) {
     private val keyProfiles = stringPreferencesKey("profiles_v1")
+    private val mutationMutex = Mutex()
 
     suspend fun get(key: String): ContentProfile? = all().firstOrNull { it.key == key }
 
@@ -34,18 +37,19 @@ class ContentProfileStore(private val context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    suspend fun put(profile: ContentProfile) {
+    suspend fun put(profile: ContentProfile) = mutationMutex.withLock {
         val all = all().associateBy { it.key }.toMutableMap()
         all[profile.key] = profile
         val list = all.values.toList().sortedByDescending { it.fetchedAtMs }
         save(list.take(RecommendationTuning.PROFILE_LIMIT))
     }
 
-    suspend fun removeExpired(nowMs: Long = System.currentTimeMillis()) {
-        val keep = all().filter {
+    suspend fun removeExpired(nowMs: Long = System.currentTimeMillis()) = mutationMutex.withLock {
+        val profiles = all()
+        val keep = profiles.filter {
             nowMs - it.fetchedAtMs <= RecommendationTuning.PROFILE_TTL_MS
         }
-        if (keep.size != all().size) save(keep)
+        if (keep.size != profiles.size) save(keep)
     }
 
     private suspend fun save(list: List<ContentProfile>) {

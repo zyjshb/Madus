@@ -612,6 +612,7 @@ fun MadusRoot(
                         state = recommend,
                         playback = playback,
                         onSegment = vm::setRecommendSegment,
+                        onUpdateMusicTaste = vm::updateMusicTaste,
                         onToggle = vm::togglePlay,
                         onNext = vm::next,
                         onPrevious = vm::previous,

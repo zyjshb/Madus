@@ -47,6 +47,25 @@ class RecommendationEventStore(private val context: Context) {
     /** 最新在前。 */
     suspend fun events(): List<RecommendationEvent> = readInternal().asReversed()
 
+    /** 远程标签补齐已有行为，不新增行为，也不会恢复已经撤销的反馈。 */
+    suspend fun enrichProfile(
+        trackId: String,
+        bvid: String,
+        topicKeys: Set<String>,
+        authorKey: String?,
+    ): Boolean = mutationMutex.withLock {
+        val all = readInternal()
+        val enriched = all.map { event ->
+            if (event.trackId == trackId || (bvid.isNotBlank() && event.bvid == bvid)) {
+                event.copy(topicKeys = topicKeys, authorKey = authorKey ?: event.authorKey)
+            } else event
+        }
+        if (enriched == all) false else {
+            save(enriched)
+            true
+        }
+    }
+
     suspend fun realtimeEvents(nowMs: Long = System.currentTimeMillis()): List<RecommendationEvent> =
         readInternal().filter { nowMs - it.occurredAtMs <= RecommendationTuning.REALTIME_TTL_MS }
 

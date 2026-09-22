@@ -29,7 +29,7 @@ object ContentProfileParser {
         "digital" to listOf("数码", "手机", "电脑", "科技", "评测"),
         "comedy" to listOf("搞笑", "喜剧", "段子", "整活"),
         "news" to listOf("新闻", "资讯", "热点"),
-        // 细类：一首不喜欢就可以挡，不会封掉整个音乐区
+        // 音乐细类用于兴趣权重；单曲负反馈只软化曲风，不封整类。
         "cover" to listOf("翻唱", "cover"),
         "vocaloid" to listOf("vocaloid", "vsinger", "洛天依", "初音", "镜音"),
         "live" to listOf("live", "现场", "演唱会"),

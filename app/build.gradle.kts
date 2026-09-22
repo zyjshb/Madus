@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.18.0：音乐发现、曲风学习与跨会话避重
-        versionCode = 317
-        versionName = "1.18.0"
+        // 1.19.0：持久化兴趣池、音乐口味设置与实时反馈推荐
+        versionCode = 318
+        versionName = "1.19.0"
         vectorDrawables.useSupportLibrary = true
     }
 
