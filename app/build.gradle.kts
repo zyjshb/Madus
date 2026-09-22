@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.19.1：同类歌曲辅助反馈与推荐页精简
-        versionCode = 319
-        versionName = "1.19.1"
+        // 1.20.0：平均收听学习、搜索意图与防同类连播
+        versionCode = 320
+        versionName = "1.20.0"
         vectorDrawables.useSupportLibrary = true
     }
 

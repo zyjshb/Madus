@@ -38,7 +38,7 @@ class RecommendationEngineTest {
         val all = engine.buildInterestState(milestones + other, now)
         val finalOnly = engine.buildInterestState(listOf(milestones.last(), other), now)
         assertEquals(finalOnly.interestTopics, all.interestTopics)
-        assertTrue(all.interestTopics.getValue("rock") > all.interestTopics.getValue("folk"))
+        assertTrue("听近整首应比单次点赞提供更强的行为证据", all.interestTopics.getValue("folk") > all.interestTopics.getValue("rock"))
     }
 
     @Test fun engagedListeningUpdatesNowButShortListeningDoesNotBecomeLongTermTaste() {

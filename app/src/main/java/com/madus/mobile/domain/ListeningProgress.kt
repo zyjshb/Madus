@@ -7,8 +7,11 @@ class ListeningProgress {
     private var position = 0L
     private var playing = false
     private var listened = 0L
+    var foregroundMs: Long = 0L
+        private set
+    private var foreground = false
 
-    fun sample(id: String?, positionMs: Long, isPlaying: Boolean, generation: Int = 0): Long {
+    fun sample(id: String?, positionMs: Long, isPlaying: Boolean, generation: Int = 0, isForeground: Boolean = false): Long {
         if (id == null) {
             reset()
             return 0L
@@ -17,12 +20,17 @@ class ListeningProgress {
             trackId = id
             playbackGeneration = generation
             listened = 0L
+            foregroundMs = 0L
         } else if (playing && isPlaying) {
             val delta = positionMs - position
-            if (delta in 1..4_000L) listened += delta
+            if (delta in 1..4_000L) {
+                listened += delta
+                if (foreground && isForeground) foregroundMs += delta
+            }
         }
         position = positionMs
         playing = isPlaying
+        foreground = isForeground
         return listened
     }
 
@@ -33,5 +41,9 @@ class ListeningProgress {
         position = 0L
         playing = false
         listened = 0L
+        foregroundMs = 0L
+        foreground = false
     }
+
+    fun discontinuity() { playing = false }
 }

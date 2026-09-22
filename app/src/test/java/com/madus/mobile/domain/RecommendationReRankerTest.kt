@@ -20,12 +20,12 @@ class RecommendationReRankerTest {
         assertTrue(output.all { it.id.startsWith("core") })
     }
 
-    @Test fun repeatedUploaderIsRelaxedInsideTasteBeforeUnrelatedMusic() {
+    @Test fun adjacentDiscoveryActuallyGetsSlotsAlongsideAnAbundantCorePool() {
         val core = (1..30).map { candidate("core$it", author = "one-uploader") }
         val adjacent = (1..30).map { candidate("adjacent$it", 999.0, false, true) }
         val output = reranker.rerank(core + adjacent, FeedContext(musicOnly = true, limit = 30))
         assertEquals(30, output.size)
-        assertTrue(output.all { it.id.startsWith("core") })
+        assertEquals(7, output.count { it.id.startsWith("adjacent") })
     }
 
     @Test fun uploaderVarietyIsPreservedWhenThereAreChoicesInsideTheSameGenre() {
@@ -43,24 +43,24 @@ class RecommendationReRankerTest {
             .all { it.id.startsWith("strong") })
     }
 
-    @Test fun explorationIsAtMostFifteenPercentOfEveryPrefixAndNeverForced() {
+    @Test fun explorationHasARealBoundedSlotEvenWhenTheCorePoolIsFull() {
         val core = (1..26).map { candidate("core$it") }
         val adjacent = (1..50).map { candidate("adj$it", 999.0, false, true) }
         val output = reranker.rerank(core + adjacent, FeedContext(musicOnly = true, limit = 30))
         assertEquals(30, output.size)
-        for (size in 1..output.size) assertTrue(output.take(size).count { it.id.startsWith("adj") } <= size * 0.15)
-        assertEquals(4, output.count { it.id.startsWith("adj") })
+        for (size in 1..output.size) assertTrue(output.take(size).count { it.id.startsWith("adj") } <= size * 0.25)
+        assertEquals(7, output.count { it.id.startsWith("adj") })
         val plenty = core + (27..40).map { candidate("core$it") }
-        assertTrue(reranker.rerank(plenty + adjacent, FeedContext(musicOnly = true, limit = 30))
-            .none { it.id.startsWith("adj") })
+        assertEquals(7, reranker.rerank(plenty + adjacent, FeedContext(musicOnly = true, limit = 30))
+            .count { it.id.startsWith("adj") })
     }
 
     @Test fun smallInterestPoolCannotBeReplacedWithMostlyExploration() {
         val core = (1..6).map { candidate("core$it") }
         val adjacent = (1..100).map { candidate("adj$it", 999.0, false, true) }
         val output = reranker.rerank(core + adjacent, FeedContext(musicOnly = true, limit = 30))
-        assertEquals(7, output.size)
-        assertEquals(1, output.count { it.id.startsWith("adj") })
+        assertEquals(8, output.size)
+        assertEquals(2, output.count { it.id.startsWith("adj") })
         assertTrue(reranker.rerank(adjacent, FeedContext(musicOnly = true, limit = 30)).isEmpty())
         assertEquals(6, reranker.rerank(core + adjacent,
             FeedContext(musicOnly = true, limit = 30, maxExploreRatio = 0.0)).size)

@@ -25,6 +25,14 @@ class RecommendationEventStore(private val context: Context) {
 
     suspend fun record(event: RecommendationEvent) = mutationMutex.withLock {
         val all = readInternal().toMutableList()
+        if (event.type == RecommendationEventType.LISTEN_SAMPLE && event.listeningSessionId.isNotBlank()) {
+            val prior = all.firstOrNull { it.listeningSessionId == event.listeningSessionId }
+            if (prior != null && prior.listenedMs >= event.listenedMs) return@withLock
+            all.removeAll { it.listeningSessionId == event.listeningSessionId }
+        }
+        if (event.type == RecommendationEventType.SEARCH_INTENT) {
+            all.removeAll { it.type == event.type && it.trackId == event.trackId }
+        }
         all.add(event)
         while (all.size > RecommendationTuning.EVENT_LIMIT) all.removeAt(0)
         save(all)
@@ -109,6 +117,11 @@ class RecommendationEventStore(private val context: Context) {
                     .put("occurredAtMs", event.occurredAtMs)
                     .put("sourceId", event.sourceId)
                     .put("songKey", event.songKey)
+                    .put("session", event.listeningSessionId)
+                    .put("listenedMs", event.listenedMs)
+                    .put("durationMs", event.durationMs)
+                    .put("foregroundMs", event.foregroundMs)
+                    .put("fromSearch", event.fromSearch)
                     .put("topicKeys", topics)
                     .put("authorKey", event.authorKey ?: ""),
             )
@@ -119,7 +132,7 @@ class RecommendationEventStore(private val context: Context) {
     private fun JSONObject.toEvent(): RecommendationEvent {
         val type = runCatching {
             RecommendationEventType.valueOf(optString("type", RecommendationEventType.LIKE.name))
-        }.getOrDefault(RecommendationEventType.LIKE)
+        }.getOrDefault(RecommendationEventType.PLAY_START)
         val topics = linkedSetOf<String>()
         optJSONArray("topicKeys")?.let { arr ->
             for (i in 0 until arr.length()) {
@@ -133,6 +146,11 @@ class RecommendationEventStore(private val context: Context) {
             occurredAtMs = optLong("occurredAtMs", System.currentTimeMillis()),
             sourceId = optString("sourceId", "recommend"),
             songKey = optString("songKey", ""),
+            listeningSessionId = optString("session"),
+            listenedMs = optLong("listenedMs", 0).coerceAtLeast(0),
+            durationMs = optLong("durationMs", 0).coerceAtLeast(0),
+            foregroundMs = optLong("foregroundMs", 0).coerceAtLeast(0),
+            fromSearch = optBoolean("fromSearch", false),
             topicKeys = topics,
             authorKey = optString("authorKey").ifBlank { null },
         )

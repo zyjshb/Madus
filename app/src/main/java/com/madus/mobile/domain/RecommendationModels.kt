@@ -12,6 +12,8 @@ enum class RecommendationEventType(val weight: Double) {
     SKIP_FAST(-0.70),
     SKIP(-0.35),
     NOT_INTERESTED(-1.50),
+    LISTEN_SAMPLE(0.0),
+    SEARCH_INTENT(0.0),
 }
 
 data class RecommendationEvent(
@@ -23,6 +25,11 @@ data class RecommendationEvent(
     val topicKeys: Set<String>,
     val authorKey: String?,
     val songKey: String = "",
+    val listeningSessionId: String = "",
+    val listenedMs: Long = 0,
+    val durationMs: Long = 0,
+    val foregroundMs: Long = 0,
+    val fromSearch: Boolean = false,
 )
 
 data class ContentProfile(
@@ -61,6 +68,8 @@ data class InterestState(
     val cooledSongKeys: Set<String> = emptySet(),
     val evidenceSongCount: Int = 0,
     val styleAdjustments: Map<String, Double> = emptyMap(),
+    val searchTopics: Map<String, Double> = emptyMap(),
+    val confidence: Double = 1.0,
 )
 
 data class ScoredTrack(
@@ -95,7 +104,10 @@ data class FeedContext(
     val sourceId: String = "recommend",
     val realtimeTopicQuota: Map<String, Int> = emptyMap(),
     /** Exploration is an upper bound, never a requirement to inject unrelated music. */
-    val maxExploreRatio: Double = 0.15,
+    val maxExploreRatio: Double = 0.25,
+    /** 已播+已排队的顺序上下文，保证单首补队列也能轮到探索。 */
+    val recentExploration: List<Boolean> = emptyList(),
+    val recentTopicKeys: List<Set<String>> = emptyList(),
 )
 
 object RecommendationTuning {

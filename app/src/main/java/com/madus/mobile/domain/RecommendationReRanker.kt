@@ -11,11 +11,23 @@ class RecommendationReRanker {
         while (waiting.isNotEmpty() && picked.size < context.limit) {
             val eligible = waiting.filter { canPick(it, picked, context) }
             if (eligible.isEmpty()) break
-            // Relax uploader repetition inside the pool before ever leaving the user's taste.
             val pool = eligible.filter { it.inInterestPool && !it.explore }
-            val preferred = pool.ifEmpty { eligible }
+            val discoveries = eligible.filter { it.explore || !it.inInterestPool }
+            // 满足间隔时真正留出发现位，不能被永远存在的同类候选挤掉。
+            val preferred = discoveries.ifEmpty { pool.ifEmpty { eligible } }
+            val history = context.recentTopicKeys.ifEmpty {
+                context.recentQueue.map { ContentProfileParser.profileFromTrack(it).topicKeys }
+            } + picked.map { topicsOf(it) }
+            fun sharesGenre(a: Set<String>, b: Set<String>): Boolean = genres(a).intersect(genres(b)).isNotEmpty()
+            val withoutStreak = if (context.musicOnly && history.size >= 2) preferred.filter { candidate ->
+                !history.takeLast(2).all { sharesGenre(it, topicsOf(candidate)) }
+            }.ifEmpty { preferred } else preferred
+            // 六首内尽量不让同一曲风超过四首；没有合格替代时仍允许播放。
+            val balanced = if (context.musicOnly) withoutStreak.filter { candidate ->
+                history.takeLast(5).count { sharesGenre(it, topicsOf(candidate)) } < 4
+            }.ifEmpty { withoutStreak } else withoutStreak
             // Uploader variety breaks near-ties; it cannot promote a much weaker musical match.
-            val choiceSet = preferred.filter { it.score >= preferred.first().score - 1.25 }
+            val choiceSet = balanced.filter { it.score >= balanced.first().score - 1.25 }
             val candidate = choiceSet.firstOrNull { variedAuthor(it, picked) &&
                 (context.musicOnly || variedTopic(it, picked)) }
                 ?: choiceSet.firstOrNull { variedAuthor(it, picked) }
@@ -52,11 +64,12 @@ class RecommendationReRanker {
             if (key.isNotBlank() && picked.any { MusicDiscovery.songKey(it.track) == key }) return false
         }
         if (candidate.explore || !candidate.inInterestPool) {
-            // Enforce a maximum on every prefix, including partially filled queues. A thin pool
-            // cannot silently become mostly exploration, and the first few tracks stay familiar.
-            val ratio = context.maxExploreRatio.coerceIn(0.0, 0.15)
-            val allowed = ((picked.size + 1) * ratio).toInt()
-            if (picked.count { it.explore || !it.inInterestPool } >= allowed) return false
+            val ratio = context.maxExploreRatio.coerceIn(0.0, 0.25)
+            if (ratio <= 0.0) return false
+            val interval = kotlin.math.ceil(1.0 / ratio).toInt()
+            val history = context.recentExploration.ifEmpty { context.recentQueue.map { false } } +
+                picked.map { it.explore || !it.inInterestPool }
+            if (history.size < interval - 1 || history.takeLast(interval - 1).any { it }) return false
         }
         if (candidate.realtime) for (topic in topicsOf(candidate)) {
             val quota = context.realtimeTopicQuota[topic] ?: continue
@@ -77,6 +90,9 @@ class RecommendationReRanker {
 
     private fun authorOf(scored: ScoredTrack): String? = scored.authorKey ?: scored.track.artist.trim()
         .takeIf { it.isNotBlank() && !it.equals("Bilibili", ignoreCase = true) }?.lowercase()
+
+    private fun genres(topics: Set<String>): Set<String> =
+        if ("instrumental" in topics) setOf("instrumental") else topics.intersect(MusicDiscovery.genreTopics)
 
     private fun topicsOf(scored: ScoredTrack): Set<String> = scored.topicKeys.ifEmpty {
         ContentProfileParser.profileFromTrack(scored.track).topicKeys.filter { it != "unknown" }.toSet()
