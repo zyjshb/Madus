@@ -29,6 +29,19 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.18.0",
+            date = "2026-09-22",
+            changed = listOf(
+                "推荐和自动续播专注音乐，按曲风、语言和氛围发现新歌",
+                "搜索和歌单的收听也参与学习，近期听过的歌跨会话避重",
+            ),
+            fixed = listOf(
+                "连续跳过不再屏蔽整个音乐类别",
+                "暂停、拖动进度和恢复旧进度不再算作听完",
+            ),
+            known = listOf("音乐筛选与同歌识别依赖音源元数据，可能漏判或误判"),
+        ),
+        Entry(
             version = "1.17.27",
             date = "2026-08-29",
             fixed = listOf(

@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.17.27：固定后再随机，下载要存当前这张而不是旧固定图
-        versionCode = 316
-        versionName = "1.17.27"
+        // 1.18.0：音乐发现、曲风学习与跨会话避重
+        versionCode = 317
+        versionName = "1.18.0"
         vectorDrawables.useSupportLibrary = true
     }
 

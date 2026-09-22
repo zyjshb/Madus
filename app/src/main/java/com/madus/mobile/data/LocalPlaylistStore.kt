@@ -237,6 +237,9 @@ class LocalPlaylistStore(private val context: Context) {
                     .put("bvid", t.bvid)
                     .put("aid", t.aid)
                     .put("cid", t.cid)
+                    .put("categoryId", t.categoryId)
+                    .put("categoryName", t.categoryName)
+                    .put("tags", JSONArray(t.tags))
                     .put("ownerMid", t.ownerMid)
                     .put("ownerFace", t.ownerFace),
             )
@@ -274,6 +277,9 @@ class LocalPlaylistStore(private val context: Context) {
                         bvid = t.optString("bvid"),
                         aid = t.optString("aid"),
                         cid = t.optString("cid"),
+                        categoryId = t.optInt("categoryId", 0),
+                        categoryName = t.optString("categoryName", ""),
+                        tags = t.optJSONArray("tags")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty(),
                         ownerMid = t.optString("ownerMid"),
                         ownerFace = t.optString("ownerFace"),
                     ),

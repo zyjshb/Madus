@@ -38,6 +38,14 @@ object ContentProfileParser {
         "anime-song" to listOf("片头", "片尾", "动漫歌", "二次元"),
         "gufeng" to listOf("古风", "国风"),
         "rap" to listOf("说唱", "嘻哈"),
+        "rock" to listOf("摇滚", "rock", "金属", "metal"),
+        "folk" to listOf("民谣", "folk"),
+        "rnb" to listOf("r&b", "rnb", "节奏布鲁斯"),
+        "jazz" to listOf("爵士", "jazz"),
+        "pop" to listOf("流行", "pop"),
+        "cantonese" to listOf("粤语", "粤语歌"),
+        "mandarin" to listOf("华语", "国语"),
+        "healing" to listOf("治愈", "舒缓", "放松"),
         "dj" to listOf("电音", "remix"),
         "jp-song" to listOf("日语", "日文", "jpop"),
         "en-song" to listOf("英语", "英文", "欧美"),
@@ -89,9 +97,13 @@ object ContentProfileParser {
         if (name.contains("电影")) topics.add("movie")
         if (name.contains("娱乐") || name.contains("搞笑")) topics.add("comedy")
 
-        val lower = text.lowercase()
+        val lower = (text + " " + tags.joinToString(" ")).lowercase()
         for ((topic, words) in KEYWORD_TOPICS) {
-            if (words.any { lower.contains(it) }) topics.add(topic)
+            if (words.any { word ->
+                    if (word.all { it.code < 128 }) {
+                        Regex("(?<![a-z])${Regex.escape(word)}(?![a-z])").containsMatchIn(lower)
+                    } else lower.contains(word)
+                }) topics.add(topic)
         }
         for (tag in tags) {
             val t = tag.lowercase()

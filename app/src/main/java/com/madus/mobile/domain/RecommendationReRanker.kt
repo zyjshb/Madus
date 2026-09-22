@@ -3,7 +3,7 @@ package com.madus.mobile.domain
 class RecommendationReRanker {
 
     fun rerank(candidates: List<ScoredTrack>, context: FeedContext): List<Track> {
-        val waiting = candidates.sortedByDescending { it.score }.toMutableList()
+        val waiting = candidates.filterNot { violatesHard(it, context) }.sortedByDescending { it.score }.toMutableList()
         val picked = mutableListOf<ScoredTrack>()
         var relaxation = 0
         while (waiting.isNotEmpty() && picked.size < context.limit) {
@@ -22,12 +22,13 @@ class RecommendationReRanker {
             }
             waiting.remove(candidate)
             picked.add(candidate)
+            relaxation = 0
         }
         return picked.map { it.track }
     }
 
     fun rerankWithReasons(candidates: List<ScoredTrack>, context: FeedContext): Pair<List<Track>, List<ScoredTrack>> {
-        val waiting = candidates.sortedByDescending { it.score }.toMutableList()
+        val waiting = candidates.filterNot { violatesHard(it, context) }.sortedByDescending { it.score }.toMutableList()
         val picked = mutableListOf<ScoredTrack>()
         var relaxation = 0
         while (waiting.isNotEmpty() && picked.size < context.limit) {
@@ -46,13 +47,18 @@ class RecommendationReRanker {
             }
             waiting.remove(candidate)
             picked.add(candidate)
+            relaxation = 0
         }
         return picked.map { it.track } to picked
     }
 
     private fun violatesHard(candidate: ScoredTrack, context: FeedContext): Boolean {
         val t = candidate.track
+        if (context.musicOnly && !TrackFilters.isLikelyMusic(t)) return true
+        val songKey = MusicDiscovery.songKey(t)
+        if (songKey.isNotBlank() && songKey in context.recentSongKeys) return true
         if (t.id in context.sessionSeenIds || t.id in context.queueIds) return true
+        if (t.bvid.isNotBlank() && (t.bvid in context.sessionSeenIds || t.bvid in context.queueIds)) return true
         if (t.id in context.blockedIds) return true
         if (t.bvid.isNotBlank() && t.bvid in context.blockedBvids) return true
         if (t.ownerMid.isNotBlank() && t.ownerMid in context.blockedAuthorIds) return true
@@ -70,12 +76,19 @@ class RecommendationReRanker {
         context: FeedContext,
         relaxation: Int,
     ): Boolean {
-        if (violatesHard(candidate, context)) return false
+        if (picked.any { it.track.id == candidate.track.id ||
+                (candidate.track.bvid.isNotBlank() && it.track.bvid == candidate.track.bvid) }) return false
+        if (context.musicOnly) {
+            val key = MusicDiscovery.songKey(candidate.track)
+            if (key.isNotBlank() && picked.any { MusicDiscovery.songKey(it.track) == key }) return false
+        }
 
         val window4 = picked.takeLast(4)
         val window6 = picked.takeLast(6)
         val author = candidate.authorKey ?: authorOf(candidate.track)
-        val topics = candidate.topicKeys.ifEmpty { topicsOf(candidate.track) }
+        val topics = candidate.topicKeys.ifEmpty { topicsOf(candidate.track) }.filter {
+            !context.musicOnly || it !in RecommendationTuning.BROAD_TOPICS
+        }.toSet()
 
         val authorLimit = when {
             relaxation >= 2 -> Int.MAX_VALUE
@@ -114,7 +127,7 @@ class RecommendationReRanker {
             if (position % 6 == 5 && picked.takeLast(6).none { it.explore }) {
                 if (!candidate.explore) return false
             }
-            if (position % 5 == 4 && picked.takeLast(5).none { it.dailyBaseline }) {
+            if (!context.musicOnly && position % 5 == 4 && picked.takeLast(5).none { it.dailyBaseline }) {
                 if (!candidate.dailyBaseline) return false
             }
         }

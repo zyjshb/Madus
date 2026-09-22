@@ -32,17 +32,18 @@ class RecommendationEngineTest {
     fun twoFastSkipsCreateMutedTopicCooldown() {
         val nowMs = 1_800_000_000_000L
         val events = listOf(
-            event("skip-1", RecommendationEventType.SKIP_FAST, nowMs - 60_000L, setOf("music"), null),
-            event("skip-2", RecommendationEventType.SKIP_FAST, nowMs, setOf("music"), null),
+            event("skip-1", RecommendationEventType.SKIP_FAST, nowMs - 60_000L, setOf("music", "rock"), null),
+            event("skip-2", RecommendationEventType.SKIP_FAST, nowMs, setOf("music", "rock"), null),
         )
 
         val state = engine.buildInterestState(events, nowMs)
 
         assertEquals(
             nowMs + RecommendationTuning.TOPIC_COOLDOWN_MS,
-            state.mutedTopics.getValue("music"),
+            state.mutedTopics.getValue("rock"),
         )
-        assertTrue(state.mutedTopics.getValue("music") > nowMs)
+        assertTrue(state.mutedTopics.getValue("rock") > nowMs)
+        assertTrue("跳过两首不能封掉所有音乐", "music" !in state.mutedTopics)
 
         val singleSkip = engine.buildInterestState(events.take(1), nowMs)
         assertTrue(singleSkip.mutedTopics.isEmpty())

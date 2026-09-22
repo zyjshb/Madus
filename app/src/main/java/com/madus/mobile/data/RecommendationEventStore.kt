@@ -9,6 +9,8 @@ import com.madus.mobile.domain.RecommendationEvent
 import com.madus.mobile.domain.RecommendationEventType
 import com.madus.mobile.domain.RecommendationTuning
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -19,8 +21,9 @@ private val Context.recommendationEventStore by preferencesDataStore(name = "mad
  */
 class RecommendationEventStore(private val context: Context) {
     private val keyEvents = stringPreferencesKey("events_v1")
+    private val mutationMutex = Mutex()
 
-    suspend fun record(event: RecommendationEvent) {
+    suspend fun record(event: RecommendationEvent) = mutationMutex.withLock {
         val all = readInternal().toMutableList()
         all.add(event)
         while (all.size > RecommendationTuning.EVENT_LIMIT) all.removeAt(0)
@@ -32,7 +35,7 @@ class RecommendationEventStore(private val context: Context) {
     }
 
     /** 撤销「不喜欢」：清掉这首的负反馈事件。 */
-    suspend fun removeNotInterested(trackId: String, bvid: String = "") {
+    suspend fun removeNotInterested(trackId: String, bvid: String = "") = mutationMutex.withLock {
         val all = readInternal()
         val next = all.filterNot {
             it.type == RecommendationEventType.NOT_INTERESTED &&
@@ -53,7 +56,7 @@ class RecommendationEventStore(private val context: Context) {
     suspend fun longTermEvents(nowMs: Long = System.currentTimeMillis()): List<RecommendationEvent> =
         readInternal().filter { nowMs - it.occurredAtMs <= RecommendationTuning.LONG_TERM_TTL_MS }
 
-    suspend fun clearExpired(nowMs: Long = System.currentTimeMillis()) {
+    suspend fun clearExpired(nowMs: Long = System.currentTimeMillis()) = mutationMutex.withLock {
         val keep = readInternal().filter {
             nowMs - it.occurredAtMs <= RecommendationTuning.LONG_TERM_TTL_MS
         }
@@ -86,6 +89,7 @@ class RecommendationEventStore(private val context: Context) {
                     .put("type", event.type.name)
                     .put("occurredAtMs", event.occurredAtMs)
                     .put("sourceId", event.sourceId)
+                    .put("songKey", event.songKey)
                     .put("topicKeys", topics)
                     .put("authorKey", event.authorKey ?: ""),
             )
@@ -109,6 +113,7 @@ class RecommendationEventStore(private val context: Context) {
             type = type,
             occurredAtMs = optLong("occurredAtMs", System.currentTimeMillis()),
             sourceId = optString("sourceId", "recommend"),
+            songKey = optString("songKey", ""),
             topicKeys = topics,
             authorKey = optString("authorKey").ifBlank { null },
         )

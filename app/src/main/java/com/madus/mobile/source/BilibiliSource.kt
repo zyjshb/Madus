@@ -128,31 +128,6 @@ class BilibiliSource(
         return if (limit <= 0) all else all.take(limit)
     }
 
-    override suspend fun recommendFeed(limit: Int): List<Track> {
-        // 优先 B 站首页 rcmd（登录 Cookie 个性化），再 related / 热门；不再硬塞音乐区
-        val pool = linkedMapOf<String, Track>()
-        runCatching { api.homepageRcmd(limit = limit, freshIdx = 1) }.getOrDefault(emptyList())
-            .forEach { pool.putIfAbsent(it.id, it) }
-        if (pool.size < limit / 2) {
-            runCatching { api.popularTracks(limit) }.getOrDefault(emptyList())
-                .forEach { pool.putIfAbsent(it.id, it) }
-        }
-        val cookie = store.getBiliCookie()
-        if (cookie.contains("SESSDATA")) {
-            runCatching { api.watchHistory(limit = 16) }.getOrDefault(emptyList())
-                .forEach { pool.putIfAbsent(it.id, it) }
-            val folders = runCatching { api.favFolders() }.getOrDefault(emptyList())
-            val seeds = mutableListOf<Track>()
-            for (f in folders.take(3)) {
-                seeds += runCatching { api.favTracks(f.id, maxPages = 1) }.getOrDefault(emptyList()).take(3)
-            }
-            for (seed in seeds.shuffled().take(8)) {
-                val bv = seed.bvid.ifBlank { com.madus.mobile.data.BilibiliApi.parseBvid(seed.id).orEmpty() }
-                if (bv.isBlank()) continue
-                runCatching { api.relatedTracks(bv, 10) }.getOrDefault(emptyList())
-                    .forEach { pool.putIfAbsent(it.id, it) }
-            }
-        }
-        return pool.values.shuffled().take(limit)
-    }
+    override suspend fun recommendFeed(limit: Int): List<Track> =
+        api.musicRegionFeed(limit).filter { com.madus.mobile.domain.TrackFilters.isLikelyMusic(it) }.take(limit)
 }

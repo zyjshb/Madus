@@ -20,6 +20,7 @@ data class RecommendationEvent(
     val sourceId: String,
     val topicKeys: Set<String>,
     val authorKey: String?,
+    val songKey: String = "",
 )
 
 data class ContentProfile(
@@ -65,6 +66,8 @@ data class ScoredTrack(
 )
 
 data class FeedContext(
+    val musicOnly: Boolean = false,
+    val recentSongKeys: Set<String> = emptySet(),
     val nowMs: Long = System.currentTimeMillis(),
     val limit: Int = 30,
     val sessionSeenIds: Set<String> = emptySet(),
@@ -84,14 +87,15 @@ object RecommendationTuning {
     const val REALTIME_TTL_MS = 30 * 60 * 1000L
     const val REALTIME_STRONG_TTL_MS = 10 * 60 * 1000L
     const val HOURLY_TTL_MS = 24 * 60 * 60 * 1000L
-    const val LONG_TERM_TTL_MS = 30 * 24 * 60 * 60 * 1000L
+    const val LONG_TERM_TTL_MS = 180 * 24 * 60 * 60 * 1000L
+    const val HEARD_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000L
     const val TOPIC_COOLDOWN_MS = 30 * 60 * 1000L
     const val NOT_INTERESTED_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000L
     /** snackbar 大约 4 秒，撤销窗口略长一点 */
     const val UNDO_NOT_INTERESTED_MS = 6_000L
     /** 一首不喜欢不该封掉整个音乐/动画区 */
     val BROAD_TOPICS = setOf("music", "anime", "life", "gaming", "unknown")
-    const val EVENT_LIMIT = 1000
+    const val EVENT_LIMIT = 6000
     const val PROFILE_LIMIT = 400
     const val PROFILE_TTL_MS = 7 * 24 * 60 * 60 * 1000L
     const val MAX_REALTIME_IN_FIRST_20 = 3
@@ -101,7 +105,7 @@ object RecommendationTuning {
     const val MIN_DAILY_BASELINE_RATIO = 0.20
     const val REALTIME_HALF_LIFE_MS = 10 * 60 * 1000L
     const val HOURLY_HALF_LIFE_MS = 6 * 60 * 60 * 1000L
-    const val LONG_TERM_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000L
+    const val LONG_TERM_HALF_LIFE_MS = 45 * 24 * 60 * 60 * 1000L
     const val NEGATIVE_HALF_LIFE_MS = 30 * 60 * 1000L
     const val WATCH_50_MIN_MS = 30_000L
     const val SKIP_FAST_MIN_MS = 15_000L

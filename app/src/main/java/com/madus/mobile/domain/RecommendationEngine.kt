@@ -76,9 +76,10 @@ class RecommendationEngine {
 
         val muted = linkedMapOf<String, Long>()
         for ((topic, times) in skipCounts) {
+            if (topic in RecommendationTuning.BROAD_TOPICS) continue
             val recent = times.count { nowMs - it <= RecommendationTuning.TOPIC_COOLDOWN_MS }
             if (recent >= 2) {
-                muted[topic] = nowMs + RecommendationTuning.TOPIC_COOLDOWN_MS
+                muted[topic] = times.max() + RecommendationTuning.TOPIC_COOLDOWN_MS
             }
         }
         for (event in events) {
@@ -118,7 +119,8 @@ class RecommendationEngine {
         context: FeedContext,
     ): ScoredTrack {
         val p = profile ?: ContentProfileParser.profileFromTrack(track, context.nowMs)
-        val topics = p.topicKeys.filter { it != "unknown" }
+        val topics = p.topicKeys.filter { it != "unknown" &&
+            (!context.musicOnly || it !in RecommendationTuning.BROAD_TOPICS) }
         val author = p.authorKey
 
         val realtimeAffinity = topics.sumOf { state.realtimeTopics[it] ?: 0.0 } +
@@ -141,9 +143,11 @@ class RecommendationEngine {
 
         val fresh = track.id !in context.sessionSeenIds && track.id !in context.queueIds
         val freshness = if (fresh) 1.0 else 0.0
-        val interestTopics = state.realtimeTopics.keys +
+        val interestTopics = (state.realtimeTopics.keys +
             state.hourlyTopics.keys +
-            state.longTermTopics.keys
+            state.longTermTopics.keys).filter {
+                !context.musicOnly || it !in RecommendationTuning.BROAD_TOPICS
+            }.toSet()
         val matchesInterest = interestTopics.isEmpty() || topics.any { it in interestTopics }
         val novelty = when {
             !matchesInterest && interestTopics.isNotEmpty() -> 0.0

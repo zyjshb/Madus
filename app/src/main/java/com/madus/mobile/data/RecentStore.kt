@@ -103,6 +103,9 @@ class RecentStore(private val context: Context) {
                     .put("bvid", e.track.bvid)
                     .put("aid", e.track.aid)
                     .put("cid", e.track.cid)
+                    .put("categoryId", e.track.categoryId)
+                    .put("categoryName", e.track.categoryName)
+                    .put("tags", JSONArray(e.track.tags))
                     .put("positionMs", e.positionMs)
                     .put("playedAtMs", e.playedAtMs),
             )
@@ -129,6 +132,9 @@ class RecentStore(private val context: Context) {
             bvid = optString("bvid"),
             aid = optString("aid"),
             cid = optString("cid"),
+            categoryId = optInt("categoryId", 0),
+            categoryName = optString("categoryName", ""),
+            tags = optJSONArray("tags")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty(),
         )
         return Entry(
             track = track,

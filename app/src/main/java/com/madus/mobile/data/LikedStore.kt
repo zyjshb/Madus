@@ -125,6 +125,9 @@ class LikedStore(private val context: Context) {
                     .put("bvid", t.bvid)
                     .put("aid", t.aid)
                     .put("cid", t.cid)
+                    .put("categoryId", t.categoryId)
+                    .put("categoryName", t.categoryName)
+                    .put("tags", JSONArray(t.tags))
                     .put("likedAtMs", interaction.likedAtMs),
             )
         }
@@ -150,6 +153,9 @@ class LikedStore(private val context: Context) {
             bvid = optString("bvid"),
             aid = optString("aid"),
             cid = optString("cid"),
+            categoryId = optInt("categoryId", 0),
+            categoryName = optString("categoryName", ""),
+            tags = optJSONArray("tags")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty(),
         )
     }
 }

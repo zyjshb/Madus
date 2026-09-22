@@ -2314,21 +2314,21 @@ class BilibiliApi(
         val pool = linkedMapOf<String, Track>()
         // 各子区排行更干净
         for (rid in MUSIC_SUB_RIDS) {
-            for (t in rankingTracks(rid = rid, limit = 20)) {
+            for (t in runCatching { rankingTracks(rid = rid, limit = 20) }.getOrDefault(emptyList())) {
                 pool.putIfAbsent(t.id, t.copy(album = albumForRid(rid)))
             }
         }
         // 子区最新补量
         for (rid in MUSIC_SUB_RIDS) {
             if (pool.size >= limit * 3) break
-            val part = regionLatest(rid, ps = 12, cookie = cookie)
+            val part = runCatching { regionLatest(rid, ps = 12, cookie = cookie) }.getOrDefault(emptyList())
             for (t in part) {
                 pool.putIfAbsent(t.id, t.copy(album = albumForRid(rid)))
             }
         }
         // 父区热榜兜底
         if (pool.size < limit) {
-            for (t in rankingTracks(rid = 3, limit = limit)) {
+            for (t in runCatching { rankingTracks(rid = 3, limit = limit) }.getOrDefault(emptyList())) {
                 pool.putIfAbsent(t.id, t.copy(album = "音乐热榜"))
             }
         }
@@ -2376,7 +2376,7 @@ class BilibiliApi(
     /**
      * 音乐区搜索（tids=3），个性化补歌用。
      */
-    suspend fun searchMusic(keyword: String, limit: Int = 12): List<Track> = withContext(Dispatchers.IO) {
+    suspend fun searchMusic(keyword: String, limit: Int = 12, page: Int = 1): List<Track> = withContext(Dispatchers.IO) {
         val kw = keyword.trim()
         if (kw.isEmpty()) return@withContext emptyList()
         val cookie = mergedCookie()
@@ -2384,7 +2384,7 @@ class BilibiliApi(
         val url =
             "https://api.bilibili.com/x/web-interface/search/type" +
                 "?search_type=video&keyword=$encoded" +
-                "&tids=3&page=1&page_size=${limit.coerceIn(4, 30)}&order=totalrank"
+                "&tids=3&page=${page.coerceIn(1, 50)}&page_size=${limit.coerceIn(4, 30)}&order=totalrank"
         val json = getJson(
             url,
             cookie,
@@ -2406,6 +2406,10 @@ class BilibiliApi(
                         title = stripHtml(item.optString("title", bv)),
                         artist = item.optString("author", "Bilibili"),
                         album = "音乐搜索",
+                        categoryId = tid,
+                        categoryName = stripHtml(item.optString("typename", "")),
+                        tags = parseTags(item),
+                        ownerMid = item.opt("mid")?.toString()?.takeIf { it != "null" }.orEmpty(),
                         coverUrl = normalizeUrl(item.optString("pic", "")),
                         durationMs = duration,
                         source = MusicSourceType.BILIBILI,
