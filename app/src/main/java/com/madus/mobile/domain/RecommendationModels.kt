@@ -70,6 +70,10 @@ data class InterestState(
     val styleAdjustments: Map<String, Double> = emptyMap(),
     val searchTopics: Map<String, Double> = emptyMap(),
     val confidence: Double = 1.0,
+    val songAffinities: Map<String, Double> = emptyMap(),
+    val referencePreferences: Map<String, Int> = emptyMap(),
+    val referenceTracks: List<Track> = emptyList(),
+    val negativeReferenceTracks: List<Track> = emptyList(),
 )
 
 data class ScoredTrack(
@@ -85,6 +89,8 @@ data class ScoredTrack(
     val inInterestPool: Boolean = true,
     val adjacentInterest: Boolean = false,
     val cooledDown: Boolean = false,
+    val seedSongKeys: Set<String> = emptySet(),
+    val familiar: Boolean = false,
 )
 
 data class FeedContext(
@@ -108,6 +114,8 @@ data class FeedContext(
     /** 已播+已排队的顺序上下文，保证单首补队列也能轮到探索。 */
     val recentExploration: List<Boolean> = emptyList(),
     val recentTopicKeys: List<Set<String>> = emptyList(),
+    val recentSeedSongKeys: List<Set<String>> = emptyList(),
+    val isOpening: Boolean = false,
 )
 
 object RecommendationTuning {

@@ -26,6 +26,8 @@ class MusicListeningTracker(private val sessionPrefix: String = java.util.UUID.r
             heardMs = 0
             duration = 0
         }
+        // Metadata can arrive after playback starts; keep accumulated listening but use the enriched song.
+        track = current
         duration = durationMs.takeIf { it > 0 } ?: current?.durationMs ?: 0L
         heardMs = progress.sample(current?.id, positionMs, playing, playGeneration, foreground)
         if (heardMs >= 500 && (savedMs == 0L || heardMs - savedMs >= 15_000 || !playing)) {

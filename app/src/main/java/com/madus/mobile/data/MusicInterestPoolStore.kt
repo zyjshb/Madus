@@ -28,7 +28,8 @@ class MusicInterestPoolStore(private val context: Context) {
             MusicPoolSnapshot(
                 (0 until candidates.length()).mapNotNull { i -> candidates.optJSONObject(i)?.let { o -> runCatching {
                     MusicPoolCandidate(o.getJSONObject("track").toTrack(), o.optString("source", "search"),
-                        o.optJSONArray("seedTopics").strings().toSet(), o.optLong("at"))
+                        o.optJSONArray("seedTopics").strings().toSet(), o.optLong("at"),
+                        o.optJSONArray("seedSongs").strings().toSet())
                 }.getOrNull() } },
                 (0 until seeds.length()).mapNotNull { i -> seeds.optJSONObject(i)?.let { o -> runCatching {
                     MusicPoolSeed(o.getJSONObject("track").toTrack(), o.optLong("at"))
@@ -45,7 +46,8 @@ class MusicInterestPoolStore(private val context: Context) {
         val obj = JSONObject()
             .put("candidates", JSONArray().apply { snapshot.candidates.forEach { c ->
                 put(JSONObject().put("track", c.track.toJson()).put("source", c.source)
-                    .put("seedTopics", JSONArray(c.seedTopicKeys.toList())).put("at", c.addedAtMs))
+                    .put("seedTopics", JSONArray(c.seedTopicKeys.toList()))
+                    .put("seedSongs", JSONArray(c.seedSongKeys.toList())).put("at", c.addedAtMs))
             } })
             .put("seeds", JSONArray().apply { snapshot.seeds.forEach { s ->
                 put(JSONObject().put("track", s.track.toJson()).put("at", s.supportedAtMs))

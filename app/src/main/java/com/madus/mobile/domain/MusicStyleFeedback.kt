@@ -3,17 +3,18 @@ package com.madus.mobile.domain
 import kotlin.math.exp
 import kotlin.math.ln
 
-/** 独立于自动学习与主动口味的辅助信号，不产生已听记录、种子或单曲屏蔽。 */
+/** 独立的辅助信号；保留歌曲参照，即使未知曲风也不丢弃反馈。 */
 data class MusicStyleFeedback(
     val songKey: String,
     val topics: Set<String>,
     val direction: Int,
     val occurredAtMs: Long,
+    val referenceTrack: Track? = null,
 ) {
     companion object {
         const val TTL_MS = 180 * 24 * 60 * 60 * 1000L
         const val MAX_SCORE_ADJUSTMENT = 0.75
-        fun key(track: Track): String = MusicDiscovery.songKey(track).ifBlank { track.bvid.ifBlank { track.id } }
+        fun key(track: Track): String = "track:${track.bvid.ifBlank { track.id }}"
 
         // “这类”不扩散为整个语种、上传者或音乐大区；优先采用明确曲风。
         fun topics(keys: Set<String>): Set<String> = keys.intersect(MusicDiscovery.genreTopics).ifEmpty {

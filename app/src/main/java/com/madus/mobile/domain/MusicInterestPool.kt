@@ -5,6 +5,7 @@ data class MusicPoolCandidate(
     val source: String = "search",
     val seedTopicKeys: Set<String> = emptySet(),
     val addedAtMs: Long,
+    val seedSongKeys: Set<String> = emptySet(),
 )
 
 data class MusicPoolSeed(val track: Track, val supportedAtMs: Long)
@@ -49,9 +50,10 @@ class MusicInterestPool(private val capacity: Int = 320) {
         candidates.remove(candidate.track.id)
         val metadata = candidate.track.copy(streamUrl = null, isVideoStream = false)
         // 新搜索结果不能覆盖已经得到正反馈种子支持的来源关系。
-        candidates[candidate.track.id] = if (old != null && old.seedTopicKeys.isNotEmpty() && candidate.seedTopicKeys.isEmpty()) {
+        candidates[candidate.track.id] = if (old != null && (old.seedTopicKeys.isNotEmpty() || old.seedSongKeys.isNotEmpty()) && candidate.seedTopicKeys.isEmpty() && candidate.seedSongKeys.isEmpty()) {
             old.copy(track = metadata, addedAtMs = candidate.addedAtMs)
-        } else candidate.copy(track = metadata)
+        } else candidate.copy(track = metadata,
+            seedSongKeys = (old?.seedSongKeys.orEmpty() + candidate.seedSongKeys).take(6).toSet())
         while (candidates.size > capacity) candidates.remove(candidates.keys.first())
     }
 

@@ -27,6 +27,7 @@ import com.madus.mobile.domain.ContentProfileParser
 import com.madus.mobile.domain.FeedContext
 import com.madus.mobile.domain.InterestState
 import com.madus.mobile.domain.MusicListeningTracker
+import com.madus.mobile.domain.MusicReferencePolicy
 import com.madus.mobile.domain.MusicStyleFeedback
 import com.madus.mobile.data.MusicStyleFeedbackStore
 import com.madus.mobile.domain.MusicDiscovery
@@ -355,7 +356,7 @@ class AppViewModel(
     private val musicPool = MusicInterestPool()
     private val styleFeedbackStore = MusicStyleFeedbackStore(MadusApp.instance)
     private var styleFeedback: List<MusicStyleFeedback> = emptyList()
-    private var styleFeedbackRequest = 0L
+    private val styleFeedbackRequests = mutableMapOf<String, Long>()
     private var librarySeeds: List<Track> = emptyList()
     private val feedbackMutex = Mutex()
     private val feedMutex = Mutex()
@@ -368,6 +369,7 @@ class AppViewModel(
     private val listeningTracker = MusicListeningTracker()
     private var pendingSearchTrackId: String? = null
     private var searchPlaybackGeneration = -1
+    private val listeningTracks = linkedMapOf<String, Track>()
     private var lastListeningDiscoveryAt = 0L
     private var listeningSaveJob: Job? = null
     private val streamResolutionCache = StreamResolutionCache<Track>(viewModelScope)
@@ -1290,7 +1292,16 @@ class AppViewModel(
     private fun profileKey(track: Track): String = track.bvid.ifBlank { track.id }
 
     private fun sampleListening(pb: PlaybackState): Long {
-        val samples = listeningTracker.sample(pb.current, playGeneration, pb.positionMs, pb.durationMs,
+        val current = pb.current?.let { track ->
+            val known = listeningTracks[track.id]
+            track.copy(categoryId = known?.categoryId?.takeIf { it > 0 } ?: track.categoryId,
+                categoryName = known?.categoryName?.takeIf { it.isNotBlank() } ?: track.categoryName,
+                tags = (track.tags + known?.tags.orEmpty()).distinct(),
+                durationMs = pb.durationMs.takeIf { it > 0 } ?: track.durationMs)
+        }
+        current?.let { listeningTracks[it.id] = it }
+        while (listeningTracks.size > 120) listeningTracks.remove(listeningTracks.keys.first())
+        val samples = listeningTracker.sample(current, playGeneration, pb.positionMs, pb.durationMs,
             pb.isPlaying && !pb.isLoading && pb.errorMessage == null, !MadusApp.instance.appInBackground,
             _recommend.value.sourceId, playGeneration == searchPlaybackGeneration, System.currentTimeMillis())
         if (samples.isNotEmpty()) listeningSaveJob = viewModelScope.launch { persistListeningSamples(samples) }
@@ -1303,7 +1314,13 @@ class AppViewModel(
                 val profile = contentProfileStore.get(sample.bvid.ifBlank { sample.trackId })
                 recommendationEventStore.record(if (profile == null) sample else sample.copy(
                     topicKeys = sample.topicKeys + profile.topicKeys, authorKey = profile.authorKey ?: sample.authorKey))
+                // Active search alone is not a like. Sustained listening makes that exact song a reference.
+                if (sample.listenedMs >= 60_000L && sample.durationMs > 0 &&
+                    sample.listenedMs >= sample.durationMs * 0.5) {
+                    listeningTracks[sample.trackId]?.let { musicPool.support(it, sample.occurredAtMs) }
+                }
             }
+            saveMusicPoolSoon()
             interestRevision++
         }
         if (isForYouQueue()) {
@@ -1415,8 +1432,21 @@ class AppViewModel(
         profileEnrichmentJobs[key] = viewModelScope.launch {
             try {
                 val p = profileOf(track, fetchRemote = true)
+                listeningTracks[track.id] = track.copy(categoryId = p.categoryId ?: track.categoryId,
+                    categoryName = p.categoryName ?: track.categoryName, tags = (track.tags + p.tags).distinct())
                 val changed = feedbackMutex.withLock {
-                    val updated = recommendationEventStore.enrichProfile(track.id, track.bvid, p.topicKeys, p.authorKey)
+                    var updated = recommendationEventStore.enrichProfile(track.id, track.bvid, p.topicKeys, p.authorKey)
+                    styleFeedback.firstOrNull { it.songKey == MusicStyleFeedback.key(track) &&
+                        it.referenceTrack?.id == track.id }?.let { vote ->
+                        val reference = track.copy(streamUrl = null, isVideoStream = false,
+                            categoryId = p.categoryId ?: track.categoryId,
+                            categoryName = p.categoryName ?: track.categoryName, tags = (track.tags + p.tags).distinct())
+                        val enrichedVote = vote.copy(topics = MusicStyleFeedback.topics(p.topicKeys), referenceTrack = reference)
+                        if (enrichedVote != vote) {
+                            styleFeedback = styleFeedbackStore.set(enrichedVote)
+                            updated = true
+                        }
+                    }
                     if (updated) {
                         // 只更新仍存在的正反馈种子；标签请求期间发生的“不喜欢”不能被复活。
                         musicPool.snapshot(System.currentTimeMillis()).seeds
@@ -1454,40 +1484,37 @@ class AppViewModel(
     }
 
     fun setMusicStyleFeedback(track: Track, direction: Int) {
-        if (!TrackFilters.isLikelyMusic(track)) {
-            _toast.value = "这项反馈仅用于歌曲"
-            return
-        }
-        val request = ++styleFeedbackRequest
+        // Explicit song feedback is valid even when duration/category/tags are still missing.
+        // This does not relax the automatic recommendation content filter.
+        if (track.title.isBlank()) return
+        val key = MusicStyleFeedback.key(track)
+        val request = (styleFeedbackRequests[key] ?: 0L) + 1L
+        styleFeedbackRequests[key] = request
         viewModelScope.launch {
             try {
                 preferencesLoaded.await()
-                var topics = MusicStyleFeedback.topics(profileOf(track).topicKeys)
-                if (direction != 0 && topics.isEmpty()) {
-                    _toast.value = "正在识别这首歌的类型…"
-                    topics = MusicStyleFeedback.topics(profileOf(track, fetchRemote = true).topicKeys)
-                }
-                if (request != styleFeedbackRequest) return@launch
-                if (direction != 0 && topics.isEmpty()) {
-                    _toast.value = "暂未识别出歌曲类型，可以在「我的音乐口味」选择喜欢的方向"
-                    return@launch
-                }
+                val profile = profileOf(track)
+                val topics = MusicStyleFeedback.topics(profile.topicKeys)
+                val reference = track.copy(streamUrl = null, isVideoStream = false,
+                    categoryId = profile.categoryId ?: track.categoryId,
+                    categoryName = profile.categoryName ?: track.categoryName,
+                    tags = (track.tags + profile.tags).distinct())
                 feedbackMutex.withLock {
-                    if (request != styleFeedbackRequest) return@withLock
-                    styleFeedback = styleFeedbackStore.set(MusicStyleFeedback(MusicStyleFeedback.key(track),
-                        topics, direction.coerceIn(-1, 1), System.currentTimeMillis()))
+                    if (styleFeedbackRequests[key] != request) return@withLock
+                    styleFeedback = styleFeedbackStore.set(MusicStyleFeedback(key, topics,
+                        direction.coerceIn(-1, 1), System.currentTimeMillis(), reference))
                     interestRevision++
                     _recommend.update { it.copy(styleFeedbackBySong = styleFeedback.associate { vote -> vote.songKey to vote.direction }) }
                 }
-                if (request != styleFeedbackRequest) return@launch
-                val labels = topics.mapNotNull { MusicDiscovery.availableTopics[it] }.joinToString("、")
+                if (styleFeedbackRequests[key] != request) return@launch
                 _toast.value = when {
-                    direction > 0 -> "已记住，适当多推荐${labels}类歌曲"
-                    direction < 0 -> "已记住，适当少推荐${labels}类歌曲"
+                    direction > 0 -> "已记住，会参考这首歌为你找歌"
+                    direction < 0 -> "已记住，会减少相似推荐"
                     else -> "已撤销这首歌的同类反馈"
                 }
                 rerankUpcoming()
                 requestLiveDiscovery()
+                if (direction != 0) enrichFeedbackInBackground(track)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -2091,6 +2118,8 @@ class AppViewModel(
     }
 
     fun playSearchTrack(track: Track) {
+        listeningTracks[track.id] = track
+        enrichFeedbackInBackground(track)
         pendingSearchTrackId = track.id
         if (_trackReplace.value.active) {
             applyReplaceTrack(track)
@@ -5080,8 +5109,10 @@ class AppViewModel(
             if (p == null) t else t.copy(categoryId = p.categoryId ?: t.categoryId,
                 categoryName = p.categoryName ?: t.categoryName, tags = (t.tags + p.tags).distinct())
         }.filter { TrackFilters.isLikelyMusic(it) }
-        val ready = rankMusicPool(limit, excludeExtra, recent.take(8).asReversed())
-        if (ready.size >= 6 && MusicDiscovery.hasVariety(ready)) return ready
+        val ready = rankMusicPool(limit, excludeExtra, recent.take(8).asReversed(), opening = true)
+        if (ready.isNotEmpty() && (ready.first().id in librarySeeds.map { it.id } ||
+                ready.first().id in styleFeedback.mapNotNull { it.referenceTrack?.id } ||
+                (ready.size >= 6 && MusicDiscovery.hasVariety(ready)))) return ready
         feedMutex.withLock {
             // 只在需要补池时给老收藏补元数据，不阻塞已有池的开播。
             val enriched = recallMusic(library.take(6)) { track ->
@@ -5099,7 +5130,7 @@ class AppViewModel(
             }
             recallInterestCandidates(thrift = false)
         }
-        return rankMusicPool(limit, excludeExtra, recent.take(8).asReversed())
+        return rankMusicPool(limit, excludeExtra, recent.take(8).asReversed(), opening = true)
     }
 
     private fun learnedInterest(events: List<RecommendationEvent>, nowMs: Long): InterestState {
@@ -5118,24 +5149,48 @@ class AppViewModel(
         excluded: Set<String>,
         recent: List<Track>,
         extraTracks: List<Track> = emptyList(),
+        opening: Boolean = false,
     ): List<Track> = withContext(Dispatchers.Default) {
         val revision = interestRevision
         val now = System.currentTimeMillis()
         val events = recommendationEventStore.events()
         val state = learnedInterest(events, now)
         val blocks = recBlocks()
+        val profileCache = contentProfileStore.all().associateBy { it.key }
+        fun enriched(t: Track): Track {
+            val p = profileCache[profileKey(t)] ?: return t
+            return t.copy(categoryId = p.categoryId ?: t.categoryId,
+                categoryName = p.categoryName ?: t.categoryName, tags = (t.tags + p.tags).distinct())
+        }
         val baseContext = FeedContext(nowMs = now, limit = limit, sessionSeenIds = excluded,
             recentQueue = recent, maxExploreRatio = 0.25).withBlocks(blocks).withListeningHistory(events)
-        val candidates = musicPool.snapshot(now).candidates.associateBy { it.track.id }.toMutableMap()
+        val snapshot = musicPool.snapshot(now)
+        val candidates = snapshot.candidates.associateBy { it.track.id }.toMutableMap()
+        val openerContext = FeedContext(nowMs = now, limit = 1, sessionSeenIds = excluded,
+            maxExploreRatio = 0.0).withBlocks(blocks)
+        val opener = if (opening) {
+            val references = (librarySeeds + state.referenceTracks + snapshot.seeds.map { it.track })
+                .distinctBy { MusicStyleFeedback.key(it) }.map(::enriched)
+                .filter { MusicReferencePolicy.canOpen(it, events, now) }
+                .map { recommendationEngine.scoreCandidate(it, null, state, "liked", openerContext) }
+                .filter { it.familiar }
+            recommendationReRanker.rerank(references, openerContext).firstOrNull()
+        } else null
         extraTracks.forEach { t -> candidates.putIfAbsent(t.id, MusicPoolCandidate(t, addedAtMs = now)) }
         val history = recent.map { track -> recommendationEngine.scoreCandidate(track, null, state,
-            "history", baseContext, candidates[track.id]?.seedTopicKeys.orEmpty()) }
-        val context = baseContext.copy(recentExploration = history.map { it.explore || !it.inInterestPool },
-            recentTopicKeys = history.map { it.topicKeys })
-        val scored = candidates.values.filterNot { isBlocked(it.track, blocks) }.map { c ->
-            recommendationEngine.scoreCandidate(c.track, null, state, c.source, context, c.seedTopicKeys)
+            "history", baseContext, candidates[track.id]?.seedTopicKeys.orEmpty(), candidates[track.id]?.seedSongKeys.orEmpty()) }
+        val context = baseContext.copy(limit = (limit - if (opener != null) 1 else 0).coerceAtLeast(0),
+            isOpening = opening && opener == null,
+            sessionSeenIds = baseContext.sessionSeenIds + listOfNotNull(opener?.id),
+            recentSongKeys = baseContext.recentSongKeys + listOfNotNull(opener?.let { MusicDiscovery.songKey(it) }),
+            recentExploration = history.map { it.explore || !it.inInterestPool },
+            recentTopicKeys = history.map { it.topicKeys }, recentSeedSongKeys = history.map { it.seedSongKeys })
+        val scored = candidates.values.filterNot { isBlocked(it.track, blocks) ||
+            (it.source in setOf("related-like", "realtime-related") && it.seedSongKeys.isEmpty()) }.map { c ->
+            recommendationEngine.scoreCandidate(enriched(c.track), null, state, c.source, context, c.seedTopicKeys, c.seedSongKeys)
         }
-        val (tracks, picked) = recommendationReRanker.rerankWithReasons(scored, context)
+        val (discovered, picked) = recommendationReRanker.rerankWithReasons(scored, context)
+        val tracks = listOfNotNull(opener) + discovered
         if (revision == interestRevision) {
             val labels = state.interestTopics.entries.sortedByDescending { it.value }.take(3)
                 .mapNotNull { MusicDiscovery.availableTopics[it.key] }
@@ -5158,10 +5213,11 @@ class AppViewModel(
         val blocks = recBlocks()
         val context = FeedContext(nowMs = now, musicOnly = true)
         val supported = musicPool.snapshot(now).seeds.sortedByDescending { it.supportedAtMs }.map { it.track }
-        val seeds = (supported + librarySeeds).distinctBy { MusicDiscovery.songKey(it).ifBlank { it.id } }
+        val seeds = (state.referenceTracks + supported + librarySeeds).distinctBy { MusicDiscovery.songKey(it).ifBlank { it.id } }
             .filterNot { isBlocked(it, blocks) || it.id in state.cooledTrackIds }
             .map { t -> t to recommendationEngine.scoreCandidate(t, null, state, "liked", context) }
-            .filter { it.second.inInterestPool && !it.second.cooledDown }
+            .filter { it.second.familiar && it.second.inInterestPool && !it.second.cooledDown &&
+                (state.referencePreferences[MusicStyleFeedback.key(it.first)] ?: 0) >= 0 }
             .sortedByDescending { it.second.score }.map { it.first }
         val round = discoveryRound.getAndIncrement()
         val queries = MusicDiscovery.searchQueries(state, seeds, round, now).take(if (thrift) 2 else 4)
@@ -5173,18 +5229,20 @@ class AppViewModel(
         } }
         // 不同类型各取一个种子，同类再轮换，避免关联结果占满整个池。
         val seedGroups = seeds.groupBy { MusicStyleFeedback.topics(ContentProfileParser.profileFromTrack(it).topicKeys) }
-        val selectedSeeds = seedGroups.values.map { group -> group[Math.floorMod(round, group.size)] }
-            .take(if (thrift) 1 else 2)
+        val interleavedSeeds = (0 until (seedGroups.values.maxOfOrNull { it.size } ?: 0)).flatMap { offset ->
+            seedGroups.values.mapNotNull { group -> if (offset < group.size) group[(round + offset).mod(group.size)] else null }
+        }
+        val selectedSeeds = interleavedSeeds.take(if (thrift) 2 else 3)
         val relatedBatches = recallMusic(selectedSeeds) { seed ->
             val bv = seed.bvid.ifBlank { BilibiliApi.parseBvid(seed.id).orEmpty() }
             if (bv.isBlank()) emptyList() else biliApi.relatedTracks(bv, 24)
         }
         relatedBatches.forEach { (seed, tracks) ->
             val topics = ContentProfileParser.profileFromTrack(seed).topicKeys
-            tracks.forEach { musicPool.offer(MusicPoolCandidate(it, "related-like", topics, now)) }
+            tracks.forEach { musicPool.offer(MusicPoolCandidate(it, "related-like", topics, now, setOf(MusicStyleFeedback.key(seed)))) }
         }
         // 尚无任何口味证据才用音乐子区启蒙；有兴趣时不足也不会灌入全站/随机曲风。
-        if (state.interestTopics.isEmpty() && !thrift) {
+        if (state.interestTopics.isEmpty() && seeds.isEmpty() && !thrift) {
             val cold = try { biliApi.musicRegionFeed(24) } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) { emptyList() }

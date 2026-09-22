@@ -22,13 +22,19 @@ class RecommendationEngine {
         val negative = linkedMapOf<String, Double>()
         val cooledIds = linkedSetOf<String>()
         val cooledSongs = linkedSetOf<String>()
+        val songAffinities = linkedMapOf<String, Double>()
         var evidenceCount = 0
-        for ((_, songEvents) in songs) {
+        for ((songKey, songEvents) in songs) {
             val rejection = songEvents.filter { it.type == RecommendationEventType.NOT_INTERESTED }
                 .maxOfOrNull { it.occurredAtMs } ?: Long.MIN_VALUE
             val positive = songEvents.filter { (it.type.weight > 0.0 || it.type == RecommendationEventType.LISTEN_SAMPLE) && it.occurredAtMs > rejection &&
                 (it.sourceId != "library-seed" || rejection == Long.MIN_VALUE) }
-            if (songQuality(positive) >= 0.15) evidenceCount++
+            if (songQuality(positive) >= 0.15) {
+                evidenceCount++
+                positive.forEach { event ->
+                    songAffinities["track:${event.bvid.ifBlank { event.trackId }}"] = songQuality(positive)
+                }
+            }
             // 同曲合并实际平均收听、完成率与主动操作；曝光次数不能冒充偏好强度。
             val currentFeedback = positive.filter { it.sourceId != "library-seed" }
             addSongEvidence(currentFeedback, nowMs, RecommendationTuning.REALTIME_TTL_MS,
@@ -80,7 +86,14 @@ class RecommendationEngine {
         mix(rt, 0.15)
         // Explicit choices anchor the pool across sessions and survive occasional skips.
         mix(selected.associateWith { 1.0 / selected.size.coerceAtLeast(1) }, 1.5)
+        val references = styleFeedback.filter { it.referenceTrack != null &&
+            nowMs - it.occurredAtMs in 0..MusicStyleFeedback.TTL_MS && it.direction != 0 }
+            .groupBy { it.songKey }.values.map { it.maxBy { vote -> vote.occurredAtMs } }
         return InterestState(
+            songAffinities = songAffinities.filterKeys { it.removePrefix("track:") !in cooledIds },
+            referencePreferences = references.associate { it.songKey to it.direction },
+            referenceTracks = references.filter { it.direction > 0 }.mapNotNull { it.referenceTrack },
+            negativeReferenceTracks = references.filter { it.direction < 0 }.mapNotNull { it.referenceTrack },
             realtimeTopics = rt, hourlyTopics = hour, longTermTopics = long,
             realtimeAuthors = boundedDistribution(realtimeAuthors), hourlyAuthors = boundedDistribution(hourlyAuthors),
             interestTopics = normalized(blended), negativeTopics = negative,
@@ -94,7 +107,7 @@ class RecommendationEngine {
 
     fun scoreCandidate(
         track: Track, profile: ContentProfile?, state: InterestState, source: String,
-        context: FeedContext, seedTopicKeys: Set<String> = emptySet(),
+        context: FeedContext, seedTopicKeys: Set<String> = emptySet(), seedSongKeys: Set<String> = emptySet(),
     ): ScoredTrack {
         val p = profile ?: ContentProfileParser.profileFromTrack(track, context.nowMs)
         val topics = p.topicKeys.filter { it != "unknown" &&
@@ -106,14 +119,34 @@ class RecommendationEngine {
                     (state.hourlyTopics[it] ?: 0.0) * 0.15 + (state.longTermTopics[it] ?: 0.0) * 0.50 })
         }
         val interest = weights.filterValues { it >= 0.04 }.keys + state.preferredTopics
-        val knownTaste = musicTopics(interest).isNotEmpty() && state.confidence >= 0.1
+        val songKey = MusicDiscovery.songKey(track)
+        val referenceKey = MusicStyleFeedback.key(track)
+        val familiar = (state.songAffinities[referenceKey] ?: 0.0) >= 0.15 ||
+            (state.referencePreferences[referenceKey] ?: 0) > 0
+        val supportedSeeds = seedSongKeys.filterTo(linkedSetOf()) {
+            ((state.songAffinities[it] ?: 0.0) >= 0.15 || (state.referencePreferences[it] ?: 0) > 0) &&
+                (state.referencePreferences[it] ?: 0) >= 0 && it.removePrefix("track:") !in state.cooledTrackIds
+        }
+        val referenceSimilarity = state.referenceTracks.maxOfOrNull { MusicReferencePolicy.similarity(track, it) } ?: 0.0
+        val referencePenalty = maxOf(
+            state.negativeReferenceTracks.maxOfOrNull { MusicReferencePolicy.similarity(track, it) } ?: 0.0,
+            if (seedSongKeys.any { (state.referencePreferences[it] ?: 0) < 0 }) 0.75 else 0.0)
+        val knownTaste = (musicTopics(interest).isNotEmpty() && state.confidence >= 0.1) ||
+            state.songAffinities.isNotEmpty() || state.referenceTracks.isNotEmpty()
         val genreConflict = conflicts(musicalTopics, interest, MusicDiscovery.genreTopics)
         val languageConflict = conflicts(musicalTopics, interest, MusicDiscovery.languageTopics)
-        val directMatch = musicalTopics.any { it in interest } && !genreConflict && !languageConflict
+        // A learned language is a boundary, not proof that every song in that language fits.
+        val matchingInterests = (interest - MusicDiscovery.languageTopics) + state.preferredTopics
+        val directMatch = musicalTopics.any { it in matchingInterests } && !genreConflict && !languageConflict
         val seedMatch = !directMatch && !genreConflict && !languageConflict &&
             musicalTopics.intersect(MusicDiscovery.genreTopics).isEmpty() &&
-            musicTopics(seedTopicKeys).any { it in interest }
-        val inPool = !knownTaste || directMatch || seedMatch
+            musicTopics(seedTopicKeys).any { it in matchingInterests }
+        val detailedMatch = referenceSimilarity >= 0.5 && !genreConflict && !languageConflict
+        val songMatch = familiar || detailedMatch || supportedSeeds.any {
+            // An exact manual reference may add a small discovery branch outside an older broad taste.
+            (state.referencePreferences[it] ?: 0) > 0 || (!genreConflict && !languageConflict)
+        }
+        val inPool = !knownTaste || directMatch || seedMatch || songMatch
         val discoveryEvidence = musicalTopics + if (musicalTopics.intersect(MusicDiscovery.genreTopics).isEmpty())
             musicTopics(seedTopicKeys) else emptySet()
         val adjacent = knownTaste && !inPool && !languageConflict &&
@@ -135,7 +168,6 @@ class RecommendationEngine {
             "daily", "homepage" -> 0.6
             else -> 0.5
         }
-        val songKey = MusicDiscovery.songKey(track)
         val cooled = track.id in state.cooledTrackIds ||
             (track.bvid.isNotBlank() && track.bvid in state.cooledTrackIds) ||
             (songKey.isNotBlank() && songKey in state.cooledSongKeys)
@@ -163,10 +195,16 @@ class RecommendationEngine {
             sourceQuality + RecommendationTuning.W_FRESHNESS * freshness +
             RecommendationTuning.W_NEGATIVE * negativePenalty + RecommendationTuning.W_FATIGUE * fatiguePenalty +
             RecommendationTuning.W_REPEAT * repeatPenalty + RecommendationTuning.W_MISMATCH * mismatch + styleAdjustment +
-            evidenceTopics.sumOf { state.searchTopics[it] ?: 0.0 }.coerceAtMost(0.3)
+            evidenceTopics.sumOf { state.searchTopics[it] ?: 0.0 }.coerceAtMost(0.3) +
+            (if (familiar) 2.0 else if (supportedSeeds.isNotEmpty()) 0.35 else 0.0) + referenceSimilarity - referencePenalty -
+            MusicReferencePolicy.versionPenalty(track, state.preferredTopics +
+                weights.filterValues { it >= 0.15 }.keys) +
+            (state.referencePreferences[referenceKey] ?: 0) * 0.45
         val labels = evidenceTopics.filter { it in interest }.mapNotNull { MusicDiscovery.availableTopics[it] }.take(2)
         val reason = when {
             cooled -> "最近已跳过这首歌"
+            familiar -> "你明确喜欢或认真听过的歌曲"
+            songMatch -> "从你喜欢的具体歌曲继续发现"
             seedMatch -> "从你喜欢的歌曲继续发现"
             directMatch -> "符合你的${labels.joinToString("、")}口味"
             adjacent -> "试一点相近曲风"
@@ -178,6 +216,7 @@ class RecommendationEngine {
             explore = adjacent, realtime = source == "realtime-related", dailyBaseline = source == "daily",
             topicKeys = evidenceTopics, authorKey = author, inInterestPool = inPool,
             adjacentInterest = adjacent, cooledDown = cooled,
+            seedSongKeys = supportedSeeds, familiar = familiar,
         )
     }
 

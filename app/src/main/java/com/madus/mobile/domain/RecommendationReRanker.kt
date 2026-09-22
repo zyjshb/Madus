@@ -9,12 +9,26 @@ class RecommendationReRanker {
         val waiting = candidates.filterNot { violatesHard(it, context) }.sortedByDescending { it.score }.toMutableList()
         val picked = mutableListOf<ScoredTrack>()
         while (waiting.isNotEmpty() && picked.size < context.limit) {
-            val eligible = waiting.filter { canPick(it, picked, context) }
+            val eligible = waiting.filter { canPick(it, picked, context) }.ifEmpty {
+                // A small catalog must not stop playback just to meet an impossible origin quota.
+                // Only relax origin spacing; content, rejection, repeat and exploration rules stay intact.
+                val fallback = waiting.filter { canPick(it, picked, context, enforceSeedVariety = false) }
+                val lastOrigin = (context.recentSeedSongKeys + picked.map { it.seedSongKeys }).lastOrNull().orEmpty()
+                fallback.filter { it.seedSongKeys.intersect(lastOrigin).isEmpty() }.ifEmpty { fallback }
+            }
             if (eligible.isEmpty()) break
             val pool = eligible.filter { it.inInterestPool && !it.explore }
             val discoveries = eligible.filter { it.explore || !it.inInterestPool }
             // 满足间隔时真正留出发现位，不能被永远存在的同类候选挤掉。
-            val preferred = discoveries.ifEmpty { pool.ifEmpty { eligible } }
+            val relevant = discoveries.ifEmpty { pool.ifEmpty { eligible } }
+            val seedHistory = context.recentSeedSongKeys + picked.map { it.seedSongKeys }
+            fun seedCount(candidate: ScoredTrack): Int = seedHistory.takeLast(5)
+                .count { it.intersect(candidate.seedSongKeys).isNotEmpty() }
+            // Balance reference origins before exhausting their quotas (A,B,A,B,C would dead-end).
+            val preferred = if (context.musicOnly && relevant.all { it.seedSongKeys.isNotEmpty() }) {
+                val least = relevant.minOf(::seedCount)
+                relevant.filter { seedCount(it) == least }
+            } else relevant
             val history = context.recentTopicKeys.ifEmpty {
                 context.recentQueue.map { ContentProfileParser.profileFromTrack(it).topicKeys }
             } + picked.map { topicsOf(it) }
@@ -56,7 +70,8 @@ class RecommendationReRanker {
         return context.blockedTitleKeys.any { ContentProfileParser.titlesOverlap(it, t.title) }
     }
 
-    private fun canPick(candidate: ScoredTrack, picked: List<ScoredTrack>, context: FeedContext): Boolean {
+    private fun canPick(candidate: ScoredTrack, picked: List<ScoredTrack>, context: FeedContext,
+        enforceSeedVariety: Boolean = true): Boolean {
         if (picked.any { it.track.id == candidate.track.id ||
                 (candidate.track.bvid.isNotBlank() && it.track.bvid == candidate.track.bvid) }) return false
         if (context.musicOnly) {
@@ -64,12 +79,21 @@ class RecommendationReRanker {
             if (key.isNotBlank() && picked.any { MusicDiscovery.songKey(it.track) == key }) return false
         }
         if (candidate.explore || !candidate.inInterestPool) {
+            if (context.isOpening && picked.isEmpty()) return false
             val ratio = context.maxExploreRatio.coerceIn(0.0, 0.25)
             if (ratio <= 0.0) return false
             val interval = kotlin.math.ceil(1.0 / ratio).toInt()
             val history = context.recentExploration.ifEmpty { context.recentQueue.map { false } } +
                 picked.map { it.explore || !it.inInterestPool }
             if (history.size < interval - 1 || history.takeLast(interval - 1).any { it }) return false
+        }
+        // One liked song must not turn into an uninterrupted chain of its related videos.
+        // Apply across refill boundaries, not just inside a single response.
+        if (enforceSeedVariety && context.musicOnly && candidate.seedSongKeys.isNotEmpty() && !candidate.familiar) {
+            val history = context.recentSeedSongKeys + picked.map { it.seedSongKeys }
+            val origins = candidate.seedSongKeys
+            if (history.lastOrNull()?.let { it.intersect(origins).isNotEmpty() } == true) return false
+            if (history.takeLast(5).count { it.intersect(origins).isNotEmpty() } >= 2) return false
         }
         if (candidate.realtime) for (topic in topicsOf(candidate)) {
             val quota = context.realtimeTopicQuota[topic] ?: continue

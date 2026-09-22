@@ -2399,7 +2399,7 @@ class BilibiliApi(
                 if (bv.isBlank()) continue
                 val tid = item.optInt("typeid", item.optInt("tid", 0))
                 if (tid > 0 && tid !in MUSIC_TID_SET) continue
-                val duration = parseSearchDuration(item.optString("duration", ""))
+                val duration = parseDurationToMs(item.optString("duration", ""))
                 add(
                     Track(
                         id = bv,
@@ -2423,15 +2423,6 @@ class BilibiliApi(
         com.madus.mobile.domain.TrackFilters.preferMusicish(raw, minScore = 10).take(limit)
     }
 
-    private fun parseSearchDuration(raw: String): Long {
-        // "3:45" or "03:45"
-        val parts = raw.split(':').mapNotNull { it.toLongOrNull() }
-        return when (parts.size) {
-            2 -> (parts[0] * 60 + parts[1]) * 1000
-            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000
-            else -> 0L
-        }
-    }
 
     private fun parseArchiveList(list: JSONArray, limit: Int, album: String): List<Track> =
         buildList {

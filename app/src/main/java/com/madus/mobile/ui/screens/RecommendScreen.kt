@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.PlaybackState
 import com.madus.mobile.domain.Track
 import com.madus.mobile.domain.TrackFilters
+import com.madus.mobile.domain.MusicDiscovery
 import com.madus.mobile.domain.MusicStyleFeedback
 import com.madus.mobile.ui.RecommendSegment
 import com.madus.mobile.ui.RecommendUiState
@@ -205,7 +206,8 @@ fun RecommendScreen(
     feedbackTrack?.let { song ->
         SongFeedbackSheet(
             track = song,
-            direction = state.styleFeedbackBySong[MusicStyleFeedback.key(song)] ?: 0,
+            direction = state.styleFeedbackBySong[MusicStyleFeedback.key(song)]
+                ?: state.styleFeedbackBySong[MusicDiscovery.songKey(song)] ?: 0,
             notInterested = song.id in state.notInterestedIds,
             onStyleFeedback = { direction -> onStyleFeedback(song, direction); feedbackTrack = null },
             onNotInterested = { onFeedbackNotInterested(song); feedbackTrack = null },

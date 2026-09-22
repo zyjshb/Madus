@@ -3,6 +3,8 @@ package com.madus.mobile.domain
 /** 音乐发现策略：曲风召回、跨会话避重，不依赖 UP 主等同于歌手。 */
 object MusicDiscovery {
     val availableTopics: Map<String, String> = linkedMapOf(
+        "alt-rock" to "另类摇滚", "dream-pop" to "梦幻流行", "shoegaze" to "盯鞋",
+        "trip-hop" to "Trip-hop", "indie-pop" to "独立流行", "post-rock" to "后摇",
         "rock" to "摇滚", "folk" to "民谣", "rnb" to "R&B", "jazz" to "爵士",
         "pop" to "流行", "rap" to "说唱", "gufeng" to "国风", "dj" to "电子",
         "instrumental" to "纯音乐", "jp-song" to "日语", "en-song" to "欧美",
@@ -10,9 +12,13 @@ object MusicDiscovery {
         "healing" to "治愈", "sleep" to "助眠", "anime-song" to "动漫歌曲",
         "vocaloid" to "虚拟歌手", "cover" to "翻唱", "live" to "现场",
     )
-    val genreTopics: Set<String> = setOf("rock", "folk", "rnb", "jazz", "pop", "rap", "gufeng", "dj", "instrumental")
+    val genreTopics: Set<String> = setOf("rock", "folk", "rnb", "jazz", "pop", "rap", "gufeng", "dj", "instrumental",
+        "alt-rock", "dream-pop", "shoegaze", "trip-hop", "indie-pop", "post-rock")
     val languageTopics: Set<String> = setOf("jp-song", "en-song", "kpop", "cantonese", "mandarin")
     private val neighbors = mapOf(
+        "alt-rock" to setOf("shoegaze", "rock"), "shoegaze" to setOf("dream-pop", "alt-rock"),
+        "dream-pop" to setOf("shoegaze", "indie-pop"), "indie-pop" to setOf("dream-pop", "pop"),
+        "trip-hop" to setOf("rnb", "dj"), "post-rock" to setOf("rock", "instrumental"),
         "rock" to setOf("pop", "folk"), "folk" to setOf("pop", "healing"),
         "rnb" to setOf("jazz", "pop", "rap"), "jazz" to setOf("rnb", "instrumental"),
         "pop" to setOf("rnb", "folk"), "rap" to setOf("rnb", "dj"),
@@ -25,6 +31,9 @@ object MusicDiscovery {
     fun adjacentTopics(topics: Set<String>): Set<String> = topics.flatMap { neighbors[it].orEmpty() }.toSet() - topics
 
     private val queries = linkedMapOf(
+        "alt-rock" to "alternative rock 单曲", "dream-pop" to "dream pop 单曲",
+        "shoegaze" to "shoegaze 单曲", "trip-hop" to "trip hop 单曲",
+        "indie-pop" to "indie pop 单曲", "post-rock" to "post rock 单曲",
         "rock" to "摇滚 单曲", "folk" to "民谣 单曲", "rnb" to "R&B 歌曲",
         "jazz" to "爵士 音乐", "pop" to "流行 单曲", "rap" to "说唱 单曲",
         "gufeng" to "国风 歌曲", "dj" to "电子音乐 单曲", "instrumental" to "纯音乐 演奏",
@@ -40,6 +49,14 @@ object MusicDiscovery {
     }
 
     fun searchQueries(state: InterestState, seeds: List<Track>, round: Int, nowMs: Long): List<String> {
+        // A song with unknown genre is still a valid reference. Do not replace it with random
+        // folk/pop/instrumental searches just because the label dictionary has no match.
+        if (seeds.isNotEmpty() && state.preferredTopics.isEmpty() &&
+            (state.evidenceSongCount <= 3 || (state.interestTopics.keys - languageTopics).isEmpty())) {
+            val precise = seeds.flatMap { ContentProfileParser.profileFromTrack(it).topicKeys }
+                .distinct().filter { it in setOf("alt-rock", "dream-pop", "shoegaze", "trip-hop", "indie-pop", "post-rock") }
+            return rotate(precise, round).take(3).mapNotNull { queries[it] }
+        }
         if (state.confidence < 0.1 && state.preferredTopics.isEmpty()) {
             val searched = state.searchTopics.entries.sortedByDescending { it.value }.map { it.key }.take(1)
             return (searched + rotate(listOf("pop", "folk", "rnb", "instrumental", "rock", "gufeng"), round))

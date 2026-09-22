@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // 1.20.0：平均收听学习、搜索意图与防同类连播
-        versionCode = 321
-        versionName = "1.20.1"
+        versionCode = 322
+        versionName = "1.21.0"
         vectorDrawables.useSupportLibrary = true
     }
 
