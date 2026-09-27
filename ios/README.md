@@ -2,7 +2,11 @@
 
 这是独立的 SwiftUI + AVPlayer 客户端，最低 iOS / iPadOS 16。手机直接访问 B 站；无需部署服务器。Android 工程继续使用原来的 Gradle 构建。
 
-**当前为 0.1.0 移植初版。没有上架 App Store，也没有包含签名证书。源码检查不能代替 Xcode 编译和 iPhone 实测。**
+**当前为 0.1.0 移植初版。已完成 Xcode 真机目标编译并生成未签名 IPA，尚未在真实 iPhone 上验收。**
+
+2026-09-28 构建记录：[iOS IPA #36331648674](https://github.com/zyjshb/Madus/actions/runs/36331648674)。9 项核心测试全部通过；安装包为 iPhoneOS / arm64、最低 iOS 16.0，已验证 ZIP 完整性与 SHA-256。构建成功不代表已经完成签名安装、后台播放和真机功能验证。
+
+本地文件：`apk/ios-0.1.0/Madus-iOS-unsigned.ipa`。SHA-256：`c567160f9b55fe3f44329b3e19ffc5b55ea19985545e2e2526555723b548b4e3`。
 
 ## 已实现的范围
 
