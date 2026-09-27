@@ -104,7 +104,7 @@ $env:GITEE_TOKEN = 'your_token'
 A: 通过 GitHub / Gitee 侧载分发，未上架应用商店。确认下载自本仓库即可。
 
 **Q: 支持 iPhone 吗？**  
-A: 暂不支持，仅 Android。
+A: 已新增 [iOS 原生移植工程](ios/README.md)（iOS 16+，0.1.0 初版），包含搜索、播放、本地收藏、B 站登录与后台音频。尚需完成 Xcode 构建和真机验收，不是 Android 全功能对等版。可通过 macOS / GitHub Actions 构建 IPA，再侧载签名安装；免费 Apple 账号需定期续签，不通过 App Store 分发。
 
 **Q: 哼唱 / AI 搜不能用？**  
 A: 需在 App 内自行配置对应 API Key（模型 / ACR / 讯飞），仓库不会内置密钥。

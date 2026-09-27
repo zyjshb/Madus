@@ -59,3 +59,12 @@ scripts/gh-login-*.txt
 docs/HANDOFF_NEXT_CHAT.md
 docs/CODEX_WORKER.md
 docs/TASK_HUMMING_REWRITE.md
+
+# iOS local builds and signing material
+ios/.build/
+ios/.swiftpm/
+**/xcuserdata/
+*.ipa
+*.mobileprovision
+*.p12
+*.p8
