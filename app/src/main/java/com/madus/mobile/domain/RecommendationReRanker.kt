@@ -8,6 +8,8 @@ class RecommendationReRanker {
     fun rerankWithReasons(candidates: List<ScoredTrack>, context: FeedContext): Pair<List<Track>, List<ScoredTrack>> {
         val waiting = candidates.filterNot { violatesHard(it, context) }.sortedByDescending { it.score }.toMutableList()
         val picked = mutableListOf<ScoredTrack>()
+        // 只算一次：待播头部的曲风序列，用来让补队列和已排好的接缝处保持间隔。
+        val boundaryTopics = upcomingTopics(context)
         while (waiting.isNotEmpty() && picked.size < context.limit) {
             val eligible = waiting.filter { canPick(it, picked, context) }.ifEmpty {
                 // A small catalog must not stop playback just to meet an impossible origin quota.
@@ -20,7 +22,12 @@ class RecommendationReRanker {
             val pool = eligible.filter { it.inInterestPool && !it.explore }
             val discoveries = eligible.filter { it.explore || !it.inInterestPool }
             // 满足间隔时真正留出发现位，不能被永远存在的同类候选挤掉。
-            val relevant = discoveries.ifEmpty { pool.ifEmpty { eligible } }
+            // 熟悉模式下反过来优先取池内曲目，只有没有合适候选时才用探索位。
+            val relevant = if (context.tasteMode == TasteMode.FAMILIAR) {
+                pool.ifEmpty { discoveries.ifEmpty { eligible } }
+            } else {
+                discoveries.ifEmpty { pool.ifEmpty { eligible } }
+            }
             val seedHistory = context.recentSeedSongKeys + picked.map { it.seedSongKeys }
             fun seedCount(candidate: ScoredTrack): Int = seedHistory.takeLast(5)
                 .count { it.intersect(candidate.seedSongKeys).isNotEmpty() }
@@ -31,7 +38,7 @@ class RecommendationReRanker {
             } else relevant
             val history = context.recentTopicKeys.ifEmpty {
                 context.recentQueue.map { ContentProfileParser.profileFromTrack(it).topicKeys }
-            } + picked.map { topicsOf(it) }
+            } + boundaryTopics + picked.map { topicsOf(it) }
             fun sharesGenre(a: Set<String>, b: Set<String>): Boolean = genres(a).intersect(genres(b)).isNotEmpty()
             val withoutStreak = if (context.musicOnly && history.size >= 2) preferred.filter { candidate ->
                 !history.takeLast(2).all { sharesGenre(it, topicsOf(candidate)) }
@@ -42,9 +49,9 @@ class RecommendationReRanker {
             }.ifEmpty { withoutStreak } else withoutStreak
             // Uploader variety breaks near-ties; it cannot promote a much weaker musical match.
             val choiceSet = balanced.filter { it.score >= balanced.first().score - 1.25 }
-            val candidate = choiceSet.firstOrNull { variedAuthor(it, picked) &&
+            val candidate = choiceSet.firstOrNull { variedAuthor(it, picked, context) &&
                 (context.musicOnly || variedTopic(it, picked)) }
-                ?: choiceSet.firstOrNull { variedAuthor(it, picked) }
+                ?: choiceSet.firstOrNull { variedAuthor(it, picked, context) }
                 ?: choiceSet.first()
             waiting.remove(candidate)
             picked += candidate
@@ -80,7 +87,8 @@ class RecommendationReRanker {
         }
         if (candidate.explore || !candidate.inInterestPool) {
             if (context.isOpening && picked.isEmpty()) return false
-            val ratio = context.maxExploreRatio.coerceIn(0.0, 0.25)
+            // 新鲜模式允许更高的探索配额；均衡档仍是 0.25，行为与改造前一致。
+            val ratio = context.maxExploreRatio.coerceIn(0.0, 0.45)
             if (ratio <= 0.0) return false
             val interval = kotlin.math.ceil(1.0 / ratio).toInt()
             val history = context.recentExploration.ifEmpty { context.recentQueue.map { false } } +
@@ -102,9 +110,13 @@ class RecommendationReRanker {
         return true
     }
 
-    private fun variedAuthor(candidate: ScoredTrack, picked: List<ScoredTrack>): Boolean {
+    private fun variedAuthor(candidate: ScoredTrack, picked: List<ScoredTrack>, context: FeedContext): Boolean {
         val author = authorOf(candidate) ?: return true
-        return picked.takeLast(3).none { authorOf(it) == author }
+        if (picked.takeLast(3).any { authorOf(it) == author }) return false
+        // 队列接缝：待播头部里已经有同一作者，补队列时不要再无缝接一首。
+        return context.upcomingQueue.takeLast(3).none { upcoming ->
+            upcoming.artist.trim().lowercase() == author
+        }
     }
 
     private fun variedTopic(candidate: ScoredTrack, picked: List<ScoredTrack>): Boolean {
@@ -121,4 +133,18 @@ class RecommendationReRanker {
     private fun topicsOf(scored: ScoredTrack): Set<String> = scored.topicKeys.ifEmpty {
         ContentProfileParser.profileFromTrack(scored.track).topicKeys.filter { it != "unknown" }.toSet()
     }
+
+    /**
+     * 待播头部（最近将要播的在最后）的曲风。
+     * 汽水把「待播」用 played_mills = -1 塞进同一个 30 条上下文窗口；这里等价地把
+     * 已排好的队列尾部并进重排历史，避免在补队列的接缝处出现两首同曲风。
+     */
+    private fun upcomingTopics(context: FeedContext): List<Set<String>> =
+        if (context.upcomingQueue.isEmpty()) {
+            emptyList()
+        } else {
+            context.upcomingQueue.takeLast(5).map { track ->
+                ContentProfileParser.profileFromTrack(track).topicKeys.filter { it != "unknown" }.toSet()
+            }
+        }
 }

@@ -24,6 +24,7 @@ import com.madus.mobile.data.TrackCacheStore
 import com.madus.mobile.domain.AuthSession
 import com.madus.mobile.domain.ContentProfile
 import com.madus.mobile.domain.ContentProfileParser
+import com.madus.mobile.domain.DailyRefresh
 import com.madus.mobile.domain.FeedContext
 import com.madus.mobile.domain.InterestState
 import com.madus.mobile.domain.MusicListeningTracker
@@ -43,6 +44,7 @@ import com.madus.mobile.domain.RecommendationEventType
 import com.madus.mobile.domain.RecommendationReRanker
 import com.madus.mobile.domain.RecommendationTuning
 import com.madus.mobile.domain.RepeatMode
+import com.madus.mobile.domain.TasteMode
 import com.madus.mobile.domain.ScoredTrack
 import com.madus.mobile.domain.Track
 import com.madus.mobile.domain.TrackFilters
@@ -138,6 +140,8 @@ enum class RecommendSegment { Feed, Recent }
 data class RecommendUiState(
     val styleFeedbackBySong: Map<String, Int> = emptyMap(),
     val preferredTopics: Set<String> = emptySet(),
+    /** 熟悉 / 均衡 / 新鲜，直接把「探索多少」交给用户。 */
+    val tasteMode: TasteMode = TasteMode.BALANCED,
     val tasteReady: Boolean = false,
     val adapting: Boolean = false,
     val recommendationHint: String = "选几种喜欢的音乐，第一首就更合口味",
@@ -371,6 +375,8 @@ class AppViewModel(
     private var searchPlaybackGeneration = -1
     private val listeningTracks = linkedMapOf<String, Track>()
     private var lastListeningDiscoveryAt = 0L
+    /** 最近一次「跨 5:00 窗口」的全量召回时间；进程内有效，避免每次切页都重拉。 */
+    private var lastDailyRefreshMs = 0L
     private var listeningSaveJob: Job? = null
     private val streamResolutionCache = StreamResolutionCache<Track>(viewModelScope)
     private var streamPrefetchJob: Job? = null
@@ -575,7 +581,9 @@ class AppViewModel(
             val taste = musicTasteStore.load()
             styleFeedback = styleFeedbackStore.load()
             _recommend.update { it.copy(styleFeedbackBySong = styleFeedback.associate { vote -> vote.songKey to vote.direction }) }
-            _recommend.update { it.copy(preferredTopics = taste.preferredTopics, tasteReady = taste.configured) }
+            _recommend.update {
+                it.copy(preferredTopics = taste.preferredTopics, tasteReady = taste.configured, tasteMode = taste.mode)
+            }
             musicPool.restore(musicPoolStore.load(), System.currentTimeMillis())
             preferencesLoaded.complete(Unit)
             runCatching { recommendationEventStore.clearExpired() }
@@ -588,6 +596,7 @@ class AppViewModel(
             refreshHome()
             loadRecommendFeed(autoStart = false)
             refreshCacheStats()
+            runCatching { refreshDailyBaseline() }
             _sleepCustomMinutes.value = runCatching {
                 playerPrefs.lastSleepCustomMinutes.first()
             }.getOrDefault(0)
@@ -1269,15 +1278,18 @@ class AppViewModel(
     }
 
     /** 同步截取旧曲的听歌证据，保存与重排不阻塞已预取的下一首。 */
-    private suspend fun maybeRecordSkipFast() {
+    private suspend fun maybeRecordSkipFast(back: Boolean = false) {
         val pb = playback.value
         val t = pb.current ?: return
         if (!isForYouQueue() || !TrackFilters.isLikelyMusic(t) || pb.isLoading || pb.errorMessage != null) return
         val heard = sampleListening(pb)
         val key = "$playGeneration:${t.id}"
-        if (heard < 500L || !skipRecordedForPlay.add(key)) return
+        // 按「上一首」本身就是明确的否定，0.5 秒也照样记账；返回上一首不是误触。
+        if ((!back && heard < 500L) || !skipRecordedForPlay.add(key)) return
         val duration = pb.durationMs.takeIf { it > 0 } ?: t.durationMs
         val type = when {
+            // 汽水的 previous / hotkey_previous 比 next 更接近否定：用户主动退回去，说明这首放错了位置。
+            back -> RecommendationEventType.USER_BACK
             heard < RecommendationTuning.SKIP_FAST_MIN_MS -> RecommendationEventType.SKIP_FAST
             duration > 0 && heard < duration * 0.65 -> RecommendationEventType.SKIP
             else -> return
@@ -1538,6 +1550,39 @@ class AppViewModel(
                 loadRecommendFeed(autoStart = false)
             }
         }
+    }
+
+    /**
+     * 切换听歌模式。汽水把「探索多少」做成用户可见的两档（熟悉 / 新鲜），
+     * 这里保持同一做法：模式直接改探索配额与不匹配惩罚，而不是偷偷调内部超参。
+     */
+    fun updateTasteMode(mode: TasteMode) {
+        if (_recommend.value.tasteMode == mode) return
+        viewModelScope.launch {
+            preferencesLoaded.await()
+            runCatching { musicTasteStore.saveMode(mode) }
+            interestRevision++
+            _recommend.update {
+                it.copy(tasteMode = mode, recommendationHint = "已切到${mode.label}模式：${mode.hint}")
+            }
+            if (isForYouQueue() && pendingQueue.isNotEmpty()) {
+                rerankUpcoming()
+                requestLiveDiscovery()
+            } else if (playback.value.current == null) {
+                loadRecommendFeed(autoStart = false)
+            }
+        }
+    }
+
+    /**
+     * 每日 5:00 窗口的首轮全量召回（汽水口径：跨夜听歌算前一天，5 点后首次访问才刷新）。
+     * 本地推荐是实时自适应的，这里只用来保证「跨天第一轮」不是同一批缓存。
+     */
+    private suspend fun refreshDailyBaseline() {
+        val now = System.currentTimeMillis()
+        if (!isForYouQueue() || !DailyRefresh.shouldRefresh(lastDailyRefreshMs, now)) return
+        lastDailyRefreshMs = now
+        requestLiveDiscovery()
     }
 
     /** 本地候选池立即重排，从下一首开始；网络返回时再用最新反馈评估一遍。 */
@@ -2301,6 +2346,13 @@ class AppViewModel(
         val i = index.coerceIn(0, pendingQueue.lastIndex)
         pendingIndex = i
         val track = pendingQueue[i]
+        // 同一个会话里再次播放同一首 = 重播。汽水的 REPLAY 权重 0.80 一直是死代码，
+        // 这里把它接上：单曲循环/回头再听终于能和「随手听一遍」区分开。
+        if (isForYouQueue() && TrackFilters.isLikelyMusic(track) &&
+            track.id in sessionStartedIds && sessionReplayedIds.add(track.id)
+        ) {
+            recordEvent(track, RecommendationEventType.REPLAY)
+        }
         searchPlaybackGeneration = if (pendingSearchTrackId == track.id) gen else -1
         if (pendingSearchTrackId == track.id) pendingSearchTrackId = null
         fun isCurrentRequest(): Boolean =
@@ -2684,6 +2736,7 @@ class AppViewModel(
             }
 
             // 上一首就是上一首。不要先重头加载当前（听歌/视频都一样，点两次才能切走）。
+            maybeRecordSkipFast(back = true)
             playIndex(pendingIndex - 1, startPos = switchStart, skipDelta = -1)
         }
     }
@@ -5162,12 +5215,20 @@ class AppViewModel(
             return t.copy(categoryId = p.categoryId ?: t.categoryId,
                 categoryName = p.categoryName ?: t.categoryName, tags = (t.tags + p.tags).distinct())
         }
+        val tasteMode = _recommend.value.tasteMode
+        // 汽水把「待播」也当成上下文：补队列时让重排看到接下来要播什么，接缝处才不撞曲风/作者。
+        val upcoming = if (isForYouQueue()) {
+            pendingQueue.drop(pendingIndex + 1).take(6)
+        } else {
+            emptyList()
+        }
         val baseContext = FeedContext(nowMs = now, limit = limit, sessionSeenIds = excluded,
-            recentQueue = recent, maxExploreRatio = 0.25).withBlocks(blocks).withListeningHistory(events)
+            recentQueue = recent, maxExploreRatio = tasteMode.exploreRatio, tasteMode = tasteMode,
+            upcomingQueue = upcoming).withBlocks(blocks).withListeningHistory(events)
         val snapshot = musicPool.snapshot(now)
         val candidates = snapshot.candidates.associateBy { it.track.id }.toMutableMap()
         val openerContext = FeedContext(nowMs = now, limit = 1, sessionSeenIds = excluded,
-            maxExploreRatio = 0.0).withBlocks(blocks)
+            maxExploreRatio = 0.0, tasteMode = tasteMode).withBlocks(blocks)
         val opener = if (opening) {
             val references = (librarySeeds + state.referenceTracks + snapshot.seeds.map { it.track })
                 .distinctBy { MusicStyleFeedback.key(it) }.map(::enriched)
@@ -5187,7 +5248,9 @@ class AppViewModel(
             recentTopicKeys = history.map { it.topicKeys }, recentSeedSongKeys = history.map { it.seedSongKeys })
         val scored = candidates.values.filterNot { isBlocked(it.track, blocks) ||
             (it.source in setOf("related-like", "realtime-related") && it.seedSongKeys.isEmpty()) }.map { c ->
-            recommendationEngine.scoreCandidate(enriched(c.track), null, state, c.source, context, c.seedTopicKeys, c.seedSongKeys)
+            // 画像缓存已经在手里，直接传进去，省掉 scoreCandidate 内的重复解析。
+            recommendationEngine.scoreCandidate(enriched(c.track), profileCache[profileKey(c.track)],
+                state, c.source, context, c.seedTopicKeys, c.seedSongKeys)
         }
         val (discovered, picked) = recommendationReRanker.rerankWithReasons(scored, context)
         val tracks = listOfNotNull(opener) + discovered

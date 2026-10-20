@@ -78,6 +78,7 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.domain.TrackFilters
 import com.madus.mobile.domain.MusicDiscovery
 import com.madus.mobile.domain.MusicStyleFeedback
+import com.madus.mobile.domain.TasteMode
 import com.madus.mobile.ui.RecommendSegment
 import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
@@ -121,6 +122,7 @@ fun RecommendScreen(
     onStartRadio: () -> Unit = {},
     onRefreshRadio: () -> Unit = {},
     onUpdateMusicTaste: (Set<String>) -> Unit = {},
+    onUpdateTasteMode: (TasteMode) -> Unit = {},
     onStyleFeedback: (Track, Int) -> Unit = { _, _ -> },
     onFeedbackNotInterested: (Track) -> Unit = { onNotInterested() },
     onLogin: () -> Unit = {},
@@ -217,6 +219,8 @@ fun RecommendScreen(
     if (showMusicTaste) {
         MusicTasteSheet(
             preferredTopics = state.preferredTopics,
+            tasteMode = state.tasteMode,
+            onTasteModeChange = onUpdateTasteMode,
             onDismiss = { showMusicTaste = false },
             onSave = { topics ->
                 onUpdateMusicTaste(topics)
@@ -321,6 +325,7 @@ private fun RadioPanel(
             onOpen = onOpenMusicTaste,
             onOpenFeedback = onOpenFeedback.takeIf { track != null && TrackFilters.isLikelyMusic(track) },
             modifier = Modifier.padding(bottom = 4.dp),
+            modeLabel = state.tasteMode.label,
         )
 
         if (com.madus.mobile.BuildConfig.DEBUG && state.debugRows.isNotEmpty()) {

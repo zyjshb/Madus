@@ -102,6 +102,8 @@ class RecommendationEngine {
             styleAdjustments = MusicStyleFeedback.adjustments(styleFeedback, nowMs),
             searchTopics = searches,
             confidence = if (selected.isNotEmpty()) 1.0 else evidenceCount.toDouble() / (evidenceCount + 6.0),
+            playCounts = RecommendationFusion.repeatProfiles(events, nowMs),
+            artistNegatives = RecommendationFusion.artistNegatives(events, nowMs),
         )
     }
 
@@ -190,12 +192,33 @@ class RecommendationEngine {
         val mismatch = if (knownTaste && !inPool) if (adjacent) 0.4 else 1.0 else 0.0
         val styleAdjustment = musicalTopics.sumOf { state.styleAdjustments[it] ?: 0.0 }
             .coerceIn(-MusicStyleFeedback.MAX_SCORE_ADJUSTMENT, MusicStyleFeedback.MAX_SCORE_ADJUSTMENT)
+        // —— 汽水音乐融合项：三档重复窗口 + 歌手级负反馈 + 听歌模式 ——
+        val tasteMode = context.tasteMode
+        val repeatProfile = state.playCounts[track.id]
+        val love = RecommendationFusion.loveBoost(repeatProfile)
+        val shortTermFatigue = RecommendationFusion.fatiguePenalty(repeatProfile)
+        val artistNegative = author?.let { state.artistNegatives[it] } ?: 0.0
+        // 熟悉模式把「明确不符合画像」再压一档，但不硬封：候选少时仍能播出。
+        val anchorPenalty = if (tasteMode.strictAnchor && knownTaste && !directMatch && !songMatch && !familiar) {
+            1.0
+        } else {
+            0.0
+        }
+        val anchorBias = if (tasteMode.sourceQualityBias != 0.0 && source in ANCHORED_SOURCES) {
+            tasteMode.sourceQualityBias
+        } else {
+            0.0
+        }
         val score = 4.0 * poolAffinity + RecommendationTuning.W_REALTIME * realtimeAffinity +
             RecommendationTuning.W_HOURLY * hourlyAffinity + RecommendationTuning.W_LONG_TERM * longTermAffinity +
-            sourceQuality + RecommendationTuning.W_FRESHNESS * freshness +
+            sourceQuality + anchorBias + RecommendationTuning.W_FRESHNESS * freshness +
             RecommendationTuning.W_NEGATIVE * negativePenalty + RecommendationTuning.W_FATIGUE * fatiguePenalty +
-            RecommendationTuning.W_REPEAT * repeatPenalty + RecommendationTuning.W_MISMATCH * mismatch + styleAdjustment +
+            RecommendationTuning.W_REPEAT * repeatPenalty +
+            RecommendationTuning.W_MISMATCH * mismatch * tasteMode.mismatchScale + styleAdjustment +
             evidenceTopics.sumOf { state.searchTopics[it] ?: 0.0 }.coerceAtMost(0.3) +
+            RecommendationTuning.W_LOVE * love +
+            RecommendationTuning.W_ARTIST_NEGATIVE * artistNegative +
+            RecommendationTuning.W_ANCHOR_MISMATCH * anchorPenalty + shortTermFatigue +
             (if (familiar) 2.0 else if (supportedSeeds.isNotEmpty()) 0.35 else 0.0) + referenceSimilarity - referencePenalty -
             MusicReferencePolicy.versionPenalty(track, state.preferredTopics +
                 weights.filterValues { it >= 0.15 }.keys) +
@@ -203,12 +226,16 @@ class RecommendationEngine {
         val labels = evidenceTopics.filter { it in interest }.mapNotNull { MusicDiscovery.availableTopics[it] }.take(2)
         val reason = when {
             cooled -> "最近已跳过这首歌"
+            love > 0.0 -> "你刚在反复听这首，再放一次"
             familiar -> "你明确喜欢或认真听过的歌曲"
             songMatch -> "从你喜欢的具体歌曲继续发现"
             seedMatch -> "从你喜欢的歌曲继续发现"
+            directMatch && tasteMode == TasteMode.FAMILIAR -> "熟悉模式：延续你的${labels.joinToString("、")}口味"
             directMatch -> "符合你的${labels.joinToString("、")}口味"
+            adjacent && tasteMode == TasteMode.FRESH -> "新鲜模式：听一点没试过的相近曲风"
             adjacent -> "试一点相近曲风"
             !knownTaste -> "听一听，找到你的口味"
+            artistNegative >= 0.2 -> "你少听这位歌手的歌"
             else -> "与你的口味关联较弱"
         }
         return ScoredTrack(
@@ -272,7 +299,7 @@ class RecommendationEngine {
     private fun musicTopics(topics: Set<String>): Set<String> = topics.intersect(MusicDiscovery.availableTopics.keys)
     private fun cooldownFor(type: RecommendationEventType): Long = when (type) {
         RecommendationEventType.NOT_INTERESTED -> RecommendationTuning.NOT_INTERESTED_COOLDOWN_MS
-        RecommendationEventType.SKIP_FAST -> RecommendationTuning.FAST_SKIP_COOLDOWN_MS
+        RecommendationEventType.SKIP_FAST, RecommendationEventType.USER_BACK -> RecommendationTuning.FAST_SKIP_COOLDOWN_MS
         else -> RecommendationTuning.SKIP_COOLDOWN_MS
     }
     private fun negativeStrength(event: RecommendationEvent, nowMs: Long): Double {
@@ -296,6 +323,8 @@ class RecommendationEngine {
     private fun decayed(base: Double, ageMs: Long, halfLifeMs: Long): Double =
         if (halfLifeMs <= 0L) 0.0 else base * exp(-ln(2.0) * ageMs.toDouble() / halfLifeMs)
     companion object {
+        /** 熟悉模式的加成只给「已验证」的来源，不给搜索/探索。 */
+        private val ANCHORED_SOURCES = setOf("liked", "local", "history")
         private val LONG_TERM_EVENTS = setOf(
             RecommendationEventType.LIKE, RecommendationEventType.COLLECT_LOCAL,
             RecommendationEventType.COLLECT_BILIBILI, RecommendationEventType.WATCH_90, RecommendationEventType.REPLAY,

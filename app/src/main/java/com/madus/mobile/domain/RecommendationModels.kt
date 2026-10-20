@@ -12,8 +12,41 @@ enum class RecommendationEventType(val weight: Double) {
     SKIP_FAST(-0.70),
     SKIP(-0.35),
     NOT_INTERESTED(-1.50),
+
+    /**
+     * 用户按「上一首」离开。汽水的离场原因里有 previous / hotkey_previous 两档，
+     * 语义比「下一首」更接近否定：主动回到上一首说明这首不该被放到这里。
+     */
+    USER_BACK(-0.95),
     LISTEN_SAMPLE(0.0),
     SEARCH_INTENT(0.0),
+}
+
+/**
+ * 听歌模式。汽水把「探索多少」做成用户可见的两档（熟悉模式 / 新鲜模式），
+ * 而不是内部调 ε-greedy —— 可解释、可 A/B、也不会让算法偷偷把老歌全换掉。
+ * 这里补一个中间档作为默认，保证不选模式的用户行为和改造前一致。
+ */
+enum class TasteMode(
+    val label: String,
+    val hint: String,
+    /** 探索位占比上限，重排器据此算间隔。 */
+    val exploreRatio: Double,
+    /** 与画像不匹配时的扣分倍率。 */
+    val mismatchScale: Double,
+    /** 已喜欢/听过的曲目在熟悉模式下的加成。 */
+    val sourceQualityBias: Double,
+    /** 熟悉模式：明确不匹配的曲目额外降权，只在没有更合适候选时才用。 */
+    val strictAnchor: Boolean,
+) {
+    FAMILIAR("熟悉", "以你验证过的口味为主，只留少量相邻曲风", 0.08, 1.35, 0.15, true),
+    BALANCED("均衡", "既有熟悉感，也留出发现位", 0.25, 1.00, 0.0, false),
+    FRESH("新鲜", "更多相邻曲风与陌生歌手", 0.40, 0.50, -0.12, false),
+    ;
+
+    companion object {
+        fun of(name: String?): TasteMode = entries.firstOrNull { it.name == name } ?: BALANCED
+    }
 }
 
 data class RecommendationEvent(
@@ -74,6 +107,10 @@ data class InterestState(
     val referencePreferences: Map<String, Int> = emptyMap(),
     val referenceTracks: List<Track> = emptyList(),
     val negativeReferenceTracks: List<Track> = emptyList(),
+    /** 最近一天的重复收听（10 分钟 / 1 小时 / 1 天三档），区分单曲循环式真爱与当天疲劳。 */
+    val playCounts: Map<String, RepeatProfile> = emptyMap(),
+    /** 歌手级负反馈强度（0~0.5），作用域是作者而不是曲风。 */
+    val artistNegatives: Map<String, Double> = emptyMap(),
 )
 
 data class ScoredTrack(
@@ -116,6 +153,14 @@ data class FeedContext(
     val recentTopicKeys: List<Set<String>> = emptyList(),
     val recentSeedSongKeys: List<Set<String>> = emptyList(),
     val isOpening: Boolean = false,
+    /** 听歌模式：熟悉 / 均衡 / 新鲜。默认均衡 = 改造前的行为。 */
+    val tasteMode: TasteMode = TasteMode.BALANCED,
+    /**
+     * 已经排好、尚未播放的队列头部（顺序：最近将要播的在最后）。
+     * 汽水把「待播」用 played_mills = -1 塞进同一个 30 条上下文窗口，
+     * 让服务端在补队列时也能看到「接下来要放什么」，避免接缝处连着两首同曲风/同作者。
+     */
+    val upcomingQueue: List<Track> = emptyList(),
 )
 
 object RecommendationTuning {
@@ -157,4 +202,10 @@ object RecommendationTuning {
     const val W_REPEAT = -1.2
     /** 用户已有兴趣时，和画像完全不沾边的热门/首页要压下去 */
     const val W_MISMATCH = -1.6
+    /** 十分钟内反复播放（单曲循环式）加分，来自汽水三档重复窗口 */
+    const val W_LOVE = 1.0
+    /** 歌手级负反馈权重；强度已被 RecommendationFusion 封顶 0.5 */
+    const val W_ARTIST_NEGATIVE = -1.8
+    /** 熟悉模式下，明确不符合画像的曲目额外降权（不是硬封，避免队列枯竭） */
+    const val W_ANCHOR_MISMATCH = -1.1
 }

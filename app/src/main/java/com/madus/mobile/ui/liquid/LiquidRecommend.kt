@@ -34,6 +34,7 @@ import com.madus.mobile.domain.Track
 import com.madus.mobile.domain.TrackFilters
 import com.madus.mobile.domain.MusicDiscovery
 import com.madus.mobile.domain.MusicStyleFeedback
+import com.madus.mobile.domain.TasteMode
 import com.madus.mobile.ui.RecommendSegment
 import com.madus.mobile.ui.RecommendUiState
 import com.madus.mobile.ui.components.BiliPlayerSurface
@@ -67,6 +68,7 @@ fun LiquidRecommendScreen(
     onRelatedRadio: () -> Unit = {},
     onStartRadio: () -> Unit = {},
     onUpdateMusicTaste: (Set<String>) -> Unit = {},
+    onUpdateTasteMode: (TasteMode) -> Unit = {},
     onStyleFeedback: (Track, Int) -> Unit = { _, _ -> },
     onFeedbackNotInterested: (Track) -> Unit = { onNotInterested() },
     onLogin: () -> Unit = {},
@@ -130,6 +132,7 @@ fun LiquidRecommendScreen(
                 onOpenFeedback = if (track != null && TrackFilters.isLikelyMusic(track)) {
                     { feedbackTrack = track }
                 } else null,
+                modeLabel = state.tasteMode.label,
             )
             Spacer(Modifier.height(14.dp))
 
@@ -259,6 +262,8 @@ fun LiquidRecommendScreen(
     if (showMusicTaste) {
         MusicTasteSheet(
             preferredTopics = state.preferredTopics,
+            tasteMode = state.tasteMode,
+            onTasteModeChange = onUpdateTasteMode,
             onDismiss = { showMusicTaste = false },
             onSave = { topics ->
                 onUpdateMusicTaste(topics)

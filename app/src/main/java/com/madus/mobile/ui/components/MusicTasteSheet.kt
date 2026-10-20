@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.madus.mobile.domain.MusicDiscovery
+import com.madus.mobile.domain.TasteMode
 
 /** 主页面只保留两个轻入口，解释与反馈操作在面板内呈现。 */
 @Composable
@@ -43,6 +44,8 @@ fun MusicTasteBar(
     onOpen: () -> Unit,
     onOpenFeedback: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** 当前听歌模式（熟悉 / 均衡 / 新鲜），在入口上直接可见。 */
+    modeLabel: String? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -58,7 +61,10 @@ fun MusicTasteBar(
         TextButton(onClick = onOpen) {
             Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(5.dp))
-            Text("我的音乐口味", style = MaterialTheme.typography.labelMedium)
+            Text(
+                text = modeLabel?.takeIf { it.isNotBlank() }?.let { "我的音乐口味 · $it" } ?: "我的音乐口味",
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
 }
@@ -68,6 +74,8 @@ fun MusicTasteSheet(
     preferredTopics: Set<String>,
     onDismiss: () -> Unit,
     onSave: (Set<String>) -> Unit,
+    tasteMode: TasteMode = TasteMode.BALANCED,
+    onTasteModeChange: (TasteMode) -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableStateOf(preferredTopics.toList()) }
     val groups = listOf(
@@ -95,6 +103,28 @@ fun MusicTasteSheet(
             Text(
                 text = "选你愿意多听的音乐，可多选。之后会结合喜欢、听完和跳过继续调整，随时可以回来改。",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            // 听歌模式：把「多熟 / 多新」直接交给用户，而不是偷偷改内部权重。
+            Text("听歌模式", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TasteMode.entries.forEach { mode ->
+                    val active = mode == tasteMode
+                    FilterChip(
+                        selected = active,
+                        onClick = { onTasteModeChange(mode) },
+                        label = { Text(mode.label) },
+                        leadingIcon = if (active) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else null,
+                    )
+                }
+            }
+            Text(
+                text = TasteMode.entries.firstOrNull { it == tasteMode }?.hint.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))

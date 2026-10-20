@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.madus.mobile.domain.MusicDiscovery
+import com.madus.mobile.domain.TasteMode
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -19,6 +21,8 @@ data class MusicTaste(
     val preferredTopics: Set<String> = emptySet(),
     /** 空选择也能完成设置：让收听行为继续学习口味。 */
     val configured: Boolean = false,
+    /** 熟悉 / 均衡 / 新鲜。默认均衡，等于改造前的行为。 */
+    val mode: TasteMode = TasteMode.BALANCED,
 )
 
 /** 用户主动选择的口味独立保存，清空选择不会删除收听历史或喜欢的歌。 */
@@ -26,6 +30,7 @@ class MusicTasteStore(context: Context) {
     private val store = context.applicationContext.musicTasteStore
     private val topicsKey = stringSetPreferencesKey("preferred_topics_v1")
     private val configuredKey = booleanPreferencesKey("configured_v1")
+    private val modeKey = stringPreferencesKey("taste_mode_v1")
 
     val flow: Flow<MusicTaste> = store.data
         .catch { error ->
@@ -36,6 +41,7 @@ class MusicTasteStore(context: Context) {
                 preferredTopics = preferences[topicsKey].orEmpty()
                     .intersect(MusicDiscovery.availableTopics.keys),
                 configured = preferences[configuredKey] ?: false,
+                mode = TasteMode.of(preferences[modeKey]),
             )
         }
 
@@ -47,5 +53,9 @@ class MusicTasteStore(context: Context) {
             preferences[topicsKey] = supported
             preferences[configuredKey] = true
         }
+    }
+
+    suspend fun saveMode(mode: TasteMode) {
+        store.edit { preferences -> preferences[modeKey] = mode.name }
     }
 }
