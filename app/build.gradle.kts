@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.20.0：平均收听学习、搜索意图与防同类连播
-        versionCode = 322
-        versionName = "1.21.0"
+        // 1.22.0：汽水音乐推荐机制融合（重复收听窗口、歌手负反馈、听歌模式）
+        versionCode = 323
+        versionName = "1.22.0"
         vectorDrawables.useSupportLibrary = true
     }
 
