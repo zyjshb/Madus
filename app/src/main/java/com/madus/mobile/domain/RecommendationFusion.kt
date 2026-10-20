@@ -50,8 +50,6 @@ object RecommendationFusion {
      */
     fun repeatProfiles(events: List<RecommendationEvent>, nowMs: Long): Map<String, RepeatProfile> {
         if (events.isEmpty()) return emptyMap()
-        data class Window(val tenMin: Int, val hour: Int, val day: Int)
-
         val perTrack = linkedMapOf<String, MutableList<Pair<Long, Int>>>()
         events.forEach { event ->
             if (event.type != RecommendationEventType.LISTEN_SAMPLE &&
@@ -64,7 +62,9 @@ object RecommendationFusion {
             if (key.isBlank()) return@forEach
             // PLAY_START 只是「起播」，同一 session 的 LISTEN_SAMPLE 才是证据；两者取其一即可。
             val weight = if (event.type == RecommendationEventType.LISTEN_SAMPLE) repeatsOf(event) else 1
-            perTrack.getOrPut(key) { mutableListOf() }.addFirst(age to weight)
+            // 顺序无关（下面只按时间窗过滤求和），用 append 而不是 addFirst：
+            // addFirst 会解析到 Java 21 的 SequencedCollection，在 Android 上是 NoSuchMethodError。
+            perTrack.getOrPut(key) { mutableListOf() }.add(age to weight)
         }
         if (perTrack.isEmpty()) return emptyMap()
         return perTrack.mapValues { (_, plays) ->

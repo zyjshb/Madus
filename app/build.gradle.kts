@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.22.1：诊断版（崩溃堆栈 + 内存心跳落盘），并回滚 1.22.0 的画像缓存复用
-        versionCode = 324
-        versionName = "1.22.1"
+        // 1.22.2：修复切歌崩溃（Java 21 addFirst 在 Android 上 NoSuchMethodError）
+        versionCode = 325
+        versionName = "1.22.2"
         vectorDrawables.useSupportLibrary = true
     }
 
