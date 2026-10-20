@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.22.0：汽水音乐推荐机制融合（重复收听窗口、歌手负反馈、听歌模式）
-        versionCode = 323
-        versionName = "1.22.0"
+        // 1.22.1：诊断版（崩溃堆栈 + 内存心跳落盘），并回滚 1.22.0 的画像缓存复用
+        versionCode = 324
+        versionName = "1.22.1"
         vectorDrawables.useSupportLibrary = true
     }
 

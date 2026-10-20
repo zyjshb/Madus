@@ -130,6 +130,8 @@ class MadusApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // 崩溃堆栈 + 内存心跳落盘：卡退时才有据可查（会镜像到「下载/Madus/」便于取出）。
+        runCatching { com.madus.mobile.data.Diagnostics.install(this) }
         coil.Coil.setImageLoader(com.madus.mobile.ui.components.MadusImageLoader.get(this))
         playerEngine = PlayerEngine(this)
         playerController = PlayerController(playerEngine)

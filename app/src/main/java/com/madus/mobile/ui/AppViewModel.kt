@@ -8,6 +8,7 @@ import com.madus.mobile.ai.SongCandidate
 import com.madus.mobile.data.AudioQuality
 import com.madus.mobile.data.BilibiliApi
 import com.madus.mobile.data.ContentProfileStore
+import com.madus.mobile.data.Diagnostics
 import com.madus.mobile.data.ExternalPlaylistImporter
 import com.madus.mobile.data.LikedStore
 import com.madus.mobile.data.MusicTasteStore
@@ -375,6 +376,8 @@ class AppViewModel(
     private var searchPlaybackGeneration = -1
     private val listeningTracks = linkedMapOf<String, Track>()
     private var lastListeningDiscoveryAt = 0L
+    /** 诊断心跳节流。 */
+    private var lastDiagAt = 0L
     /** 最近一次「跨 5:00 窗口」的全量召回时间；进程内有效，避免每次切页都重拉。 */
     private var lastDailyRefreshMs = 0L
     private var listeningSaveJob: Job? = null
@@ -1251,6 +1254,7 @@ class AppViewModel(
                 delay(2_000L)
                 val pb = playback.value
                 val heardMs = sampleListening(pb)
+                maybeLogDiagHeartbeat()
                 val t = pb.current ?: continue
                 if (!pb.isPlaying || !TrackFilters.isLikelyMusic(t)) continue
                 if (heardMs >= 1_500L && sessionStartedIds.add(t.id)) {
@@ -1278,6 +1282,23 @@ class AppViewModel(
     }
 
     /** 同步截取旧曲的听歌证据，保存与重排不阻塞已预取的下一首。 */
+    /** 每 60 秒落一条内存/队列心跳，卡退时能看出是内存一路涨还是队列被抽空。 */
+    private fun maybeLogDiagHeartbeat() {
+        val now = System.currentTimeMillis()
+        if (now - lastDiagAt < 60_000L) return
+        lastDiagAt = now
+        runCatching {
+            val rt = Runtime.getRuntime()
+            val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1_048_576L
+            val maxMb = rt.maxMemory() / 1_048_576L
+            Diagnostics.log(
+                "mem",
+                "heap=${usedMb}/${maxMb}MB queue=${pendingQueue.size}/${pendingIndex} " +
+                    "feed=${_recommend.value.feed.size} playing=${playback.value.current?.title?.take(12)}",
+            )
+        }
+    }
+
     private suspend fun maybeRecordSkipFast(back: Boolean = false) {
         val pb = playback.value
         val t = pb.current ?: return
@@ -2584,6 +2605,7 @@ class AppViewModel(
                     playIndex(0, startPos = 0L)
                 } else {
                     player.dispatch(PlayerCommand.Pause)
+                    Diagnostics.log("starve", "queue empty after refill, idx=$pendingIndex events=${interestRevision}")
                     _recommend.update { it.copy(recommendationHint = "这会儿还没找到合口味的新歌，稍后再试或调整音乐口味") }
                 }
                 return
@@ -5248,8 +5270,8 @@ class AppViewModel(
             recentTopicKeys = history.map { it.topicKeys }, recentSeedSongKeys = history.map { it.seedSongKeys })
         val scored = candidates.values.filterNot { isBlocked(it.track, blocks) ||
             (it.source in setOf("related-like", "realtime-related") && it.seedSongKeys.isEmpty()) }.map { c ->
-            // 画像缓存已经在手里，直接传进去，省掉 scoreCandidate 内的重复解析。
-            recommendationEngine.scoreCandidate(enriched(c.track), profileCache[profileKey(c.track)],
+            // 画像仍按曲目现场解析（与 1.21.0 一致）：缓存里缺失标签的候选不会被误判出池。
+            recommendationEngine.scoreCandidate(enriched(c.track), null,
                 state, c.source, context, c.seedTopicKeys, c.seedSongKeys)
         }
         val (discovered, picked) = recommendationReRanker.rerankWithReasons(scored, context)
