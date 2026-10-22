@@ -315,7 +315,8 @@ class PlaybackService : MediaSessionService() {
     private fun toggleLikeInService() {
         val track = MadusApp.instance.playerEngine.state.value.current ?: return
         MadusApp.instance.applicationScope.launch {
-            val nowLiked = MadusApp.instance.likedStore.toggle(track)
+            val nowLiked = runCatching { MadusApp.instance.likedStore.toggle(track) }
+                .getOrNull() ?: return@launch
             MadusApp.instance.currentTrackLiked = nowLiked
             if (nowLiked) {
                 val p = com.madus.mobile.domain.ContentProfileParser.profileFromTrack(track)

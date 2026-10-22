@@ -277,7 +277,7 @@ fun UpSpaceScreen(
                         Text("合集暂无内容", modifier = Modifier.padding(20.dp), color = muted)
                     }
                 } else {
-                    items(list, key = { it.id }) { track ->
+                    items(list.distinctBy { it.id }, key = { it.id }) { track ->
                         WorkCell(track = track, onClick = { onPlayTrack(track, list) })
                     }
                 }
@@ -296,7 +296,7 @@ fun UpSpaceScreen(
                             )
                         }
                     } else {
-                        items(state.videos, key = { it.id }) { track ->
+                        items(state.videos.distinctBy { it.id }, key = { it.id }) { track ->
                             WorkCell(
                                 track = track,
                                 onClick = { onPlayTrack(track, state.videos) },

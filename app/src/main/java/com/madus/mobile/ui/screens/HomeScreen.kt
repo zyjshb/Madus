@@ -236,7 +236,7 @@ fun HomeScreen(
                     )
                 }
             }
-            items(recent.take(if (selected == HomeChip.Recent) 12 else 5), key = { it.id }) { track ->
+            items(recent.distinctBy { it.id }.take(if (selected == HomeChip.Recent) 12 else 5), key = { it.id }) { track ->
                 TrackRow(
                     track = track,
                     onClick = { onPlayTrack(track, recent) },

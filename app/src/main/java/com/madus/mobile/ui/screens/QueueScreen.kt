@@ -117,6 +117,15 @@ fun QueueScreen(
                 it.artist.contains(q, ignoreCase = true)
         }
     }
+    // 队列允许同一首出现多次；LazyColumn 的 key 重复会直接抛异常闪退，这里给重复 id 加序号
+    val queueRowKeys = remember(displayTracks) {
+        val seen = HashMap<String, Int>()
+        displayTracks.map { t ->
+            val n = (seen[t.id] ?: 0) + 1
+            seen[t.id] = n
+            if (n == 1) "q-${t.id}" else "q-${t.id}#$n"
+        }
+    }
     val current = tracks.firstOrNull { it.id == currentId }
         ?: tracks.firstOrNull()
     val showRemote = query.trim().isNotEmpty() &&
@@ -355,7 +364,7 @@ fun QueueScreen(
                         )
                     }
                 }
-                items(queueSearch.results, key = { "sr-${it.id}" }) { track ->
+                items(queueSearch.results.distinctBy { it.id }, key = { "sr-${it.id}" }) { track ->
                     QueueTrackRow(
                         track = track,
                         isCurrent = false,
@@ -411,7 +420,7 @@ fun QueueScreen(
                     )
                 }
             } else {
-                itemsIndexed(displayTracks, key = { _, t -> "q-${t.id}" }) { index, track ->
+                itemsIndexed(displayTracks, key = { i, t -> queueRowKeys.getOrNull(i) ?: "q-${t.id}-$i" }) { index, track ->
                     val realIndex = tracks.indexOfFirst { it.id == track.id }
                         .takeIf { it >= 0 } ?: index
                     val isDragging = dragFrom == realIndex

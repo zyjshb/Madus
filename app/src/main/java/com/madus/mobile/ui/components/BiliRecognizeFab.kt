@@ -282,7 +282,7 @@ fun BiliRecognizeResultSheet(
                             modifier = Modifier.heightIn(max = 360.dp),
                             verticalArrangement = Arrangement.spacedBy(0.dp),
                         ) {
-                            items(state.tracks, key = { it.id }) { track ->
+                            items(state.tracks.distinctBy { it.id }, key = { it.id }) { track ->
                                 TrackRow(
                                     track = track,
                                     onClick = { onPlay(track, state.tracks) },

@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.22.2：修复切歌崩溃（Java 21 addFirst 在 Android 上 NoSuchMethodError）
-        versionCode = 325
-        versionName = "1.22.2"
+        // 1.22.3：修掉列表 key 重复导致的闪退（队列/曲库/搜索/UP 空间）
+        versionCode = 326
+        versionName = "1.22.3"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -22,7 +22,7 @@ android {
         release {
             isMinifyEnabled = false
             isDebuggable = false
-            // 姝ｅ紡鍖咃細applicationId 锟?.debug锛涙湰鍦扮敤 debug 瀵嗛挜绛惧悕渚夸簬瀹夎
+            // 正式包：applicationId 无 .debug；本地用 debug 密钥签名便于安装
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

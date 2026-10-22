@@ -105,7 +105,7 @@ fun LiquidHomeScreen(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            items(recent.size.coerceAtMost(8), key = { recent[it].id }) { i ->
+            items(recent.size.coerceAtMost(8), key = { "${recent[it].id}#$it" }) { i ->
                 val track = recent[i]
                 CanvasNumberedTrack(
                     index = i + 1,

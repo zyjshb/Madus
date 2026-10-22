@@ -38,6 +38,9 @@ object Diagnostics {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             runCatching { recordCrash(thread, error) }
+            // 协程里没接住的普通异常（网络/解析/存储等）只记日志不杀进程；
+            // OOM 等 Error 以及真正的线程崩溃仍交给系统默认处理。
+            if (error is Exception && isFromCoroutineHandler()) return@setDefaultUncaughtExceptionHandler
             previous?.uncaughtException(thread, error)
         }
         log(
@@ -54,6 +57,14 @@ object Diagnostics {
             synchronized(lock) { append(line) }
         }
     }
+
+    /** kotlinx.coroutines 在未处理异常时会在当前线程同步调用默认 handler，调用栈里可识别。 */
+    private fun isFromCoroutineHandler(): Boolean =
+        Throwable().stackTrace.any {
+            it.className.startsWith("kotlinx.coroutines.CoroutineExceptionHandlerImplKt") ||
+                (it.className.startsWith("kotlinx.coroutines.CoroutineExceptionHandlerKt") &&
+                    it.methodName.startsWith("handleCoroutineException"))
+        }
 
     private fun recordCrash(thread: Thread, error: Throwable) {
         val sw = StringWriter()

@@ -268,7 +268,7 @@ private fun RecentList(
                 )
             }
         }
-        items(tracks, key = { it.id }) { track ->
+        items(tracks.distinctBy { it.id }, key = { it.id }) { track ->
             TrackRow(
                 track = track,
                 onClick = { onPlayTrack(track, tracks) },

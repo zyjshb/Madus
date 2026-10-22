@@ -381,7 +381,7 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    itemsIndexed(state.tracks, key = { _, t -> t.id }) { index, track ->
+                    itemsIndexed(state.tracks.distinctBy { it.id }, key = { _, t -> t.id }) { index, track ->
                         PlaylistTrackRow(
                             index = index + 1,
                             track = track,

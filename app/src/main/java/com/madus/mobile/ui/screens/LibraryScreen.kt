@@ -208,7 +208,7 @@ fun LibraryScreen(
                 Spacer(Modifier.height(20.dp))
             }
         } else {
-            items(locals, key = { it.id }) { pl ->
+            items(locals.distinctBy { it.id }, key = { it.id }) { pl ->
                 PlaylistRow(
                     playlist = pl,
                     onClick = { onOpenPlaylist(pl) },
@@ -259,7 +259,7 @@ fun LibraryScreen(
                 Spacer(Modifier.height(20.dp))
             }
         } else {
-            items(bili.take(6), key = { "bili-${it.id}" }) { pl ->
+            items(bili.distinctBy { it.id }.take(6), key = { "bili-${it.id}" }) { pl ->
                 PlaylistRow(
                     playlist = pl,
                     onClick = { onOpenPlaylist(pl) },
@@ -306,7 +306,7 @@ fun LibraryScreen(
                 )
             }
         }
-        items(recent.take(8), key = { "r-${it.id}" }) { track ->
+        items(recent.distinctBy { it.id }.take(8), key = { "r-${it.id}" }) { track ->
             TrackRow(
                 track = track,
                 onClick = { onPlayTrack(track, recent) },

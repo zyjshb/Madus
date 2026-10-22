@@ -342,7 +342,7 @@ fun BgmResultPanel(
                                 .weight(1f, fill = false)
                                 .heightIn(max = 400.dp),
                         ) {
-                            items(state.tracks, key = { it.id }) { track ->
+                            items(state.tracks.distinctBy { it.id }, key = { it.id }) { track ->
                                 TrackRow(
                                     track = track,
                                     onClick = { onPlayNow(track) },

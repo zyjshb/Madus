@@ -138,7 +138,7 @@ fun CacheManagerScreen(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
-                items(state.items, key = { it.track.id }) { item ->
+                items(state.items.distinctBy { it.track.id }, key = { it.track.id }) { item ->
                     CachedRow(
                         item = item,
                         onClick = { onPlay(item) },

@@ -255,7 +255,7 @@ fun SearchScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                items(state.results, key = { it.id }) { track ->
+                items(state.results.distinctBy { it.id }, key = { it.id }) { track ->
                     TrackRow(
                         track = track,
                         onClick = { onPlayTrack(track) },
