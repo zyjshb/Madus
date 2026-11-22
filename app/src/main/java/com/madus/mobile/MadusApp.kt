@@ -30,6 +30,7 @@ import com.madus.mobile.player.PlayerController
 import com.madus.mobile.player.PlayerEngine
 import com.madus.mobile.source.BilibiliSource
 import com.madus.mobile.source.SourceRegistry
+import com.madus.mobile.together.TogetherRoomManager
 import com.madus.mobile.ui.LoginCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,8 @@ class MadusApp : Application() {
     lateinit var biliApi: BilibiliApi
         private set
     lateinit var sourceRegistry: SourceRegistry
+        private set
+    lateinit var togetherManager: TogetherRoomManager
         private set
     lateinit var llmConfigStore: LlmConfigStore
         private set
@@ -115,6 +118,11 @@ class MadusApp : Application() {
     var startBiliLogin: (() -> Unit)? = null
 
     /**
+     * 由 MainActivity 注入：一起听开麦时按需申请麦克风权限。
+     */
+    var requestMicPermission: (((Boolean) -> Unit) -> Unit)? = null
+
+    /**
      * 由 MainActivity 注入：Android 13+ 首次播放时申请通知权限，
      * 这样通知栏能显示曲名/控制（不像旧版空壳卡「准备播放」）。
      */
@@ -151,6 +159,14 @@ class MadusApp : Application() {
         hummingConfigStore = HummingConfigStore(this)
         aiChatHistoryStore = AiChatHistoryStore(this)
         biliApi = BilibiliApi { sessionStore.getBiliCookie() }
+        togetherManager = TogetherRoomManager(
+            context = this,
+            scope = applicationScope,
+            playerEngine = playerEngine,
+            biliApi = biliApi,
+            qualityQnProvider = { currentQualityQn },
+            ensurePlaybackService = { ensurePlaybackService() },
+        )
 
         // 异步读音质/音效，避免主线程 runBlocking 卡启动
         applicationScope.launch {
@@ -190,11 +206,13 @@ class MadusApp : Application() {
             override fun onStart(owner: LifecycleOwner) {
                 appInBackground = false
                 playerEngine.setAppInBackground(false)
+                togetherManager.onHostLifecycle(inBackground = false)
             }
 
             override fun onStop(owner: LifecycleOwner) {
                 appInBackground = true
                 playerEngine.setAppInBackground(true)
+                togetherManager.onHostLifecycle(inBackground = true)
                 // 释放封面解码缓存，给游戏让出一点内存；磁盘缓存与功能不动
                 runCatching {
                     com.madus.mobile.ui.components.MadusImageLoader

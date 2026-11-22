@@ -85,6 +85,9 @@ class PlayerEngine(context: Context) {
     /** 应用在后台时放慢进度轮询，省 CPU（功能不变）。 */
     private val backgroundMode = AtomicBoolean(false)
 
+    /** 一起听房间独占控制：阻止自然播完后自动切入单机随机/推荐流。 */
+    private val roomModeActive = AtomicBoolean(false)
+
     /** 网络强度档位（0=最省 … 3=充足），用 ordinal 存 */
     private val networkIntensityOrdinal = java.util.concurrent.atomic.AtomicInteger(
         NetworkIntensity.BALANCED.ordinal,
@@ -264,6 +267,25 @@ class PlayerEngine(context: Context) {
         backgroundMode.set(inBackground)
     }
 
+    fun setRoomMode(active: Boolean) {
+        roomModeActive.set(active)
+    }
+
+    fun isRoomMode(): Boolean = roomModeActive.get()
+
+    fun setVolume(volume: Float) {
+        val v = volume.coerceIn(0f, 1f)
+        mainHandler.post { player.volume = v }
+    }
+
+    fun currentPositionMs(): Long = player.currentPosition.coerceAtLeast(0L)
+
+    fun currentDurationMs(): Long = player.duration.takeIf { it > 0 } ?: 0L
+
+    fun isPlayerBuffering(): Boolean = player.playbackState == Player.STATE_BUFFERING
+
+    fun isPlayerPlaying(): Boolean = player.isPlaying
+
     /** @param minutes 0 = 取消 */
     fun setSleepTimerMinutes(minutes: Int) {
         sleepJob?.cancel()
@@ -407,6 +429,11 @@ class PlayerEngine(context: Context) {
 
     private fun handleEnded() {
         if (ending) return
+        if (roomModeActive.get()) {
+            player.pause()
+            publishFromPlayer()
+            return
+        }
         if (repeatMode == RepeatMode.ONE) {
             player.seekTo(0)
             player.play()

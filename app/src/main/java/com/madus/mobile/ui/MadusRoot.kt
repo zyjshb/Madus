@@ -22,10 +22,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Album
+import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -111,6 +113,7 @@ import com.madus.mobile.ui.screens.ChangelogScreen
 import com.madus.mobile.ui.screens.UpdateScreen
 import com.madus.mobile.ui.screens.PlaybackPrefsScreen
 import com.madus.mobile.ui.screens.SettingsScreen
+import com.madus.mobile.ui.screens.TogetherScreen
 import com.madus.mobile.ui.screens.UpSpaceScreen
 import com.madus.mobile.ai.AiChatViewModel
 import kotlinx.coroutines.launch
@@ -122,16 +125,15 @@ private data class TabItem(
     val icon: ImageVector,
 )
 
-/** 左右对称：首页+搜索 | 推荐(正中) | 曲库+我的 */
-private val leftTabs = listOf(
+/** 6 栏均衡导航：首页 · 搜索 · 推荐 · 一起听 · 曲库 · 我的 */
+private val classicTabs = listOf(
     TabItem(RootTab.Home, Icons.Outlined.Home),
     TabItem(RootTab.Search, Icons.Outlined.Search),
-)
-private val rightTabs = listOf(
+    TabItem(RootTab.Recommend, Icons.Outlined.Album),
+    TabItem(RootTab.Together, Icons.Outlined.Headphones),
     TabItem(RootTab.Library, Icons.Outlined.LibraryMusic),
     TabItem(RootTab.Me, Icons.Outlined.Person),
 )
-private val centerTab = TabItem(RootTab.Recommend, Icons.Outlined.Album)
 
 @Composable
 fun MadusRoot(
@@ -141,12 +143,15 @@ fun MadusRoot(
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+    val togetherState by MadusApp.instance.togetherManager.ui.collectAsStateWithLifecycle()
     val onRecommend = route == RootTab.Recommend.route
+    val onTogetherJoined = route == RootTab.Together.route && togetherState.isJoined
     val onPlaylist = route == Routes.PLAYLIST
-    // 根 Tab 显示底栏；歌单详情只显示迷你条（若在播）
+    // 根 Tab 显示底栏；进入一起听房间内部后隐藏底栏给聊天与键盘留全高空间
     val showTabChrome = route != null &&
         route in RootTab.routes &&
-        route != Routes.FULLSCREEN_VIDEO
+        route != Routes.FULLSCREEN_VIDEO &&
+        !onTogetherJoined
 
     val home by vm.home.collectAsStateWithLifecycle()
     val search by vm.search.collectAsStateWithLifecycle()
@@ -372,6 +377,7 @@ fun MadusRoot(
                 LiquidChromeMetrics.contentBottom(
                     showMini = playback.current != null &&
                         !onRecommend &&
+                        !onTogetherJoined &&
                         route != Routes.NOW_PLAYING &&
                         route != Routes.FULLSCREEN_VIDEO,
                 ) - LiquidChromeMetrics.contentExtra
@@ -400,19 +406,33 @@ fun MadusRoot(
                         .background(MaterialTheme.colorScheme.background)
                         .windowInsetsPadding(WindowInsets.navigationBars),
                 ) {
-                    // 推荐台本身是播放器；其它页（含歌单详情）显示迷你条
-                    if (playback.current != null && !onRecommend) {
+                    // 推荐台本身是播放器，一起听房间内自带舞台；其它页显示迷你条
+                    if (playback.current != null && !onRecommend && !onTogetherJoined) {
                         MiniPlayerBar(
                             playback = playback,
-                            onToggle = vm::togglePlay,
+                            onToggle = {
+                                if (togetherState.isJoined) {
+                                    MadusApp.instance.togetherManager.togglePlayPause()
+                                } else {
+                                    vm.togglePlay()
+                                }
+                            },
                             onNext = vm::next,
                             onPrevious = vm::previous,
-                            // 点迷你条 → 推荐页电台台面（不是清屏页）
+                            // 房间中点迷你条回一起听，否则进推荐台
                             onOpenNowPlaying = {
-                                openRecommendPlayer()
+                                if (togetherState.isJoined) {
+                                    selectRootTab(RootTab.Together)
+                                } else {
+                                    openRecommendPlayer()
+                                }
                             },
                             onOpenQueue = {
-                                nav.navigate(Routes.QUEUE) { launchSingleTop = true }
+                                if (togetherState.isJoined) {
+                                    selectRootTab(RootTab.Together)
+                                } else {
+                                    nav.navigate(Routes.QUEUE) { launchSingleTop = true }
+                                }
                             },
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         )
@@ -424,6 +444,7 @@ fun MadusRoot(
                         )
                         LineSketchBottomBar(
                             route = route,
+                            inTogetherRoom = togetherState.isJoined,
                             onSelect = ::selectRootTab,
                         )
                     }
@@ -435,6 +456,7 @@ fun MadusRoot(
         val density = LocalDensity.current
         val showMiniNow = liquid && playback.current != null &&
             !onRecommend &&
+            !onTogetherJoined &&
             route != Routes.NOW_PLAYING && route != Routes.FULLSCREEN_VIDEO
         var chromeBottom by remember {
             mutableStateOf(LiquidChromeMetrics.contentBottom(showMiniNow))
@@ -689,6 +711,57 @@ fun MadusRoot(
                         onOpenNowPlaying = {
                             nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true }
                         },
+                    )
+                }
+                composable(RootTab.Together.route) {
+                    val biliSession = me.sessions.firstOrNull { it.source == MusicSourceType.BILIBILI }
+                    val defaultNick = biliSession?.displayName
+                        ?.takeIf {
+                            biliSession.isLoggedIn &&
+                                it.isNotBlank() &&
+                                it != "未登录 · 点此登录"
+                        }
+                        .orEmpty()
+                    val tm = MadusApp.instance.togetherManager
+                    TogetherScreen(
+                        state = togetherState,
+                        defaultNickname = defaultNick,
+                        currentSoloTrack = playback.current.takeIf { !togetherState.isJoined },
+                        recentTracks = home.recent,
+                        onMinimizeRoom = { selectRootTab(RootTab.Home) },
+                        onJoinRoom = { rId, nick, pwd, initial ->
+                            tm.joinRoom(rId, nick, pwd, initial)
+                        },
+                        onLeaveRoom = tm::leaveRoom,
+                        onUpdateServerUrl = tm::updateServerUrl,
+                        onPickTrack = tm::pickTrack,
+                        onTogglePlayPause = tm::togglePlayPause,
+                        onSeekToMs = tm::seekToMs,
+                        onToggleVideoExpanded = tm::toggleVideoExpanded,
+                        onToggleControlMode = tm::toggleControlMode,
+                        onToggleMic = {
+                            tm.toggleMic {
+                                val req = MadusApp.instance.requestMicPermission
+                                if (req != null) {
+                                    req { granted ->
+                                        if (granted) {
+                                            tm.onMicPermissionGranted()
+                                        } else {
+                                            scope.launch { flashSnack("需要麦克风权限才能开麦语音") }
+                                        }
+                                    }
+                                } else {
+                                    scope.launch { flashSnack("请在系统设置中授予以允许开麦") }
+                                }
+                            }
+                        },
+                        onToggleSpeaker = tm::toggleSpeaker,
+                        onToggleVolumeDrawer = tm::toggleVolumeDrawer,
+                        onToggleDanmaku = tm::toggleDanmaku,
+                        onSetMediaVolume = tm::setMediaVolume,
+                        onSetVoiceGain = tm::setVoiceGain,
+                        onSendChat = tm::sendChat,
+                        onClearError = tm::clearError,
                     )
                 }
                 composable(RootTab.Library.route) {
@@ -1323,10 +1396,23 @@ fun MadusRoot(
                 showMini = showMiniNow,
                 showTabs = showTabChrome,
                 onSelectTab = ::selectRootTab,
-                onToggle = vm::togglePlay,
+                onToggle = {
+                    if (togetherState.isJoined) {
+                        MadusApp.instance.togetherManager.togglePlayPause()
+                    } else {
+                        vm.togglePlay()
+                    }
+                },
                 onPrevious = vm::previous,
                 onNext = vm::next,
-                onOpenMini = { openRecommendPlayer() },
+                onOpenMini = {
+                    if (togetherState.isJoined) {
+                        selectRootTab(RootTab.Together)
+                    } else {
+                        openRecommendPlayer()
+                    }
+                },
+                inTogetherRoom = togetherState.isJoined,
                 onChromeHeightPx = { px ->
                     chromeBottom = with(density) { px.toDp() } + LiquidChromeMetrics.contentExtra
                 },
@@ -1428,85 +1514,24 @@ fun MadusRoot(
 @Composable
 private fun LineSketchBottomBar(
     route: String?,
+    inTogetherRoom: Boolean = false,
     onSelect: (RootTab) -> Unit,
 ) {
-    // 布局：首页 搜索 | 推荐(正中) | 曲库 我的
-    Box(
+    // 6 栏均衡：首页 · 搜索 · 推荐 · 一起听 · 曲库 · 我的
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(62.dp)
             .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
+        classicTabs.forEach { item ->
+            BottomTabItem(
+                item = item,
+                selected = route == item.tab.route,
+                showDot = inTogetherRoom && item.tab == RootTab.Together,
+                onClick = { onSelect(item.tab) },
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                leftTabs.forEach { item ->
-                    BottomTabItem(
-                        item = item,
-                        selected = route == item.tab.route,
-                        onClick = { onSelect(item.tab) },
-                    )
-                }
-            }
-            // 中央留给推荐
-            Spacer(modifier = Modifier.width(72.dp))
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                rightTabs.forEach { item ->
-                    BottomTabItem(
-                        item = item,
-                        selected = route == item.tab.route,
-                        onClick = { onSelect(item.tab) },
-                    )
-                }
-            }
-        }
-
-        // 推荐：几何正中，略放大
-        val centerSelected = route == centerTab.tab.route
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .width(72.dp)
-                .iosClickable(pressScale = 0.92f) { onSelect(centerTab.tab) }
-                .padding(vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(
-                imageVector = centerTab.icon,
-                contentDescription = centerTab.tab.label,
-                modifier = Modifier.size(if (centerSelected) 30.dp else 28.dp),
-                tint = if (centerSelected) {
-                    MaterialTheme.colorScheme.onBackground
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = centerTab.tab.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (centerSelected) {
-                    MaterialTheme.colorScheme.onBackground
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-            Spacer(Modifier.height(3.dp))
-            Box(
-                modifier = Modifier
-                    .size(width = if (centerSelected) 18.dp else 0.dp, height = 1.5.dp)
-                    .background(MaterialTheme.colorScheme.onBackground),
             )
         }
     }
@@ -1516,24 +1541,35 @@ private fun LineSketchBottomBar(
 private fun BottomTabItem(
     item: TabItem,
     selected: Boolean,
+    showDot: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .iosClickable(pressScale = 0.92f, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 2.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            imageVector = item.icon,
-            contentDescription = item.tab.label,
-            modifier = Modifier.size(24.dp),
-            tint = if (selected) {
-                MaterialTheme.colorScheme.onBackground
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
+        Box(contentAlignment = Alignment.TopEnd) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = item.tab.label,
+                modifier = Modifier.size(22.dp),
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.onBackground
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            if (showDot) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                )
+            }
+        }
         Spacer(Modifier.height(2.dp))
         Text(
             text = item.tab.label,
@@ -1543,6 +1579,7 @@ private fun BottomTabItem(
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
+            maxLines = 1,
         )
         Spacer(Modifier.height(3.dp))
         Box(

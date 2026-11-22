@@ -12,9 +12,9 @@ android {
         applicationId = "com.madus.mobile"
         minSdk = 26
         targetSdk = 35
-        // 1.22.3：修掉列表 key 重复导致的闪退（队列/曲库/搜索/UP 空间）
-        versionCode = 326
-        versionName = "1.22.3"
+        // 1.22.4：新增纯 B 站「一起听」Tab，支持同步听歌/看视频、WebRTC 开麦对话与聊天
+        versionCode = 327
+        versionName = "1.22.4"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -97,6 +97,9 @@ dependencies {
     // Cover art (OkHttp for Bilibili Referer)
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Real-time voice chat (WebRTC) for Together room
+    implementation("io.getstream:stream-webrtc-android:1.3.10")
 
     // 液态玻璃：背后内容真模糊
     implementation("dev.chrisbanes.haze:haze:1.6.10")

@@ -552,20 +552,24 @@ class AppViewModel(
     private var playGeneration: Int = 0
 
     init {
-        // 曲终 → 下一首
+        // 曲终 → 下一首（一起听房间内由房间同步控制）
         player.setOnPlaybackEnded {
+            if (MadusApp.instance.playerEngine.isRoomMode()) return@setOnPlaybackEnded
             playErrorRetries = 0
             viewModelScope.launch { advanceToNext(userInitiated = false) }
         }
         // 锁屏 / 通知栏 next/prev
         player.setOnExternalNext {
+            if (MadusApp.instance.playerEngine.isRoomMode()) return@setOnExternalNext
             viewModelScope.launch { advanceToNext(userInitiated = true) }
         }
         player.setOnExternalPrevious {
+            if (MadusApp.instance.playerEngine.isRoomMode()) return@setOnExternalPrevious
             previous()
         }
         // 播放失败：重解析过期 CDN，再失败则跳过（防抖，避免连环崩溃）
         player.setOnPlayerError {
+            if (MadusApp.instance.playerEngine.isRoomMode()) return@setOnPlayerError
             viewModelScope.launch {
                 if (handlingPlayError) return@launch
                 handlingPlayError = true

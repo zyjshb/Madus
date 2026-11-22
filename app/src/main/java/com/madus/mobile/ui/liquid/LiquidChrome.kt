@@ -30,8 +30,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
@@ -41,6 +44,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.Album
+import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Person
@@ -81,6 +85,7 @@ private val liquidTabs = listOf(
     LiquidTab(RootTab.Home, Icons.Outlined.Home, Icons.Filled.Home, "首页"),
     LiquidTab(RootTab.Search, Icons.Outlined.Search, Icons.Filled.Search, "搜索"),
     LiquidTab(RootTab.Recommend, Icons.Outlined.Album, Icons.Filled.Album, "电台"),
+    LiquidTab(RootTab.Together, Icons.Outlined.Headphones, Icons.Filled.Headphones, "一起听"),
     LiquidTab(RootTab.Library, Icons.Outlined.LibraryMusic, Icons.Filled.LibraryMusic, "曲库"),
     LiquidTab(RootTab.Me, Icons.Outlined.Person, Icons.Filled.Person, "我的"),
 )
@@ -96,6 +101,7 @@ fun LiquidFloatingChrome(
     onPrevious: () -> Unit = {},
     onNext: () -> Unit = {},
     onOpenMini: () -> Unit,
+    inTogetherRoom: Boolean = false,
     modifier: Modifier = Modifier,
     onChromeHeightPx: (Int) -> Unit = {},
 ) {
@@ -182,17 +188,26 @@ fun LiquidFloatingChrome(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
-                            Icon(
-                                if (selected) item.filled else item.outlined,
-                                contentDescription = item.label,
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .graphicsLayer {
-                                        scaleX = iconScale
-                                        scaleY = iconScale
-                                    },
-                                tint = tint,
-                            )
+                            Box(contentAlignment = Alignment.TopEnd) {
+                                Icon(
+                                    if (selected) item.filled else item.outlined,
+                                    contentDescription = item.label,
+                                    modifier = Modifier
+                                        .size(21.dp)
+                                        .graphicsLayer {
+                                            scaleX = iconScale
+                                            scaleY = iconScale
+                                        },
+                                    tint = tint,
+                                )
+                                if (inTogetherRoom && item.tab == RootTab.Together) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(accent, CircleShape),
+                                    )
+                                }
+                            }
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 item.label,

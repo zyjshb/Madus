@@ -4,6 +4,7 @@ enum class RootTab(val route: String, val label: String) {
     Home("home", "首页"),
     Search("search", "搜索"),
     Recommend("recommend", "推荐"),
+    Together("together", "一起听"),
     Library("library", "曲库"),
     Me("me", "我的");
 

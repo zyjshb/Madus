@@ -66,6 +66,14 @@ class MainActivity : ComponentActivity() {
     @Volatile
     private var notifPermAskedThisProcess = false
 
+    private var pendingMicPermCallback: ((Boolean) -> Unit)? = null
+    private val micPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        pendingMicPermCallback?.invoke(granted)
+        pendingMicPermCallback = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         splash.setKeepOnScreenCondition { keepSplash }
@@ -84,6 +92,18 @@ class MainActivity : ComponentActivity() {
         }
         MadusApp.instance.requestPostNotifications = {
             requestPlaybackNotificationPermission()
+        }
+        MadusApp.instance.requestMicPermission = { onResult ->
+            val granted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                onResult(true)
+            } else {
+                pendingMicPermCallback = onResult
+                micPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
         }
         enableEdgeToEdge()
         // 强制 adjustResize：部分输入法不读 manifest 的软键盘模式，会导致 AI 输入框被盖住
@@ -169,11 +189,19 @@ class MainActivity : ComponentActivity() {
         notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    override fun onStop() {
+        runCatching { MadusApp.instance.togetherManager.ensureSystemMicSafe() }
+        super.onStop()
+    }
+
     override fun onDestroy() {
         if (isFinishing) {
+            runCatching { MadusApp.instance.togetherManager.leaveRoom() }
             MadusApp.instance.startBiliLogin = null
             MadusApp.instance.requestPostNotifications = null
+            MadusApp.instance.requestMicPermission = null
         }
+        pendingMicPermCallback = null
         super.onDestroy()
     }
 }

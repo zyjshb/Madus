@@ -42,6 +42,10 @@ class PlayerController(
 
     fun playbackSpeed(): Float = engine.playbackSpeed()
 
+    fun setRoomMode(active: Boolean) = engine.setRoomMode(active)
+
+    fun setVolume(volume: Float) = engine.setVolume(volume)
+
     fun prepareTrack(track: com.madus.mobile.domain.Track, asVideo: Boolean = false) =
         engine.prepareTrack(track, asVideo)
 

@@ -29,6 +29,19 @@ object AppChangelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "1.22.4",
+            date = "2026-11-22",
+            added = listOf(
+                "底栏新增专属「一起听」Tab，原生适配线稿、圆滑与液态玻璃主题",
+                "支持 B 站同步听歌与一键原地展开 16:9 B 站视频画面及横屏全屏",
+                "支持房间内 WebRTC 实时开麦对话、说话状态指示、外放/听筒切换及独立音乐/人声音量调节",
+                "房间内集成纯 B 站选歌面板（搜歌 / BV 链接 / 我喜欢 / 最近播放 / B 站收藏夹）与文字/弹幕聊天",
+            ),
+            fixed = listOf(
+                "隔离房间播放状态与单机推荐自动连播；闭麦及退房不锁定系统全局麦克风静音",
+            ),
+        ),
+        Entry(
             version = "1.21.0",
             date = "2026-09-23",
             fixed = listOf(
